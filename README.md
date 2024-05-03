@@ -2,26 +2,28 @@
 Pipelines and codes relative to the hPS2-seq screening platform
 Data analysis pipeline from HEDGe lab. 
 
-CatcheR functions curated by Maria Luisa Ratto
-single cell RNAseq analysis curated by Elisa Balmas
-
-See pubblication.
+See preprint DOI: XXXXXX.
+See associated protocol and CatcheR protocol from preprint XXXXX.
 
 Repository contains 2 sets of scripts: 
 
-- barcode pipeline: first step of the analysis, to assign perturbation to single cells. There are two different versions: one for 10X data and one for double indexing sci.
-- single cell analysis: perturbation effect evaluation after clustering
+- CatcheR barcode pipeline curated by Maria Luisa Ratto: first step of the analysis, to assign perturbation to single cells.
+  There are two different versions: one for 10X data and one for double indexing sci-RMNAseq.
+  
+- single cell analysis curated by Elisa Balmas: Evaluate the perturbation effect of a gene or shRNA at the clonal or population level.
+  Clustering is done with Monocle 3 and customized statistical methods have been employed to assess:
+  (1) Cluster enrichment variation due to a perturbation; (2) Changes in Pseudotime or Module gene expression associated with a perturbation.
 
 # Prerequisites
 The following R functions require docker, since each of them opens a docker, computes the analysis inside of it to ensure reproducibility and then closes it. 
 
 # Barcode pipeline for 10X
-Starting from single-cell gene expression matrix, the wrapper function catcheR_barcodes() produces a gene expression matrix where cell names contains annotations about the perturbation present in each cell. 
+Starting from a single-cell gene expression matrix, the wrapper function catcheR_barcodes() produces a gene expression matrix where cell names contain annotations about the perturbation present in each cell. 
 Inputs:
-- read 1 fastq (or fastq.gz) containing barcodes sequencing
-- read 2 fastq (or fastq.gz) containing barcodes sequencing
-- gene expression matrix in csv format
-- a file called rc_barcodes_gene.csv, containing the association between barcodes and shRNAs, comma separated. Use reverse complement! E.g.
+- read 1 fastq (or fastq.gz) containing the barcodes sequencing library (from cellranger mkfastq)
+- read 2 fastq (or fastq.gz) containing the barcodes sequencing library (from cellranger mkfastq)
+- gene expression matrix in csv format (transform the cellranger count matrix to a csv file  with XXXXXXX)
+- a file called rc_barcodes_gene.csv, containing the association between barcodes and shRNAs, comma separated. Use the reverse complement of the shRNA barcode. E.g.
   
       CTTCTTTC,CHD7.1
       GTACTCAA,CHD7.2
@@ -58,18 +60,17 @@ Inputs:
     catcheR_barcodes(group=c("docker","sudo"),folder, fastq.read1, fastq.read2, expression.matrix, reference = "GGCGCGTTCATCTGGGGGAGCCG", UCI.length = 6, threads = 2, percentage = 15, mode = "bimodal")
 
 
-
 Wrapper function arguments: 
 
-  - group: a character string. Two options: sudo or docker, depending to which group the user belongs. For docker running
-  - folder: a character string indicating the path of the working folder containing the input files
-  - fastq.read1: a character string indicating the filename of read 1 fastq (or fastq.gz). This library must have enrichment of the sequence of interest for perturbation deconvolution. 
-  - fastq.read2: a character string indicating the filename of read 2 fastq (or fastq.gz). This library must have enrichment of the sequence of interest for perturbation deconvolution. 
+  - group: a character string. Two options: sudo or docker, depending to which group the user belongs. 
+  - folder: a character string indicating the path of the working folder containing the input files.
+  - fastq.read1: a character string indicating the filename of read 1 fastq (or fastq.gz). This is the read 1 of the barcode library: this is the library created by enrichment of the sequence of interest with a specific iPS2seq primer and it is needed to deconvolute the perturbation. 
+  - fastq.read2: a character string indicating the filename of read 2 fastq (or fastq.gz). This is the read 2 of the barcode library: this is the library created by enrichment of the sequence of interest with a specific iPS2seq primer and it is needed to deconvolute the perturbation. 
   - expression.matrix: a character string indicating the filename of the gene expression matrix file (csv format). 
-  - reference: a character string indicating the sequence to identify reads containing barcodes. Should be found at at the beginning of read2. Use reverse complement! Default is the sequence used in the iPS2-seq construct. 
-  - UCI.length: integer indicating the length of Unique Clonal Identifier. Should be found on read2 after the reference. Default is 6, as in the iPS2-seq construct.
-  - threads: integer number of threads to be used for parallelization
-  - percentage: integer threshold of percentage of UMIs supporting a UCI over total UMIs supporting UCIs in the same cell, to consider the UCI valid. Suggested default is 15.
+  - reference: a character string indicating the reference sequence to identify reads containing the barcodes. This should be found at the beginning of read2. Use reverse complement! The default is the Tet repressor sequence used for the enrichment of the iPS2-seq construct (see the sequence in the example). 
+  - UCI.length: integer indicating the length of the Unique Clonal Identifier. Should be found on read2 after the reference. Default is 6, as in the iPS2-seq construct.
+  - threads: integer number of threads to be used for parallelization. The default is 2, but more threads are recommended to increase performance. 
+  - percentage: integer threshold of the percentage of UMIs supporting a UCI over the total UMIs supporting UCIs in the same cell to consider the UCI valid. The suggested default is 15.
   - mode: a character string. Two options: "bimodal" or "noise". To evaluate a threshold number of UMIs to consider a UCI valid there are 2 options: "bimodal" (default) which sets the threshold at the valley of the UMIxUCI distribution, or "noise", which sets the threshold at 1.35 * number of UCI supported by a single UMI.
 
 Example
@@ -86,3 +87,18 @@ Example
                  percentage = 15,
                  mode = "noise")
 
+Note. Check the UMIxUCI plots and the percentage_of_UMIxUCI_dist plots showing the distribution of shRNA and assess the noise of the dataset. Then re-run the previous analysis when, for example, to change the thresholds to custom values or the mode for threshold identification. In this case, run the catcheR_explorative function.
+
+  catcheR_explorative(
+                group = "docker", 
+                folder = "/20tb/ratto/catcheR/test_CM5/", 
+                reference = "GGCGCGTTCATCTGGGGGAGCCG", 
+                mode = "noise")
+                
+  catcheR_cell_filtering(group = "docker", 
+                       folder = "/20tb/ratto/catcheR/sci_8/", 
+                       expression.matrix = "exp_mat.csv", 
+                       UMI.count = 5, 
+                       percentage = 15)
+
+# Barcode pipeline for sci-RNAseq

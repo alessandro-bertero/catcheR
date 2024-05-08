@@ -21,7 +21,7 @@ Use the "install_github" function in the "devtools" package.
     install_github("alessandro-bertero/catcheR")
     library(catcheR)
 
-Alternatively, the package can be download manually inside a folder called "catcheR" on loaded as follows: 
+Alternatively, the repository can be download manually and loaded as follows: 
 
     library(devtools);
     load_all("."); # Working directory should be in the package catcheR

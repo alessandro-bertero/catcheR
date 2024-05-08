@@ -17,7 +17,7 @@ Repository contains 2 sets of scripts:
 # CatcheR installation
 Use the "install_github" function in the "devtools" package.
 
-    library(devtools) # Make sure that the devtools library is loaded
+    library(devtools) 
     install_github("alessandro-bertero/catcheR")
     library(catcheR)
 

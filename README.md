@@ -14,7 +14,14 @@ Repository contains 2 sets of scripts:
   Clustering is done with Monocle 3 and customized statistical methods have been employed to assess:
   (1) Cluster enrichment variation due to a perturbation; (2) Changes in Pseudotime or Module gene expression associated with a perturbation.
 
-# Prerequisites
+# CatcheR installation
+Use the "install_github" function in the "devtools" package.
+
+    library(devtools) # Make sure that the devtools library is loaded
+    install_github("alessandro-bertero/catcheR")
+    library(catcheR)
+
+## Prerequisites
 The following R functions require docker, since each of them opens a docker, computes the analysis inside of it to ensure reproducibility and then closes it. 
 
 # Barcode pipeline for 10X

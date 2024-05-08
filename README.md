@@ -21,6 +21,11 @@ Use the "install_github" function in the "devtools" package.
     install_github("alessandro-bertero/catcheR")
     library(catcheR)
 
+Alternatively, the package can be download manually inside a folder called "catcheR" on loaded as follows: 
+
+    library(devtools);
+    load_all("."); # Working directory should be in the package catcheR
+
 ## Prerequisites
 The following R functions require docker, since each of them opens a docker, computes the analysis inside of it to ensure reproducibility and then closes it. 
 

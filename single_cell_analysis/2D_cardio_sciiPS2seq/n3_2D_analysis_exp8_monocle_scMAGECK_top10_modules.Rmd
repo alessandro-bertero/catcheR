@@ -1,0 +1,867 @@
+---
+title: "n1 2D analysis exp5 exp7 combined: QC and monocle analysis"
+author: "Elisa Balmas PhD"
+date: "2024-02-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set up environment
+
+```{r}
+library(monocle3)
+library(tidyr)
+library(stringr)
+library(grid)
+library(viridis)
+library(viridisLite)
+library(ggthemes)
+library(dplyr)
+library(tidyverse)
+library(ggsignif)
+library(umap)
+library(heatmap3)
+library(plyr)
+library(edgeR)
+library(compareGroups)
+library(dbscan)
+library(MAST)
+library(geosphere)
+library(RColorBrewer)
+library(Seurat)
+library(htmlwidgets)
+library(Matrix)
+library(tidyseurat)
+library(SeuratWrappers)
+library(scMAGeCK)
+library(readxl)
+library(rCASC)
+library(deepToolsUtils)
+library(R.utils)
+
+
+library(ggplot2); library(reshape2); theme_set(theme_bw(26) + theme(panel.grid.major = element_blank(), 
+                                                                    panel.grid.minor = element_blank()) +
+                                                 theme(legend.key = element_blank()))
+update_geom_defaults("point", aes(size = 4))
+
+#setwd("/home/ebalmas/scpHUB/projects/H001AS7_iKDseq_10X_4tp_monocle/analysis_EB")
+
+# Session options
+options(stringsAsFactors = FALSE)
+set.seed(12345)
+
+# Set up the ggplot default params
+theme_set(theme_bw(12) + 
+          theme(panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(),
+                plot.title = element_text(size=15, face="bold", margin = margin(10,0,10,0)),
+                axis.text.x = element_text(angle=45, hjust = 1)))
+
+
+# Set up filename prefixes and output folders with the data
+dir.create("Output")
+dir.create(file.path("Output","scratch"))
+
+dir.create(file.path("Output","Seurat"))
+dir.create(file.path("Output","Seurat","top10MOD_comb"))#create forders Seurat
+dir.create(file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "dotplots"))
+dir.create(file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "PCA"))
+dir.create(file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "UMAP"))
+dir.create(file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "scMAGECK"))
+dir.create(file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "scMAGECK","RRA"))
+dir.create(file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "scMAGECK","LR"))
+dir.create(file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "scMAGECK","heatmaps"))
+dir.create(file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "scMAGECK","R_objects"))
+dir.create(file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "scMAGECK","csv"))
+dir.create(file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "scMAGECK","dotplot"))
+
+fname_scratch <- file.path("Output","scratch")
+
+#set up forder path Seurat
+fname_prefix_R_Seurat <- file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot_Seurat <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_PCA_Seurat<-file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "PCA", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_UMAP_Seurat<-file.path("Output","Seurat", format(Sys.Date(), "%y%m%d"), "UMAP", 
+                               format(Sys.Date(), "%y%m%d"))
+
+fname_prefix_scMGK_Seurat_RRA<-file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "scMAGECK", "RRA")
+fname_prefix_scMGK_Seurat_LR<-file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "scMAGECK", "LR")
+fname_prefix_scMGK_Seurat_HM<-file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "scMAGECK", "heatmaps", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_scMGK_Seurat_R<-file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "scMAGECK", "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+
+fname_prefix_scMGK_Seuratcsv<-file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "scMAGECK", "csv", 
+                               format(Sys.Date(), "%y%m%d"))
+
+fname_prefix_scMGK_Seurat_dotplot<-file.path("Output","Seurat","top10MOD_comb", format(Sys.Date(), "%y%m%d"), "scMAGECK", "dotplot", 
+                               format(Sys.Date(), "%y%m%d"))
+
+
+okabe_tab=read_excel(paste0(fname_scratch,"/colors_okabe.xlsx"))
+okabe_pal=okabe_tab$hex
+
+okabe_pal=c("#E69F00","#56B4E9","#009E73","#f0E442","#0072B2","#D55E00","#CC79A7","#000000")
+
+
+pal <- c("#000000","#004949","#009292","#ff6db6","#ffb6db",
+         "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+         "#920000","#924900","#db6d00","#24ff24","#ffff6d")
+```
+
+########load data
+
+```{r}
+load("Output/monocle/240401/R_objects/240401_updated_cds_with_modules_SELECTION.RData")#from n2_2D_analysis_exp8_monocle_DEG_gene_exp.Rmd
+ID_key=read_excel(paste0(fname_scratch,"/shRNA_IDs.xlsx"))
+
+counts=as.data.frame(cds@assays@data@listData[["counts"]])
+meta$gene_polish=meta$shRNA_gene
+meta$gene_polish=dplyr::recode(meta$gene_polish,
+                                     "B2M"="control",
+                                     "SCR"="control",
+                                     "NA"="control")
+meta$gene=meta$shRNA_gene
+meta$gene=dplyr::recode(meta$gene,"SCR"="NonTargetingControlGuideForHuman",
+                                     "NA"="NonTargetingControlGuideForHuman",
+                                     "B2M"="NonTargetingControlGuideForHuman")
+meta$sh=meta$shRNA_label
+meta$sh=dplyr::recode(meta$sh,"SCR"="NonTargetingControlGuideForHuman",
+                                     "NA"="NonTargetingControlGuideForHuman",
+                                     "B2M"="NonTargetingControlGuideForHuman")
+
+```
+
+####make gene lists
+
+```{r}
+######load gene lists
+load("Output/scratch/gene_lists.RData")
+file_ks=paste0(fname_scratch,"/gene_list_homemade.xlsx")
+cardiac_markers_KS_list <- read_excel(file_ks, na = " ")
+
+gene_lists_homemade=list()
+
+for (c in unique(cardiac_markers_KS_list$cell_type)) {
+
+tmp=subset(cardiac_markers_KS_list, cardiac_markers_KS_list$cell_type==c)
+gene_list=tmp$gene_name
+
+gene_lists_homemade[[c]]=gene_list
+
+}
+#####make gene list on modules
+gene_lists_modules=list()
+
+for (c in unique(gene_module_df$module)) {
+
+tmp=subset(gene_module_df, gene_module_df$module==c)
+gene_list=tmp$id
+
+gene_lists_modules[[c]]=gene_list
+
+}
+
+# Create a data frame for the GMT format
+gmt_cardio <- data.frame(
+  Name = names(gene_lists),  # Use cell type names as gene set names
+  Description = rep("https://doi.org/10.1016/j.cell.2022.11.028", length(gene_lists)),
+  Gene_Symbols = lapply(gene_lists, paste, collapse = "\t")
+)
+
+gmt_homemade <- data.frame(
+  Name = names(gene_lists_homemade),  # Use cell type names as gene set names
+  Description = rep("https://doi.org/10.1016/j.cell.2022.11.028", length(gene_lists_homemade)),
+  Gene_Symbols = lapply(gene_lists_homemade, paste, collapse = "\t")
+)
+
+gmt_modules <- data.frame(
+  Name = names(gene_lists_modules),  # Use cell type names as gene set names
+  Description = rep("https://doi.org/10.1016/j.cell.2022.11.028", length(gene_lists_modules)),
+  Gene_Symbols = lapply(gene_lists_modules, paste, collapse = "\t")
+)
+
+
+top10_modules=gene_module_df %>% filter(module %in% c(4,17,6,2,8,25,24,21,3,1))###2007 genes to test
+top10_modules_list=top10_modules$id
+
+```
+
+
+##make Seurat Object
+
+```{r}
+
+filtered_seurat <- as.Seurat(cds, assay = NULL)
+set.seed(123)
+par(mfrow=c(1,2))
+# original expression distribution
+raw_geneExp = as.vector(filtered_seurat@assays[["originalexp"]]@counts) %>% sample(10000)
+raw_geneExp = raw_geneExp[raw_geneExp != 0]
+hist(raw_geneExp)
+
+filtered_seurat <- NormalizeData(filtered_seurat, normalization.method = "LogNormalize", scale.factor = 10000)
+
+# expression distribution after normalization
+logNorm_geneExp = as.vector(filtered_seurat@assays[["originalexp"]]@data) %>% sample(10000)
+logNorm_geneExp = logNorm_geneExp[logNorm_geneExp != 0]
+hist(logNorm_geneExp)
+
+ggsave(filename = paste0(fname_prefix_dotplot_Seurat, "_", "hist_QC_normalization.pdf"),
+     width = 12, height = 8)
+
+filtered_seurat <- FindVariableFeatures(filtered_seurat, selection.method = "vst", nfeatures = 2000, verbose = FALSE)
+all.genes=rownames(filtered_seurat)
+filtered_seurat <- ScaleData(filtered_seurat, features = all.genes)
+
+```
+#run scMageck LR to see the general gene perturbation use modules gene lists generated by Monocle
+
+```{r}
+### BARCODE file contains cell identity information, generated from the cell identity collection step
+b_shRNA=meta%>%dplyr::select(libID, shRNA_label,shRNA_BC,gene)%>%mutate(read_count=1,
+                                                                    umi_count=1)
+b_shRNA=b_shRNA%>%dplyr::rename(cell=libID,barcode=shRNA_label,sgrna=shRNA_BC)
+    
+### RDS can be a Seurat object or local RDS file path that contains the scRNA-seq dataset
+c=UpdateSeuratObject(filtered_seurat)
+    
+RRAPATH <- paste0(fname_scratch, "/RRA_0.5.9/bin/RRA")
+#RRAPATH <- NULL
+
+# Perform the operation using the target_gene for each iteration
+lr_result <- scMAGeCK::scmageck_lr(BARCODE = b_shRNA, 
+                                         RDS = c,NEGCTRL = "NonTargetingControlGuideForHuman",
+                                         SELECT_GENE = c(top10_modules_list),   
+                                         LABEL = "lr_top10module_genes_all_comb",PERMUTATION = 100000,SAVEPATH = fname_prefix_scMGK_Seurat_LR,LAMBDA=0.01)
+  
+
+Rdata_filename = paste0(fname_prefix_scMGK_Seurat_R, "_scMAGeK_modules_results.RData")
+save(meta,cds,cell_type_pal_ms,cell_type_pal_ml,cell_type_pal,order_cell_types_long,order_cell_types,gene_module_df,cell_group_df_test,gene_lists_modules,lr_result,c,filtered_seurat,
+     file = Rdata_filename)
+
+```
+#######make a dataframe with pvalues of the LR results to select only genes differentially regulated
+
+```{r}
+
+df <- as.data.frame(lr_result[["pvalue"]]) %>%
+            select(-Perturbedgene)
+df <- as.data.frame(t(df))
+df$sig <- apply(df[, -1] <= 0.05, 1, any)#1831 total
+lr_result_modules <- df%>%filter(sig==T)#310 genes ##df with sig pvalues
+lr_modules_genes=rownames(lr_result_modules)###sig genes
+
+df <- as.data.frame(lr_result[["score"]]) %>%
+            select(-Perturbedgene)
+df <- as.data.frame(t(df))
+lr_result_modules_score=df
+lr_result_modules_score=lr_result_modules_score[rownames(lr_result_modules_score)%in%lr_modules_genes,]####sig score
+col_sel=colnames(lr_result_modules_score)###use to select only the score data
+
+#####add info module
+lr_result_modules_score$id=rownames(lr_result_modules_score)
+top10_modules=top10_modules%>%filter(top10_modules$id%in%lr_result_modules_score$id)
+lr_result_modules_score=lr_result_modules_score%>%inner_join(top10_modules,by="id")
+rownames(lr_result_modules_score)=lr_result_modules_score$id
+lr_result_modules_score$name=paste0("module_",lr_result_modules_score$module)
+
+lr_result_modules=lr_result_modules[rownames(lr_result_modules)%in%lr_result_modules_score$id,]
+
+
+write.csv(lr_result_modules_score, file= paste0(fname_prefix_scMGK_Seuratcsv, "_", "lr_result_modules_score.csv"), row.names=T)
+
+Rdata_filename = paste0(fname_prefix_scMGK_Seurat_R, "_scMAGeK_results.RData")
+save(meta,cds,cell_type_pal_ms,cell_type_pal_ml,cell_type_pal,order_cell_types_long,order_cell_types,gene_module_df,cell_group_df_test,gene_lists_modules,lr_result,c,filtered_seurat,lr_result_modules,lr_result_modules_score,
+     file = Rdata_filename)
+
+######################
+#make a gene list of significant genes with every gene of the module organized in a list
+#####################
+sig_gene_lists_modules_score=list()
+
+for (c in unique(lr_result_modules_score$name)) {
+
+tmp=subset(lr_result_modules_score, lr_result_modules_score$name==c)
+gene_list=rownames(tmp)
+
+sig_gene_lists_modules_score[[c]]=gene_list
+
+}
+
+Rdata_filename = paste0(fname_prefix_scMGK_Seurat_R, "_scMAGeK_results_sig_MODULES.RData")
+save(meta,cds,filtered_seurat,lr_result_modules,lr_result_modules_score,sig_gene_lists_modules_score,
+     file = Rdata_filename)
+
+hm_data=lr_result_modules_score%>%select(col_sel)#select only the score data
+my_gene_col=lr_result_modules_score%>%select(name)%>%dplyr::rename(module=name)
+my_colour = list(module = c(module_1 ="#56B4E9", module_6 = "#009E73",module_3="#0072B2", module_21="#b6dbff", module_25="#E69F00",module_24="#D55E00",module_4="#CC79A7",module_17="#f0E442",module_8="grey",module_2="#924900"))
+
+
+hp_grezza=pheatmap::pheatmap(hm_data,annotation_row = my_gene_col,annotation_colors = my_colour,
+                   clustering_method="ward.D",cutree_rows = 7,color = viridis(n = 256, alpha = 1, 
+                                   begin = 0, end = 1, option = "H"))###zscore normalize on row (modules)
+
+hp2=pheatmap::pheatmap(hm_data,annotation_row = my_gene_col,annotation_colors = my_colour,
+                   scale="row", clustering_method="ward.D",cutree_rows = 7)###zscore normalize on row (gene modules)
+
+Rdata_filename = paste0(fname_prefix_scMGK_Seurat_HM, "hp_all_modules_selected.pdf")
+pdf(Rdata_filename, height = 8, width = 5)
+hp2
+dev.off()
+
+hp2=pheatmap::pheatmap(hm_data,annotation_row = my_gene_col,annotation_colors = my_colour,
+                   scale="row", clustering_method="ward.D",cutree_rows = 7,color = viridis(n = 256, alpha = 1, 
+                                   begin = 0, end = 1, option = "H"))###zscore normalize on row (modules)
+
+Rdata_filename = paste0(fname_prefix_scMGK_Seurat_HM, "hp_all_modules_selected_TURBO.pdf")
+pdf(Rdata_filename, height = 8, width = 5)
+hp2
+dev.off()
+
+
+```
+
+#########select only top modules to represent LR results on heatmap
+##gene cleanup and get top genes
+
+```{r}
+###get gene groups
+my_gene_col$geneID=rownames(my_gene_col)
+order=rownames(hm_data[hp2$tree_row[["order"]],])
+gene_groups_mod=as.data.frame(sort(cutree(hp2$tree_row, k=7)))
+colnames(gene_groups_mod)="genegroup"
+gene_groups_mod$geneID=rownames(gene_groups_mod)
+gene_groups_mod$genegroup_nb=paste0("gene group ",gene_groups_mod$genegroup)
+gene_groups_mod=gene_groups_mod%>%right_join(my_gene_col,by="geneID")
+rownames(gene_groups_mod)=gene_groups_mod$geneID
+gene_groups_mod <- gene_groups_mod[match(order, gene_groups_mod$geneID), ]
+annotation_row=gene_groups_mod%>%select(genegroup_nb,module)
+
+my_colour = list(module = c(module_1 ="#56B4E9", module_6 = "#009E73",module_3="#0072B2", module_21="#b6dbff", module_25="#E69F00",module_24="#D55E00",module_4="#CC79A7",module_17="#f0E442",module_8="grey",module_2="#924900"),
+                 genegroup_nb=c("gene group 1"="#000000","gene group 2"="#004949","gene group 3"="#920000","gene group 4"="#ffff6d","gene group 5"="grey","gene group 6"="#b66dff","gene group 7"="#ff6db6"))
+
+hp3=pheatmap::pheatmap(hm_data,annotation_row = annotation_row,annotation_colors = my_colour,
+                   scale="row", clustering_method="ward.D",cutree_rows = 7,color = viridis(n = 256, alpha = 1, 
+                                   begin = 0, end = 1, option = "H"))###zscore normalize on row (modules)
+
+Rdata_filename = paste0(fname_prefix_scMGK_Seurat_HM, "hp_all_modules_selected_TURBO_groups.pdf")
+pdf(Rdata_filename, height = 8, width = 5)
+hp3
+dev.off()
+
+#####eliminate gene group 4
+
+pre_filter_hm_data=hm_data
+pre_filter_annotation_row=annotation_row
+pre_filter_col_hm=my_colour
+
+Rdata_filename = paste0(fname_prefix_scMGK_Seurat_R, "_scMAGeK_hm_selected_MODULES_pre_filter.RData")
+save(meta,cds,filtered_seurat,lr_result_modules,lr_result_modules_score,sig_gene_lists_modules_score,hm_data,pre_filter_annotation_row,pre_filter_col_hm,hp3,
+     file = Rdata_filename)
+
+
+gene_groups_mod=subset(gene_groups_mod,gene_groups_mod$genegroup!=4)
+filter_genes=rownames(gene_groups_mod)
+hm_data=hm_data%>%filter(rownames(hm_data)%in%filter_genes)
+
+annotation_row=gene_groups_mod%>%select(genegroup_nb,module)
+
+my_colour = list(module = c(module_1 ="#56B4E9", module_6 = "#009E73",module_3="#0072B2", module_21="#b6dbff", module_25="#E69F00",module_24="#D55E00",module_4="#CC79A7",module_17="#f0E442",module_8="grey",module_2="#924900"),
+                 genegroup_nb=c("gene group 1"="#000000","gene group 2"="#004949","gene group 3"="#920000","gene group 5"="grey","gene group 6"="#b66dff","gene group 7"="#ff6db6"))
+
+
+hp4=pheatmap::pheatmap(hm_data,annotation_row = annotation_row, annotation_colors = my_colour,
+                   scale="row", clustering_method="ward.D2",color = viridis(n = 256, alpha = 1, 
+                                   begin = 0, end = 1, option = "H"))###zscore normalize on row (modules)
+
+Rdata_filename = paste0(fname_prefix_scMGK_Seurat_HM, "hp_all_modules_selected_TURBO_groups.pdf")
+pdf(Rdata_filename, height = 8, width = 5)
+hp4
+dev.off()
+
+Rdata_filename = paste0(fname_prefix_scMGK_Seurat_R, "_scMAGeK_hm_selected_MODULES_filtered.RData")
+save(meta,cds,filtered_seurat,lr_result_modules,lr_result_modules_score,sig_gene_lists_modules_score,hm_data,annotation_row,my_colour,hp4,
+     file = Rdata_filename)
+
+
+```
+#####select top 20%
+259 total=20% is 52
+```{r}
+#######select top 50 genes based on module z score and higher delta
+hm_data_unnorm=hm_data
+
+cal_z_score <- function(x){
+  (x - mean(x)) / sd(x)
+}
+
+data_norm <- t(apply(hm_data, 1, cal_z_score)) ###get z scored data
+hp5=pheatmap::pheatmap(data_norm, clustering_method="ward.D2",color = viridis(n = 256, alpha = 1, 
+                                   begin = 0, end = 1, option = "H"))###check hp4 is the same as hp2
+
+data_norm=as.data.frame(data_norm)
+data_norm$min<-apply(data_norm,1,FUN=min)
+data_norm$max<-apply(data_norm,1,FUN=max)
+data_norm$delta=data_norm$max-data_norm$min
+
+top=data_norm[order(-data_norm$delta),] ####order from higher to lower
+top_20=head(top, n=52) #top20%
+
+hm_data_unnorm=as.data.frame(as.data.frame(data_norm))
+hm_data_unnorm$min<-apply(hm_data_unnorm,1,FUN=min)
+hm_data_unnorm$max<-apply(hm_data_unnorm,1,FUN=max)
+hm_data_unnorm$delta=hm_data_unnorm$max-hm_data_unnorm$min
+top_un=hm_data_unnorm[order(-hm_data_unnorm$delta),] ####order from higher to lower
+top_un20=head(top_un, n=52) #top20%
+
+hm_data_20=hm_data%>%dplyr::filter(rownames(hm_data)%in%rownames(top_20))
+hm_data_20un=hm_data%>%dplyr::filter(rownames(hm_data)%in%rownames(top_un20))
+
+Rdata_filename = paste0(fname_prefix_scMGK_Seurat_R, "_scMAGeK_hm_selected_MODULES_filtered_TOP.RData")
+save(meta,cds,filtered_seurat,lr_result_modules,lr_result_modules_score,sig_gene_lists_modules_score,hm_data,annotation_row,my_colour,top_20,top_un20,hm_data_20,hm_data_20un,
+     file = Rdata_filename)
+###top 5% and 10% select from zscored
+
+flip_hm_data=t(hm_data_20)
+annotation_col=annotation_row%>%filter(rownames(annotation_row)%in%rownames(top_20))%>%select(-genegroup_nb)
+my_colour = list(module = c(module_1 ="#56B4E9", module_6 = "#009E73",module_3="#0072B2", module_21="#b6dbff", module_25="#E69F00",module_24="#D55E00",module_4="#CC79A7",module_17="#f0E442",module_8="grey",module_2="#924900"))
+
+hp5p=pheatmap::pheatmap(flip_hm_data,annotation_col = annotation_col,annotation_colors = my_colour,
+                   scale="column", clustering_method="ward.D2",color = viridis(n = 256, alpha = 1, 
+                                   begin = 0, end = 1, option = "H"))###zscore normalize on row (modules)
+
+Rdata_filename = paste0(fname_prefix_scMGK_Seurat_HM, "hp_top_20p_scMAGeK.pdf")
+pdf(Rdata_filename, height = 5, width = 15)
+hp5p
+dev.off()
+
+save=annotation_col%>%mutate(id=rownames(annotation_col))
+write.csv(save, file= paste0(fname_prefix_scMGK_Seuratcsv, "_", "top20percent.csv"), row.names=T)
+
+
+###top 5% and 10% select from unormalized
+
+flip_hm_data=t(hm_data_20un)
+annotation_col=annotation_row%>%filter(rownames(annotation_row)%in%rownames(top_un20))%>%select(-genegroup_nb)
+my_colour = list(module = c(module_1 ="#56B4E9", module_6 = "#009E73",module_3="#0072B2", module_21="#b6dbff", module_25="#E69F00",module_24="#D55E00",module_4="#CC79A7",module_17="#f0E442",module_8="grey",module_2="#924900"))
+
+hp5pun=pheatmap::pheatmap(flip_hm_data,annotation_col = annotation_col,annotation_colors = my_colour,
+                   scale="column", clustering_method="ward.D2",color = viridis(n = 256, alpha = 1, 
+                                   begin = 0, end = 1, option = "H"))###zscore normalize on row (modules)
+
+Rdata_filename = paste0(fname_prefix_scMGK_Seurat_HM, "hp_top_20p_un_scMAGeK.pdf")
+pdf(Rdata_filename, height = 5, width = 15)
+hp5pun
+dev.off()
+
+```
+
+###get gene groups Hp5p
+
+```{r}
+
+flip_hm_data=t(hm_data_20)
+annotation_col=annotation_row%>%filter(rownames(annotation_row)%in%rownames(top_20))%>%select(-genegroup_nb)
+my_colour = list(module = c(module_1 ="#56B4E9", module_6 = "#009E73",module_3="#0072B2", module_21="#b6dbff", module_25="#E69F00",module_24="#D55E00",module_4="#CC79A7",module_17="#f0E442",module_8="grey",module_2="#924900"))
+
+hp5p=pheatmap::pheatmap(flip_hm_data,annotation_col = annotation_col,annotation_colors = my_colour,
+                   scale="column", clustering_method="ward.D2",cutree_cols = 6,color = viridis(n = 256, alpha = 1, 
+                                   begin = 0, end = 1, option = "H"))###zscore normalize on row (modules)
+
+my_gene_col=annotation_col
+my_gene_col$geneID=rownames(my_gene_col)
+order=colnames(flip_hm_data[,hp5p$tree_col[["order"]]])
+gene_groups_mod=as.data.frame(sort(cutree(hp5p$tree_col, k=6)))
+colnames(gene_groups_mod)="genegroup"
+gene_groups_mod$geneID=rownames(gene_groups_mod)
+gene_groups_mod$genegroup_nb=paste0("gene group ",gene_groups_mod$genegroup)
+gene_groups_mod=gene_groups_mod%>%right_join(my_gene_col,by="geneID")
+rownames(gene_groups_mod)=gene_groups_mod$geneID
+gene_groups_mod <- gene_groups_mod[match(order, gene_groups_mod$geneID), ]
+
+TOP_lists_groups=list()
+
+for (c in unique(gene_groups_mod$genegroup_nb)) {
+
+tmp=subset(gene_groups_mod, gene_groups_mod$genegroup_nb==c)
+gene_list=tmp$geneID
+
+TOP_lists_groups[[c]]=gene_list
+
+}
+
+annotation_col=gene_groups_mod%>%select(genegroup_nb,module)
+my_colour = list(module = c(module_1 ="#56B4E9", module_6 = "#009E73",module_3="#0072B2", module_21="#b6dbff", module_25="#E69F00",module_24="#D55E00",module_4="#CC79A7",module_17="#f0E442",module_8="grey",module_2="#924900"),
+                 genegroup_nb=c("gene group 1"="#000000","gene group 2"="#004949","gene group 3"="#920000","gene group 4"="#ffff6d","gene group 5"="grey","gene group 6"="#b66dff"))
+
+hp6=pheatmap::pheatmap(flip_hm_data,annotation_col = annotation_col,annotation_colors = my_colour,
+                   scale="column", clustering_method="ward.D2",cutree_cols = 6,color = viridis(n = 256, alpha = 1, 
+                                   begin = 0, end = 1, option = "H"))###zscore normalize on row (modules)
+
+Rdata_filename = paste0(fname_prefix_scMGK_Seurat_HM, "hp_top_20p_scMAGeK_groups.pdf")
+pdf(Rdata_filename, height = 5, width = 15)
+hp6
+dev.off()
+
+```
+
+#####make gene groups into signatures
+
+```{r}
+gene.var6=TOP_lists_groups[[1]]
+gene.var4=TOP_lists_groups[[2]]
+gene.var1=TOP_lists_groups[[3]]
+gene.var3=TOP_lists_groups[[4]]
+gene.var2=TOP_lists_groups[[5]]
+gene.var5=TOP_lists_groups[[6]]
+counts <- as.data.frame(normalized_counts(cds))
+
+genes = gene.var6
+
+counts.genes= subset(counts, row.names(counts) %in% genes)
+counts.genes$symbol = row.names(counts.genes)
+to.plot = melt(counts.genes)
+to.plot=to.plot%>%dplyr::rename(libID=variable)
+annotations=as_tibble(meta)
+to.plot=to.plot%>%dplyr::right_join(annotations,by="libID")
+m_sd=to.plot%>%
+  dplyr::group_by(shRNA_gene,symbol)%>%
+          dplyr::summarise(mean=mean(value), sd=sd(value))
+p=to.plot%>%dplyr::left_join(m_sd,by=c("shRNA_gene","symbol"))
+p$z_score=(p$value-p$mean)/p$sd
+p=subset(p,p$z_score!="NaN")
+to.plot.set1=p%>%
+  dplyr::group_by(libID,shRNA_gene)%>%
+          dplyr::summarise(group_6=mean(z_score))
+
+genes = gene.var4
+
+counts.genes= subset(counts, row.names(counts) %in% genes)
+counts.genes$symbol = row.names(counts.genes)
+to.plot = melt(counts.genes)
+to.plot=to.plot%>%dplyr::rename(libID=variable)
+annotations=as_tibble(meta)
+to.plot=to.plot%>%dplyr::right_join(annotations,by="libID")
+m_sd=to.plot%>%
+  dplyr::group_by(shRNA_gene,symbol)%>%
+          dplyr::summarise(mean=mean(value), sd=sd(value))
+p=to.plot%>%dplyr::left_join(m_sd,by=c("shRNA_gene","symbol"))
+p$z_score=(p$value-p$mean)/p$sd
+p=subset(p,p$z_score!="NaN")
+to.plot.set2=p%>%
+  dplyr::group_by(libID,shRNA_gene)%>%
+          dplyr::summarise(group_4=mean(z_score))
+
+genes = gene.var1
+
+counts.genes= subset(counts, row.names(counts) %in% genes)
+counts.genes$symbol = row.names(counts.genes)
+to.plot = melt(counts.genes)
+to.plot=to.plot%>%dplyr::rename(libID=variable)
+annotations=as_tibble(meta)
+to.plot=to.plot%>%dplyr::right_join(annotations,by="libID")
+m_sd=to.plot%>%
+  dplyr::group_by(shRNA_gene,symbol)%>%
+          dplyr::summarise(mean=mean(value), sd=sd(value))
+p=to.plot%>%dplyr::left_join(m_sd,by=c("shRNA_gene","symbol"))
+p$z_score=(p$value-p$mean)/p$sd
+p=subset(p,p$z_score!="NaN")
+to.plot.set3=p%>%
+  dplyr::group_by(libID,shRNA_gene)%>%
+          dplyr::summarise(group_1=mean(z_score))
+
+genes = gene.var3
+
+counts.genes= subset(counts, row.names(counts) %in% genes)
+counts.genes$symbol = row.names(counts.genes)
+to.plot = melt(counts.genes)
+to.plot=to.plot%>%dplyr::rename(libID=variable)
+annotations=as_tibble(meta)
+to.plot=to.plot%>%dplyr::right_join(annotations,by="libID")
+m_sd=to.plot%>%
+  dplyr::group_by(shRNA_gene,symbol)%>%
+          dplyr::summarise(mean=mean(value), sd=sd(value))
+p=to.plot%>%dplyr::left_join(m_sd,by=c("shRNA_gene","symbol"))
+p$z_score=(p$value-p$mean)/p$sd
+p=subset(p,p$z_score!="NaN")
+to.plot.set4=p%>%
+  dplyr::group_by(libID,shRNA_gene)%>%
+          dplyr::summarise(group_3=mean(z_score))
+
+genes = gene.var2
+
+counts.genes= subset(counts, row.names(counts) %in% genes)
+counts.genes$symbol = row.names(counts.genes)
+to.plot = melt(counts.genes)
+to.plot=to.plot%>%dplyr::rename(libID=variable)
+annotations=as_tibble(meta)
+to.plot=to.plot%>%dplyr::right_join(annotations,by="libID")
+m_sd=to.plot%>%
+  dplyr::group_by(shRNA_gene,symbol)%>%
+          dplyr::summarise(mean=mean(value), sd=sd(value))
+p=to.plot%>%dplyr::left_join(m_sd,by=c("shRNA_gene","symbol"))
+p$z_score=(p$value-p$mean)/p$sd
+p=subset(p,p$z_score!="NaN")
+to.plot.set5=p%>%
+  dplyr::group_by(libID,shRNA_gene)%>%
+          dplyr::summarise(group_2=mean(z_score))
+
+genes = gene.var5
+
+counts.genes= subset(counts, row.names(counts) %in% genes)
+counts.genes$symbol = row.names(counts.genes)
+to.plot = melt(counts.genes)
+to.plot=to.plot%>%dplyr::rename(libID=variable)
+annotations=as_tibble(meta)
+to.plot=to.plot%>%dplyr::right_join(annotations,by="libID")
+m_sd=to.plot%>%
+  dplyr::group_by(shRNA_gene,symbol)%>%
+          dplyr::summarise(mean=mean(value), sd=sd(value))
+p=to.plot%>%dplyr::left_join(m_sd,by=c("shRNA_gene","symbol"))
+p$z_score=(p$value-p$mean)/p$sd
+p=subset(p,p$z_score!="NaN")
+to.plot.set6=p%>%
+  dplyr::group_by(libID,shRNA_gene)%>%
+          dplyr::summarise(group_5=mean(z_score))
+
+to.plot.set=to.plot.set1%>%dplyr::left_join(to.plot.set2, by=c("libID","shRNA_gene"))%>%dplyr::left_join(to.plot.set3, by=c("libID","shRNA_gene"))%>%dplyr::left_join(to.plot.set4, by=c("libID","shRNA_gene"))%>%dplyr::left_join(to.plot.set5, by=c("libID","shRNA_gene"))%>%dplyr::left_join(to.plot.set6, by=c("libID","shRNA_gene"))%>%dplyr::left_join(meta, by=c("libID","shRNA_gene"))
+
+signature_gene_groups=to.plot.set ####gene groups signatures with meta info
+
+###set color code
+order_gene=c("SCR","CHD7","GATA4","KMT2D","NKX2.5","SMAD2")
+pal_gene=ID_key%>%select(shRNA_gene,okabe_hex)%>%distinct(shRNA_gene,okabe_hex)%>%filter(shRNA_gene%in%order_gene)
+pal_gene$order=ifelse(pal_gene$shRNA_gene=="SCR",1,
+                     ifelse(pal_gene$shRNA_gene=="CHD7",2,
+                            ifelse(pal_gene$shRNA_gene=="GATA4",3,
+                                   ifelse(pal_gene$shRNA_gene=="KMT2D",4,
+                                          ifelse(pal_gene$shRNA_gene=="NKX2.5",5,6)))))
+
+pal_gene=pal_gene[order(pal_gene$order),]
+
+###make signature plots
+
+ggplot(data=signature_gene_groups, aes(x=factor(signature_gene_groups$shRNA_gene,levels=order_gene),y=log2(group_6),fill=factor(signature_gene_groups$shRNA_gene,levels=order_gene))) + 
+    geom_violin(adjust=0.5, draw_quantiles = 0.5, scale = "width",trim = 0)  +
+    labs(title = "group 6", y = paste0( "Log2 gene expression") )+
+  scale_fill_manual(name="gene",values=pal_gene$okabe_hex)
+#last_plot() + scale_y_continuous(limit = c(0.1,6), breaks = c(0,2,4, 5))
+last_plot()+ labs(x = "perturbation", y = "Log2 gene expression")
+
+ggsave(filename = paste0(fname_prefix_scMGK_Seurat_dotplot, "_group_6_violin.pdf"),
+       width = 5, height = 3)
+
+ggplot(data=signature_gene_groups, aes(x=factor(signature_gene_groups$shRNA_gene,levels=order_gene),y=log2(group_4),fill=factor(signature_gene_groups$shRNA_gene,levels=order_gene))) + 
+    geom_violin(adjust=0.5, draw_quantiles = 0.5, scale = "width",trim = 0)  +
+    labs(title = "group 4", y = paste0( "Log2 gene expression") )+
+  scale_fill_manual(name="gene",values=pal_gene$okabe_hex)
+#last_plot() + scale_y_continuous(limit = c(0.1,6), breaks = c(0,2,4, 5))
+last_plot()+ labs(x = "perturbation", y = "Log2 gene expression")
+
+ggsave(filename = paste0(fname_prefix_scMGK_Seurat_dotplot, "_group_4_violin.pdf"),
+       width = 5, height = 3)
+
+ggplot(data=signature_gene_groups, aes(x=factor(signature_gene_groups$shRNA_gene,levels=order_gene),y=log2(group_1),fill=factor(signature_gene_groups$shRNA_gene,levels=order_gene))) + 
+    geom_violin(adjust=0.5, draw_quantiles = 0.5, scale = "width",trim = 0)  +
+    labs(title = "group 1", y = paste0( "Log2 gene expression") )+
+  scale_fill_manual(name="gene",values=pal_gene$okabe_hex)
+#last_plot() + scale_y_continuous(limit = c(0.1,6), breaks = c(0,2,4, 5))
+last_plot()+ labs(x = "perturbation", y = "Log2 gene expression")
+
+ggsave(filename = paste0(fname_prefix_scMGK_Seurat_dotplot, "_group_1_violin.pdf"),
+       width = 5, height = 3)
+
+ggplot(data=signature_gene_groups, aes(x=factor(signature_gene_groups$shRNA_gene,levels=order_gene),y=log2(group_3),fill=factor(signature_gene_groups$shRNA_gene,levels=order_gene))) + 
+    geom_violin(adjust=0.5, draw_quantiles = 0.5, scale = "width",trim = 0)  +
+    labs(title = "group 3", y = paste0( "Log2 gene expression") )+
+  scale_fill_manual(name="gene",values=pal_gene$okabe_hex)
+#last_plot() + scale_y_continuous(limit = c(0.1,6), breaks = c(0,2,4, 5))
+last_plot()+ labs(x = "perturbation", y = "Log2 gene expression")
+
+ggsave(filename = paste0(fname_prefix_scMGK_Seurat_dotplot, "_group_3_violin.pdf"),
+       width = 5, height = 3)
+
+ggplot(data=signature_gene_groups, aes(x=factor(signature_gene_groups$shRNA_gene,levels=order_gene),y=log2(group_2),fill=factor(signature_gene_groups$shRNA_gene,levels=order_gene))) + 
+    geom_violin(adjust=0.5, draw_quantiles = 0.5, scale = "width",trim = 0)  +
+    labs(title = "group 2", y = paste0( "Log2 gene expression") )+
+  scale_fill_manual(name="gene",values=pal_gene$okabe_hex)
+#last_plot() + scale_y_continuous(limit = c(0.1,6), breaks = c(0,2,4, 5))
+last_plot()+ labs(x = "perturbation", y = "Log2 gene expression")
+
+ggsave(filename = paste0(fname_prefix_scMGK_Seurat_dotplot, "_group_2_violin.pdf"),
+       width = 5, height = 3)
+
+ggplot(data=signature_gene_groups, aes(x=factor(signature_gene_groups$shRNA_gene,levels=order_gene),y=log2(group_5),fill=factor(signature_gene_groups$shRNA_gene,levels=order_gene))) + 
+    geom_violin(adjust=0.5, draw_quantiles = 0.5, scale = "width",trim = 0)  +
+    labs(title = "group 5", y = paste0( "Log2 gene expression") )+
+  scale_fill_manual(name="gene",values=pal_gene$okabe_hex)
+#last_plot() + scale_y_continuous(limit = c(0.1,6), breaks = c(0,2,4, 5))
+last_plot()+ labs(x = "perturbation", y = "Log2 gene expression")
+
+ggsave(filename = paste0(fname_prefix_scMGK_Seurat_dotplot, "_group_5_violin.pdf"),
+       width = 5, height = 3)
+
+```
+
+
+####make violin plots
+######monocle
+
+```{r}
+a <- c("CACNA1C","HAND1","MYH11","MYOZ2","CTNNA1","MRAS","ALKBH5","HMGA2","PTK7","UGP2")
+b <- c(head(rownames(top_20),n=20))
+c <- c(tail(rownames(top_20),n=20))
+
+genes_to_plot=a
+
+cds_subset <- cds[rowData(cds)$gene_short_name %in% genes_to_plot,]
+
+plot_genes_violin(cds_subset, group_cells_by="shRNA_gene", ncol=2) +
+      theme(axis.text.x=element_text(angle=45, hjust=1))
+
+ggsave(filename = paste0(fname_prefix_markers, "_", "violin_genes_GATA4.png"),
+     width = 8, height =5)
+```
+
+#####violin plots with ggplot
+######single plots
+```{r}
+########make a metatable with all the genes counts of the top 20
+gene_list_new=rownames(top_20)
+counts <- as.data.frame(normalized_counts(cds))
+counts_genes <- counts %>% filter(rownames(counts) %in% gene_list_new)
+counts_genes$gene <- rownames(counts_genes)
+to_plot <- melt(counts_genes)
+to_plot <- to_plot %>% dplyr::rename(libID = variable)
+
+to_plot_new <- subset(to_plot, to_plot$gene == "CACNA1C") %>% dplyr::rename("CACNA1C" = value) %>% select(- gene)
+for(i in gene_list_new) {if (i != "CACNA1C") {to_plot_i <- subset(to_plot, to_plot$gene == i) %>% select(- gene); colnames(to_plot_i) <- c("libID", i); 
+  to_plot_new <- to_plot_new %>% dplyr::left_join(to_plot_i, by="libID")}}
+
+meta_subset <- meta %>% select(libID, UMAP_1_monocle, UMAP_2_monocle,shRNA_gene, monocle_clusters, cell_type_short,shRNA_label,clone)
+meta_counts <- to_plot_new %>% dplyr::left_join(meta_subset, by="libID")
+
+#####now get counts but in a longer form and add all info from meta
+genes_to_plot=gene_list_new
+data <- counts #counts
+meta <- as.data.frame(cds@colData)#metadata
+
+design=meta
+genes = genes_to_plot
+
+counts.genes= subset(counts, row.names(counts) %in% genes)
+counts.genes$symbol = row.names(counts.genes)
+
+to.plot = melt(counts.genes)
+
+to.plot=to.plot%>%dplyr::rename(libID=variable)
+annotations=as_tibble(meta)
+
+to.plot=to.plot%>%dplyr::right_join(annotations,by="libID")
+
+to.plot.set_violin=to.plot%>%
+  dplyr::group_by(shRNA_gene,clone,monocle_clusters,symbol,libID)%>%
+          dplyr::summarise(value)
+
+meta_counts <- spread(to.plot.set_violin, key = symbol, value = value, fill = 0)
+
+order_gene=c("SCR","CHD7","GATA4","KMT2D","NKX2.5","SMAD2")
+pal_gene=ID_key%>%select(shRNA_gene,okabe_hex)%>%distinct(shRNA_gene,okabe_hex)%>%filter(shRNA_gene%in%order_gene)
+pal_gene$order=ifelse(pal_gene$shRNA_gene=="SCR",1,
+                     ifelse(pal_gene$shRNA_gene=="CHD7",2,
+                            ifelse(pal_gene$shRNA_gene=="GATA4",3,
+                                   ifelse(pal_gene$shRNA_gene=="KMT2D",4,
+                                          ifelse(pal_gene$shRNA_gene=="NKX2.5",5,6)))))
+
+pal_gene=pal_gene[order(pal_gene$order),]
+
+ggplot(data=to.plot, aes(x=factor(to.plot$shRNA_gene,levels=order_gene),y=log2(value),fill=factor(to.plot$shRNA_gene,levels=order_gene))) + 
+    geom_violin(adjust=0.5, draw_quantiles = 0.5, scale = "width",trim = 0)  +
+    labs(title = "", y = paste0( "log2 gene expression") )+
+  scale_fill_manual(name="gene",values=pal_gene$okabe_hex)
+#last_plot() + scale_y_continuous(limit = c(0.1,6), breaks = c(0,2,4, 5))
+last_plot()+ labs(x = "perturbation", y = "Log2 gene expression")
+last_plot() +facet_wrap(~symbol)
+  
+  ggsave(filename = paste0(fname_prefix_scMGK_Seurat_dotplot, "all_violin.pdf"),
+       width = 30, height = 18)
+  
+a <- c("CACNA1C","HAND1","SSPN","MYOZ2","CTNNA1","MRAS","ALKBH5","HMGA2","PTK7","UGP2")
+
+to.plot_sub=subset(to.plot,to.plot$symbol=="CACNA1C")
+    
+ggplot(data=to.plot_sub, aes(x=factor(to.plot_sub$shRNA_gene,levels=order_gene),y=value,fill=factor(to.plot_sub$shRNA_gene,levels=order_gene))) + 
+    geom_violin(adjust=0.5, draw_quantiles = 0.5, scale = "width",trim = 0)  +
+    labs(title = "CACNA1C", y = paste0( "gene expression") )+
+  scale_fill_manual(name="gene",values=pal_gene$okabe_hex)
+#last_plot() + scale_y_continuous(limit = c(0.1,6), breaks = c(0,2,4, 5))
+last_plot()+ labs(x = "perturbation", y = "gene expression")
+
+ggsave(filename = paste0(fname_prefix_scMGK_Seurat_dotplot, "_CACNA1C_violin.pdf"),
+       width = 5, height = 3)
+
+for (gene in a) {
+  # Subset 'to.plot' dataframe for the current gene
+  to.plot_sub <- subset(to.plot, to.plot$symbol == gene)
+  
+  # Create ggplot for the current gene
+  p <- ggplot(data = to.plot_sub, aes(x = factor(to.plot_sub$shRNA_gene, levels = order_gene), 
+                                      y = value, 
+                                      fill = factor(to.plot_sub$shRNA_gene, levels = order_gene))) + 
+    geom_violin(adjust = 0.5, draw_quantiles = 0.5, scale = "width", trim = 0)  +
+    labs(title = gene, y = "gene expression") +
+    scale_fill_manual(name = "gene", values = pal_gene$okabe_hex) +
+    labs(x = "perturbation", y = "gene expression")
+  
+  # Save the plot as a PDF file
+  ggsave(filename = paste0(fname_prefix_scMGK_Seurat_dotplot, "_", gene, "_violin.pdf"),
+         plot = p, width = 5, height = 3)
+}
+  
+for (gene in a) {
+  # Subset 'to.plot' dataframe for the current gene
+  to.plot_sub <- subset(to.plot, to.plot$symbol == gene)
+  
+  # Create ggplot for the current gene
+  p <- ggplot(data = to.plot_sub, aes(x = factor(to.plot_sub$shRNA_gene, levels = order_gene), 
+                                      y = log2(value), 
+                                      fill = factor(to.plot_sub$shRNA_gene, levels = order_gene))) + 
+    geom_violin(adjust = 0.5, draw_quantiles = 0.5, scale = "width", trim = 0)  +
+    labs(title = gene, y = "Log2 gene expression") +
+    scale_fill_manual(name = "gene", values = pal_gene$okabe_hex) +
+    labs(x = "perturbation", y = "Log2 gene expression")
+  
+  # Save the plot as a PDF file
+  ggsave(filename = paste0(fname_prefix_scMGK_Seurat_dotplot, "_", gene, "_violinLOG.pdf"),
+         plot = p, width = 5, height = 3)
+}
+```
+
+####RRA analysis on specific genes found before
+
+```{r}
+
+c=UpdateSeuratObject(filtered_seurat)
+    
+RRAPATH <- paste0(fname_scratch, "/RRA_0.5.9/bin/RRA")
+
+
+rra_result_CACNA1C <- scMAGeCK::scmageck_rra(BARCODE=b_shRNA, RDS=c, GENE="CACNA1C",
+                           LABEL='rra_CACNA1C', NEGCTRL="NonTargetingControlGuideForHuman", KEEPTMP=FALSE, PATHWAY=F, SAVEPATH = fname_prefix_scMGK_Seurat_RRA)
+
+
+```
+
+
+
+

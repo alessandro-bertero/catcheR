@@ -1,0 +1,957 @@
+---
+title: "n1 2D analysis exp5 exp7 combined: QC and monocle analysis"
+author: "Elisa Balmas PhD"
+date: "2024-02-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set up environment
+
+```{r}
+library(monocle3)
+library(see)
+library(tidyr)
+library(stringr)
+library(grid)
+library(viridis)
+library(viridisLite)
+library(ggthemes)
+library(dplyr)
+library(tidyverse)
+library(ggsignif)
+library(umap)
+library(heatmap3)
+library(plyr)
+library(edgeR)
+library(compareGroups)
+library(dbscan)
+library(MAST)
+library(geosphere)
+library(RColorBrewer)
+library(Seurat)
+library(htmlwidgets)
+library(Matrix)
+library(tidyseurat)
+library(SeuratWrappers)
+library(scMAGeCK)
+library(readxl)
+library(deepToolsUtils)
+library(R.utils)
+
+
+library(ggplot2); library(reshape2); theme_set(theme_bw(26) + theme(panel.grid.major = element_blank(), 
+                                                                    panel.grid.minor = element_blank()) +
+                                                 theme(legend.key = element_blank()))
+update_geom_defaults("point", aes(size = 4))
+
+#setwd("/home/ebalmas/scpHUB/projects/H001AS7_iKDseq_10X_4tp_monocle/analysis_EB")
+
+# Session options
+options(stringsAsFactors = FALSE)
+set.seed(12345)
+
+# Set up the ggplot default params
+theme_set(theme_bw(12) + 
+          theme(panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(),
+                plot.title = element_text(size=15, face="bold", margin = margin(10,0,10,0)),
+                axis.text.x = element_text(angle=45, hjust = 1)))
+
+
+# Set up filename prefixes and output folders with the data
+dir.create("Output")
+dir.create(file.path("Output","scratch"))
+
+dir.create(file.path("Output","monocle"))#create forders MONOCLE
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots","single"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "stat"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "csv"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "UMAP"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "mosaic"))
+
+dir.create(file.path("Output","CARDIO"))
+
+dir.create(file.path("Output","CARDIO","monocle"))#create forders MONOCLE
+dir.create(file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "dotplots"))
+dir.create(file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "dotplots","single"))
+dir.create(file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "stat"))
+dir.create(file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "csv"))
+dir.create(file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "UMAP"))
+dir.create(file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "mosaic"))
+
+
+fname_scratch <- file.path("Output","scratch")
+
+#set up forder path MONOCLE
+fname_prefix_R <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot_single <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots", "single", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_csv<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "csv", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_stat<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "stat", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_UMAP<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "UMAP", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_mosaic<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "mosaic", 
+                               format(Sys.Date(), "%y%m%d"))
+
+#set up forder path MONOCLE CARDIO
+fname_prefix_R_c <- file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot_c <- file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "dotplots", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot_single_c <- file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "dotplots", "single", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_csv_c<-file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "csv", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_stat_c<-file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "stat", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_UMAP_c<-file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "UMAP", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_mosaic_c<-file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "mosaic", 
+                               format(Sys.Date(), "%y%m%d"))
+
+
+okabe_pal=c("#E69F00","#56B4E9","#009E73","#F0E442","#0072B2","#D55E00","#CC79A7","#000000","#b6dbff","#004949")
+
+
+pal <- c("#000000","#004949","#009292","#ff6db6","#ffb6db",
+         "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+         "#920000","#924900","#db6d00","#24ff24","#ffff6d")
+```
+#load data
+###make gene lists
+
+```{r}
+#load cds file monocle
+############ NB. clone selected in n2 (at least 20 clones per at least one time point)
+############ NB. proteincoding genes selected from n1
+############ NB. Pseudotime was run for latest clusters
+load(paste0(getwd(),"/Output/monocle/240313/R_objects/240313_monocle_cds_clone_selected.RData")) ###output from "n2_2D_analysis_exp5_exp7_QC_clones_enrichment_depletion_NO_EMPTY.Rmd"
+ID_key=read_excel(paste0(fname_scratch,"/shRNA_IDs.xlsx"))
+
+#load gene lists
+file=paste0(fname_scratch,"/cardiac_markers_full_gene_list.xlsx")
+library(readxl)
+cardiac_markers_full_gene_list <- read_excel(file, 
+    sheet = "C", col_types = c("text", "numeric", 
+         "numeric", "text", "numeric", "numeric", 
+         "numeric", "text"))
+cell_type_info= read_excel(file, 
+    sheet = "B")
+file_ks=paste0(fname_scratch,"/gene_list_homemade.xlsx")
+cardiac_markers_KS_list <- read_excel(file_ks, na = " ")
+
+gene_lists=list()
+
+for (c in unique(cardiac_markers_full_gene_list$celltype)) {
+ 
+tmp=subset(cardiac_markers_full_gene_list, cardiac_markers_full_gene_list$celltype==c)
+gene_list=tmp$`Gene name`
+
+gene_lists[[c]]=gene_list
+
+}
+
+gene_lists_hm=list()
+
+for (c in unique(cardiac_markers_KS_list$cell_type)) {
+ 
+tmp=subset(cardiac_markers_KS_list, cardiac_markers_KS_list$cell_type==c)
+gene_list=tmp$gene_name
+
+gene_lists_hm[[c]]=gene_list
+
+}
+
+# Create a data frame for the GMT format
+gmt_data <- data.frame(
+  Name = names(gene_lists),  # Use cell type names as gene set names
+  Description = rep("https://doi.org/10.1016/j.cell.2022.11.028", length(gene_lists)),
+  Gene_Symbols = lapply(gene_lists, paste, collapse = "\t")
+)
+
+# Write the data frame to a GMT file
+write.table(gmt_data, file= paste0(fname_scratch, "/", "gene_list_cardio.txt"), sep = "\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
+Rdata_filename = paste0(fname_scratch, "_gene_lists.RData")
+save(gene_lists,
+     file = Rdata_filename)
+
+```
+
+#make single graphs
+```{r}
+
+###############make single dot plot graphs
+cardio_full=cardiac_markers_KS_list$gene_name
+
+for (gene in cardio_full) {
+  # Create the plot
+  plot_cells(cds,
+             genes = gene,
+             label_cell_groups = FALSE,
+             show_trajectory_graph = FALSE)+ 
+    labs(x = "UMAP 1", y = "UMAP 2", title = gene)+
+    scale_color_viridis(option="E", discrete=F)
+
+  # Save the plot with a unique filename based on the gene name
+  ggsave(filename = paste0(fname_prefix_dotplot_single, "_", gene, ".pdf"),
+         width = 5, height = 4)
+
+  # Close all open graphical devices
+  graphics.off()
+}
+
+ggplot(meta, aes(x = UMAP_1_monocle, y = UMAP_2_monocle)) +
+    geom_point(aes(color = monocle_clusters),
+               size=0.8)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clusters")+
+  scale_color_viridis(name = "monocle",
+                        option="H", discrete=T)+facet_grid(~sample_ID)
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_monocle_clusters.pdf"),
+     width = 8, height = 6)
+
+```
+
+####make graphs multiple
+
+```{r}
+gene_lists <- list("hiPSC", "Primitive_Mesoderm", "Cardiac_Mesoderm","Cardiac_Progenitor","Immature_CM","Mature_CM","Atrial_Ventricular_CM","fibroblast","Hepatoblast","CM_conduction","Primitive Streak","Lateral_plate_mesoderm")
+
+for (gene_list in gene_lists) {
+  
+  # Extract the elements from the list
+  gene_vector <- gene_lists_hm[[gene_list]]
+  
+  # Convert the character vector to a single string
+  gene_string <- paste(gene_vector, collapse = ", ")
+  
+  # Split the string into a character vector
+  gene_vector <- unlist(strsplit(gene_string, ", "))
+  
+  # Convert the character vector to a factor and remove duplicated levels
+  gene_vector <- factor(gene_vector)
+  gene_vector <- gene_vector[!duplicated(gene_vector)]
+  
+  # Plot and save the graph
+  plot_cells(cds,
+             genes = gene_vector,
+             label_cell_groups = FALSE,
+             show_trajectory_graph = FALSE) + 
+    labs(x = "UMAP 1", y = "UMAP 2", title = gene_list) +
+    scale_color_viridis(option = "E", discrete = FALSE) 
+  
+  # Save the plot
+  ggsave(filename = paste0(fname_prefix_dotplot, "_", "UMAP_", gene_list, "_genes.pdf"),
+         width = 10, height = 10)
+}
+
+cardio=c("TTN","TNNT2", "TNNC1", "GATA4", "CTCF", "PDGFRA","MKI67")
+plot_cells(cds,
+           genes=cardio,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "cm_general.pdf"),
+     width = 5, height = 4)
+
+OFT=c("COL1A2","TNC","BMP4","RSPO3","TBX18","HOXA1","FGF10","GJA1","KDR","PITX2")
+
+plot_cells(cds,
+           genes=OFT,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "cm_OFT.pdf"),
+     width = 8, height = 6)
+MES=c("KDR","NODAL","DKK1","MESP1","GSC","EOMES","TBXT")
+plot_cells(cds,
+           genes=MES,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "c_Mes.pdf"),
+     width = 6, height = 4)
+CPC=c("TMEM88","GATA4","ISL1", "MYL4","NKX2-5","KDR","NFATC1","SCL","CD31","CDH5","PDGFRA")
+plot_cells(cds,
+           genes=CPC,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "c_progenitors.pdf"),
+     width = 8, height = 6)
+
+CM=c("TMEM88","ISL1","HAND1","NKX2-5","TBX5","GATA4","ATP2A2","PLN","TNNI1","MYH6","MYH7","MYL7","TTN","TNNT2","CACNA1C","TGB1BP2","SERCA1C","NPPB")
+plot_cells(cds,
+           genes=CM,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "c_mature.pdf"),
+     width = 10, height = 6)
+
+pluri_meso=c("POU5F1","NANOG","SOX2","TBXT","EOMES","MKI67","PODXL", "GSC","NODAL","KDR")
+
+plot_cells(cds,
+           genes=pluri_meso,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "c_pluri_meso.pdf"),
+     width = 6, height = 4)
+
+final=c("PDGFRA","COL3A1","MYH6","ITGB1BP2","TMEM88","DDR2", "MYH7","TOP2A","GATA4","COL1A1","TTN","CENPF")
+
+plot_cells(cds_cardio,
+           genes=final,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_", "c_final.pdf"),
+     width = 9, height = 6)
+```
+
+
+#subset by sample_ID only CM day 6, CM day 12 and CM day 23 and recluster
+
+```{r}
+
+####load cardiac data subclustered from n1bis CARDIO
+cds_complete=cds
+cds_cardio=cds[,cds$sample_ID=="Cardiac progenitors"|cds$sample_ID=="CM day 12"|cds$sample_ID=="CM day 23"]
+meta_cardio=as.data.frame(cds_cardio@colData@listData)
+
+#load("Output/CARDIO/monocle/240309/R_objects/240309_monocle_cds_clustered_FINAL_PROTEINCODING_CARDIO.RData")
+#cds_cardio <- preprocess_cds(cds_cardio, num_dim = 20)
+#cds <- align_cds(cds, alignment_group = "experiment")
+set.seed(12345)
+cds_cardio = reduce_dimension(cds_cardio,reduction_method="UMAP",umap.n_neighbors = 50L)
+
+#monocle.object = order_cells(monocle.object, reduction_method = "UMAP")
+set.seed(123457)
+cds_1 = cluster_cells(cds_cardio, resolution = 1e-2)
+colData(cds_1)$monocle_clusters = as.character(monocle3::clusters(cds_1))
+set.seed(1234798707)
+cds_2 = cluster_cells(cds_cardio, resolution = 1e-4)
+colData(cds_2)$monocle_clusters = as.character(monocle3::clusters(cds_2))
+set.seed(1234577687)
+cds_3 = cluster_cells(cds_cardio, resolution = 8e-4)
+colData(cds_3)$monocle_clusters = as.character(monocle3::clusters(cds_3))
+set.seed(1234589807)
+cds_4 = cluster_cells(cds_cardio, resolution = 2e-4)
+colData(cds_4)$monocle_clusters = as.character(monocle3::clusters(cds_4))
+set.seed(1345976987)
+cds_5 = cluster_cells(cds_cardio, resolution = 5e-4)
+colData(cds_5)$monocle_clusters = as.character(monocle3::clusters(cds_5))
+set.seed(1234580917)
+cds_6 = cluster_cells(cds_cardio, resolution = 5e-5)
+colData(cds_6)$monocle_clusters = as.character(monocle3::clusters(cds_6))
+
+##run trajectory
+cds_2 <- learn_graph(cds_2)#pochi ma ok
+cds_4 <- learn_graph(cds_4)#giusti
+cds_5 <- learn_graph(cds_5)#divide meglio i progenitors ma 14 sono troppi
+
+plot_cells(cds_2, color_cells_by="cluster", group_cells_by="cluster",group_label_size = 7, cell_size=0.8)
+last_plot()+facet_grid(~sample)
+plot_cells(cds_4, color_cells_by="cluster", group_cells_by="cluster",group_label_size = 7, cell_size=0.8)
+last_plot()+facet_grid(~sample)
+plot_cells(cds_5, color_cells_by="cluster", group_cells_by="cluster",group_label_size = 7, cell_size=0.8)
+last_plot()+facet_grid(~sample)
+
+Rdata_filename = paste0(fname_prefix_R_c, "_monocle_cds_cardio_subclustered.RData")
+save(cds_cardio,
+     cds_2, cds_4, cds_5,
+     file = Rdata_filename)
+
+sample_order=c("hiPSC","hiPSC primed","Mesoderm","Cardiac progenitors","CM day 12","CM day 23")
+#map by seurat clusters generated
+cds_cardio=cds_4#this is the iteration we decided to use
+
+plot_cells(cds_cardio, color_cells_by="cluster", group_cells_by="cluster",group_label_size = 7, cell_size=0.8)+
+  scale_colour_okabeito()#map by seurat clusters generated
+last_plot()+facet_grid(~factor(sample_ID, levels = sample_order))
+ggsave(filename = paste0(fname_prefix_UMAP_c, "_", "UMAP_cardio_subclustered.pdf"),
+     width = 18, height = 8)
+
+pbuild <- plot_cells(cds_cardio, color_cells_by = "monocle_clusters", label_cell_groups=T, show_trajectory_graph = F, label_leaves=F, label_branch_points=F, graph_label_size=3, group_label_size = 4, cell_size = 1) 
+UmapCDS <- data.frame(pbuild$data$sample_name,UMAP1_monocle = pbuild$data$data_dim_1, UMAP2_monocle = pbuild$data$data_dim_2, row.names = 1) 
+colData(cds_cardio)$UMAP_1_monocle_cardio=pbuild$data$data_dim_1 #add umap data for further analysis outside monocle
+colData(cds_cardio)$UMAP_2_monocle_cardio=pbuild$data$data_dim_2
+
+meta_cardio=as.data.frame(cds_cardio@colData@listData)
+
+ggplot(meta_cardio, aes(x = UMAP_1_monocle_cardio, y = UMAP_2_monocle_cardio)) +
+    geom_point(aes(color = monocle_clusters),
+               size=0.8)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clusters")+
+  scale_colour_okabeito()+facet_grid(~sample_ID)
+ggsave(filename = paste0(fname_prefix_UMAP_c, "_", "UMAP_monocle_subclusters_cardio_D6_D12_D23.pdf"),
+     width = 8, height = 6)
+
+Rdata_filename = paste0(fname_prefix_R_c, "_monocle_cds_D6_D12_D23.RData")
+save(cds_cardio, meta_cardio,cds,meta,
+     file = Rdata_filename)
+
+```
+#####make pseudotime trajectory
+
+```{r}
+counts_cardio=as.data.frame(normalized_counts(cds_cardio))
+meta=as.data.frame(cds@colData@listData)
+meta_cardio=as.data.frame(cds_cardio@colData@listData)
+
+cds_cardio<- order_cells(cds_cardio,reduction_method = "UMAP")#selected around cluster 3
+
+plot_cells(cds_cardio,
+           color_cells_by = "pseudotime",
+           label_cell_groups=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE,
+           graph_label_size=1.5)
+last_plot()+facet_grid(~factor(sample_ID,levels =sample_order))
+ggsave(filename = paste0(fname_prefix_UMAP_c, "_", "UMAP_pseudotime.pdf"),
+     width = 18, height = 8)
+
+plot_cells(cds_cardio,
+           color_cells_by = "pseudotime",
+           label_cell_groups=F,
+           label_leaves=FALSE,
+           label_branch_points=FALSE,
+           graph_label_size=20,
+           cell_size = 2,
+           show_trajectory_graph=F)+scale_color_viridis(discrete=F, option="A")
+last_plot()+facet_grid(~factor(shRNA_gene, levels =c("NA","SCR","B2M","CHD7","GATA4","SMAD2","KMT2D","NKX2.5" ))~factor(sample_ID, levels =c(sample_order)))
+ggsave(filename = paste0(fname_prefix_UMAP_c, "_", "UMAP_late_cardio_pseudotime.png"),
+     width = 10, height = 10)
+
+
+Rdata_filename = paste0(fname_prefix_R_c, "_monocle_cds_subclustered_FINAL_pseudotime_CARDIO.RData")
+save(counts_cardio,meta_cardio,cds_cardio,
+     file = Rdata_filename)
+```
+
+###findo top 25 genes expressed by each cluster
+
+```{r}
+marker_test_res <- top_markers(cds_cardio, group_cells_by="monocle_clusters", 
+                               reference_cells=10000, cores=8)
+
+top_specific_markers <- marker_test_res %>%
+                            filter(fraction_expressing >= 0.10, marker_test_p_value <=0.05) %>%
+                            group_by(cell_group) %>%
+                            top_n(10, pseudo_R2)
+
+top_specific_marker_ids <- unique(top_specific_markers %>% pull(gene_id))
+t10=data.frame(top_specific_markers$gene_id, top_specific_markers$cell_group, stringsAsFactors = F)
+colnames(t10)=c("ids", "cluster")
+
+top10=unique(t10$ids)
+plot_cells(cds_cardio,
+           genes=t10,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_", "top_10_exp.png"),
+     width = 15, height = 20)
+
+top25=unique(t10$ids)
+plot_cells(cds_cardio,
+           genes=top10,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_", "top_10_exp_genes.png"),
+     width = 15, height = 20)
+
+plot_genes_by_group(cds_cardio,
+                    top_specific_marker_ids,
+                    group_cells_by="monocle_clusters",
+                    #ordering_type="cluster_row_col",
+                    ordering_type="maximal_on_diag",
+                    max.size=10,
+                    scale_max=5)
+last_plot() + scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_", "top_5genes_per_cluster.png"),
+     width = 8, height = 8)
+
+write.csv(t10, file= paste0(fname_prefix_csv_c, "_", "top_10genes_per_D12_D23_subclusters.csv"), row.names=FALSE)
+```
+
+###plot specific gene sets to assess cluster name
+
+```{r}
+cardio=c("TTN","TNNT2", "TNNC1", "GATA4", "CTCF", "PDGFRA","MKI67")
+plot_cells(cds_cardio,
+           genes=cardio,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "cm_general.pdf"),
+     width = 5, height = 4)
+
+fibroblasts=c("MEFSK4","PDGFRA","COL1A2","WT1","TCF21","DDR2","COL1A1","COL1A3")
+
+plot_cells(cds_cardio,
+           genes=fibroblasts,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_", "cm_fibroblasts_cardiac_subclust.pdf"),
+     width = 5, height = 4)
+
+
+OFT=c("COL1A2","TNC","BMP4","RSPO3","TBX18","HOXA1","FGF10","GJA1","KDR","PITX2")
+
+plot_cells(cds_cardio,
+           genes=OFT,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_", "cm_OFT_cardiac_subclust.pdf"),
+     width = 8, height = 6)
+MES=c("KDR","NODAL","DKK1","MESP1","GSC","EOMES","TBXT")
+plot_cells(cds_cardio,
+           genes=MES,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_", "c_Mes_cardiac_subclust.pdf"),
+     width = 6, height = 4)
+CPC=c("TMEM88","GATA4","ISL1", "MYL4","NKX2-5","KDR","NFATC1","SCL","CD31","CDH5","PDGFRA")
+plot_cells(cds_cardio,
+           genes=CPC,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_", "c_progenitors_cardiac_subclust.pdf"),
+     width = 8, height = 6)
+
+CM=c("TMEM88","ISL1","HAND1","NKX2-5","TBX5","GATA4","ATP2A2","PLN","TNNI1","MYH6","MYH7","MYL7","TTN","TNNT2","CACNA1C","TGB1BP2","SERCA1C","NPPB")
+plot_cells(cds_cardio,
+           genes=CM,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_", "c_mature_cardiac_subclust.pdf"),
+     width = 10, height = 6)
+
+plot_cells(cds_cardio,
+           genes=c("MESP1","HAND2","EOMES","NKX2-5","KDR"),
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+
+```
+
+####recode cluster name
+####plot pseudotime
+###rename clusters
+
+```{r}
+colData(cds_cardio)$cell_type_short <- as.character(clusters(cds_cardio))
+colData(cds_cardio)$assigned_cell_type <- as.character(clusters(cds_cardio))
+
+colData(cds_cardio)$cell_type_short <- dplyr::recode(colData(cds_cardio)$cell_type_short,
+                                                 "1"="CM1",
+                                                 "2"="P-CP",
+                                                 "3"="CP",
+                                                 "4"="CM2",
+                                                 "5"="CF",
+                                                 "6"="L-CP",
+                                                 "7"="E-CM",
+                                                 "8"="L-CM",
+                                                 "9"="P-CM")
+colData(cds_cardio)$assigned_cell_type <- dplyr::recode(colData(cds_cardio)$assigned_cell_type,
+                                                 "1"="Mid cardiomyocytes 1",
+                                                 "2"="Proliferative cardiac progenitors",
+                                                 "3"="Cardiac progenitors",
+                                                 "4"="Mid cardiomyocytes 2",
+                                                 "5"="Cardiac fibroblasts",
+                                                 "6"="Late cardiac progenitors",
+                                                 "7"="Early stage cardiomyocytes",
+                                                 "8"="Late cardiomyocytes",
+                                                 "9"="Proliferative cardiomyocytes")
+
+meta_cardio=as.data.frame(cds_cardio@colData@listData)
+
+maturation=c("TTN","TNNT2", "TNNC1")
+cardiac_lineage_cds <- cds_cardio[rowData(cds_cardio)$gene_short_name %in% maturation,]
+plot_genes_in_pseudotime(cardiac_lineage_cds,
+                         color_cells_by="assigned_cell_type",
+                         min_expr=0.5)+scale_color_manual(values = pal)
+#+scale_color_viridis(discrete=T, option="A")
+#last_plot()+facet_grid(~day~knockdown~shRNA)
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_", "pt_maturation_pseudotime_D6_D12_D16.png"),
+     width = 5, height = 8)
+
+order_cell_types=c("CF","P-CP","CP","L-CP","E-CM","CM1","CM2","L-CM","P-CM")
+
+cell_type_pal=data.frame(order_cell_types=order_cell_types,okabe_clust=okabe_clust)
+cell_type_pal$order_monocle=ifelse(cell_type_pal$order_cell_types=="CF",1,
+                                  ifelse(cell_type_pal$order_cell_types=="CM1",2,
+                                         ifelse(cell_type_pal$order_cell_types=="CM2",3,
+                                                ifelse(cell_type_pal$order_cell_types=="CP",4,
+                                                       ifelse(cell_type_pal$order_cell_types=="E-CM",5,
+                                                              ifelse(cell_type_pal$order_cell_types=="L-CM",6,
+                                                                     ifelse(cell_type_pal$order_cell_types=="L-CP",7,
+                                                                            ifelse(cell_type_pal$order_cell_types=="P-CM",8,9))))))))
+cell_type_pal_m <- cell_type_pal[order(cell_type_pal$order_monocle),]
+
+ggplot(meta_cardio, aes(x = UMAP_1_monocle_cardio, y = UMAP_2_monocle_cardio)) +
+    geom_point(aes(color = factor(cell_type_short,levels=order_cell_types)),size=0.8)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "UMAP on Monocle sub-clusters")+
+  scale_color_manual(name="subclusters",values=c(okabe_clust))+facet_grid(~sample_ID)
+ggsave(filename = paste0(fname_prefix_UMAP_c, "_", "UMAP_monocle_subclusters_D12_D23_renamed.pdf"),
+     width = 12, height = 6)
+
+ggplot(meta_cardio, aes(x = UMAP_1_monocle_cardio, y = UMAP_2_monocle_cardio)) +
+    geom_point(aes(color = factor(cell_type_short,levels=order_cell_types)),size=0.8)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "UMAP on Monocle sub-clusters")+
+  scale_color_manual(name="subclusters",values=c(okabe_clust))
+ggsave(filename = paste0(fname_prefix_UMAP_c, "_", "UMAP_monocle_subclusters_renamed.pdf"),
+     width = 12, height = 6)
+
+plot_cells(cds_cardio, color_cells_by="side", group_cells_by="side",label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_okabeito(name="cell types",order = c(1,5,6))+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle subclustering Cardio Side type")
+last_plot()+facet_grid(~side)
+ggsave(filename = paste0(fname_prefix_UMAP_c, "_", "UMAP_side.pdf"),
+     width = 12, height = 5)
+
+plot_cells(cds_cardio, color_cells_by="cell_type_short", group_cells_by="cell_type_short",label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_manual(name="cell types",values=c(cell_type_pal_m$okabe_clust))+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle subclustering Cardio Side type")
+last_plot()+facet_grid(~side)
+ggsave(filename = paste0(fname_prefix_UMAP_c, "_", "UMAP_side2.pdf"),
+     width = 12, height = 5)
+
+plot_cells(cds_cardio, color_cells_by="cell_type_short", group_cells_by="cell_type_short",label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_manual(name="cell types",values=c(cell_type_pal_m$okabe_clust))+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle subclustering Cardio")
+last_plot()+facet_grid(~factor(sample_ID,levels=sample_order))
+ggsave(filename = paste0(fname_prefix_UMAP_c, "_", "UMAP_subclustering.pdf"),
+     width = 12, height = 5)
+
+plot_cells(cds_cardio, color_cells_by="pseudotime", label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_viridis(discrete=F, option="A")+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle pseudotime Cardio")
+last_plot()+facet_grid(~factor(sample_ID,levels=sample_order))
+ggsave(filename = paste0(fname_prefix_UMAP_c, "_", "UMAP_pseudotime.pdf"),
+     width = 12, height = 5)
+
+plot_cells(cds_cardio, color_cells_by="pseudotime", label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_viridis(discrete=F, option="A")+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle pseudotime Cardio")
+ggsave(filename = paste0(fname_prefix_UMAP_c, "_", "UMAP_pseudotime_single.pdf"),
+     width = 6, height = 5)
+
+
+Rdata_filename = paste0(fname_prefix_R_c, "_monocle_cds_D6_D12_D23_renamed_pseudotime_FINAL.RData")
+save(meta,cds,meta_cardio,cds_cardio,
+     file = Rdata_filename)
+
+####top 10 
+####add population names
+
+marker_test_res <- top_markers(cds_cardio, group_cells_by="cell_type_short", 
+                               reference_cells=10000, cores=8)
+
+top_specific_markers <- marker_test_res %>%
+                            filter(fraction_expressing >= 0.10, marker_test_p_value <=0.05) %>%
+                            group_by(cell_group) %>%
+                            top_n(10, pseudo_R2)
+
+top_specific_marker_ids <- unique(top_specific_markers %>% pull(gene_id))
+t10=data.frame(top_specific_markers$gene_id, top_specific_markers$cell_group, stringsAsFactors = F)
+colnames(t10)=c("ids", "cluster")
+
+top10=unique(t10$ids)
+
+plot_genes_by_group(cds_cardio,
+                    top_specific_marker_ids,
+                    group_cells_by="cell_type_short",
+                    ordering_type="cluster_row_col",
+                    #ordering_type="maximal_on_diag",
+                    max.size=10,
+                    scale_max=10)+
+  labs(x = "", y = "", title = "top 10 genes per sub-cluster")
+last_plot() + scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_", "top_10genes_per_cluster_cell_ty.pdf"),
+     width = 8, height = 10)
+
+######top 5
+
+marker_test_res <- top_markers(cds_cardio, group_cells_by="cell_type_short", 
+                               reference_cells=10000, cores=8)
+
+top_specific_markers <- marker_test_res %>%
+                            filter(fraction_expressing >= 0.10, marker_test_p_value <=0.05) %>%
+                            group_by(cell_group) %>%
+                            top_n(5, pseudo_R2)
+
+top_specific_marker_ids <- unique(top_specific_markers %>% pull(gene_id))
+t5=data.frame(top_specific_markers$gene_id, top_specific_markers$cell_group, stringsAsFactors = F)
+colnames(t5)=c("ids", "cluster")
+
+top5=unique(t5$ids)
+
+plot_genes_by_group(cds_cardio,
+                    top_specific_marker_ids,
+                    group_cells_by="cell_type_short",
+                    ordering_type="cluster_row_col",
+                    #ordering_type="maximal_on_diag",
+                    max.size=10,
+                    scale_max=10)+
+  labs(x = "", y = "", title = "top 5 genes per sub-cluster")
+last_plot() + scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_", "top_5genes_per_cluster_cell_ty.pdf"),
+     width = 8, height = 10)
+
+```
+####pupulation counts
+
+```{r}
+load("Output/CARDIO/monocle/240313/R_objects/240313_monocle_cds_D6_D12_D23_renamed_pseudotime_FINAL.RData")
+
+ID=ID_key%>%select(shRNA_gene,shRNA_ID,shRNA_BC,shRNA_label,shRNA_copy_label)
+
+meta_cardio=meta_cardio%>%left_join(ID,by=c("shRNA_gene","shRNA_ID","shRNA_BC"))
+meta_cardio <- meta_cardio %>% replace(is.na(.), "empty")
+
+gene_counts=meta_cardio %>%
+  dplyr::group_by(shRNA_gene,experiment) %>%
+  dplyr::summarise(count = n())###tot genes
+gene_counts=spread(gene_counts, key = experiment, value = count)
+
+
+shRNA_counts=meta_cardio %>%
+  dplyr::group_by(shRNA_label,shRNA_copy_label,experiment) %>%
+  dplyr::summarise(count = n())###tot clones 305
+shRNA_counts=spread(shRNA_counts, key = experiment, value = count)
+
+clone_counts=meta_cardio %>%
+  dplyr::group_by(clone,shRNA_label,shRNA_copy_label,experiment) %>%
+  dplyr::summarise(count = n())###tot clones 305
+clone_counts=spread(clone_counts, key = experiment, value = count)
+clone_counts <- clone_counts %>% replace(is.na(.), 0)
+
+
+write.csv(clone_counts, file= paste0(fname_prefix_csv_c, "_", "_cardio_clone_counts.csv"), row.names=FALSE)
+write.csv(shRNA_counts, file= paste0(fname_prefix_csv_c, "_", "_cardio_shRNA_counts.csv"), row.names=FALSE)
+write.csv(gene_counts, file= paste0(fname_prefix_csv_c, "_", "_cardio_gene_counts.csv"), row.names=FALSE)
+
+```
+
+####add regression analysis
+
+```{r}
+
+#load("Output/CARDIO/monocle/240313/R_objects/240313_monocle_cds_D6_D12_D23_renamed_pseudotime_FINAL.RData")
+
+colData(cds_cardio)$clust1 = cds_cardio$monocle_clusters=="1"
+colData(cds_cardio)$clust2 = cds_cardio$monocle_clusters=="2"
+colData(cds_cardio)$clust3 = cds_cardio$monocle_clusters=="3"
+colData(cds_cardio)$clust4 = cds_cardio$monocle_clusters=="4"
+colData(cds_cardio)$clust5 = cds_cardio$monocle_clusters=="5"
+colData(cds_cardio)$clust6 = cds_cardio$monocle_clusters=="6"
+colData(cds_cardio)$clust7 = cds_cardio$monocle_clusters=="7"
+colData(cds_cardio)$clust8 = cds_cardio$monocle_clusters=="8"
+colData(cds_cardio)$clust9 = cds_cardio$monocle_clusters=="9"
+
+
+# clust1 to clust9 are the cluster names, make a list with it
+cluster_names <- paste0("clust", 1:9)
+
+# Initialize empty lists to store results
+gene_fits_list <- list()
+fit_coefs_list <- list()
+fit_coefs_sig_list <- list()
+
+# Loop through each cluster
+for (cluster_name in cluster_names) {
+  # Fit models
+  gene_fits <- fit_models(cds_cardio, model_formula_str = paste0("~", cluster_name))
+  gene_fits_list[[cluster_name]] <- gene_fits
+  
+  # Extract coefficient tables
+  fit_coefs <- coefficient_table(gene_fits)
+  fit_coefs_list[[cluster_name]] <- fit_coefs
+  
+  # Filter significant coefficients
+  fit_coefs_sig <- fit_coefs %>%
+    filter(term == paste0(cluster_name, "TRUE")) %>%
+    filter(q_value < 0.05) %>%
+    select(gene_short_name, term, q_value, estimate, num_cells_expressed)
+  
+  fit_coefs_sig_list[[cluster_name]] <- fit_coefs_sig
+}
+
+
+# assign cluster names to a vector
+cluster_names <- paste0("clust", 1:9)
+
+# Initialize an empty list to store fit_coefs_renamed for each cluster
+fit_coefs_list_renamed <- list()
+
+# Loop through each cluster and rename the fit_coef dataframes for each cluster in order to then merge them into a single dataframe
+for (i in 1:9) {
+  cluster_name <- cluster_names[i]
+  
+  # Perform operations for each cluster
+  fit_coefs <- fit_coefs_list[[cluster_name]] %>%
+    dplyr::rename(logFC = estimate, q_value = q_value) %>%
+    filter(term == paste0(cluster_name, "TRUE")) %>%
+    select(gene_short_name, q_value, logFC, num_cells_expressed)
+  
+  # Rename columns consistently
+  col_rename <- c("geneID", paste0("q_value_", i), paste0("logFC_", i), "num_cells_expressed")
+  
+  # Rename columns in fit_coefs
+  fit_coefs_renamed <- fit_coefs %>%
+    setNames(col_rename)
+  
+  # Store fit_coefs_renamed in the list
+  fit_coefs_list_renamed[[cluster_name]] <- fit_coefs_renamed
+}
+
+de_stats<-fit_coefs_list_renamed[["clust1"]]%>%
+  left_join(fit_coefs_list_renamed[["clust2"]], by =c("geneID","num_cells_expressed"))%>%
+  left_join(fit_coefs_list_renamed[["clust3"]], by =c("geneID","num_cells_expressed"))%>%
+  left_join(fit_coefs_list_renamed[["clust4"]], by =c("geneID","num_cells_expressed"))%>%
+  left_join(fit_coefs_list_renamed[["clust5"]], by =c("geneID","num_cells_expressed"))%>%
+  left_join(fit_coefs_list_renamed[["clust6"]], by =c("geneID","num_cells_expressed"))%>%
+  left_join(fit_coefs_list_renamed[["clust7"]], by =c("geneID","num_cells_expressed"))%>%
+  left_join(fit_coefs_list_renamed[["clust8"]], by =c("geneID","num_cells_expressed"))%>%
+  left_join(fit_coefs_list_renamed[["clust9"]], by =c("geneID","num_cells_expressed"))
+
+de_stats$dup=duplicated(de_stats$geneID)
+de_stats=subset(de_stats,de_stats$dup!=T)%>%dplyr::select(-dup)
+
+analysis_clusters=de_stats
+
+stat_filename = paste0(fname_prefix_csv_c, "_complete_gene_reg_by_clusters.csv")
+write.csv(analysis_clusters, stat_filename, quote = F, row.names = T, sep=",")
+```
+
+#######add direction
+
+```{r}
+#Set the significance level cutoff
+sig_level <- 0.05
+#Set a fold-change cutoff
+fc_level <- log2(1.5)
+fc_level2 <- (log2(1.5))*-1
+###################################
+
+# add thresholds (up= upregulated; down= downregulated, other= neighter)
+for (i in 1:9) {
+  cluster_name <- paste0("clust", i)
+  
+  # Create column names dynamically
+  logFC_col <- paste0("logFC_", i)
+  q_value_col <- paste0("q_value_", i)
+  treshold_col <- paste0("treshold_cl", i)
+  Log10pvalue_col <- paste0("Log10pvalue_cl", i)
+  
+  # Apply thresholding logic
+  de_stats[[treshold_col]] <- ifelse(de_stats[[logFC_col]] >= fc_level & de_stats[[q_value_col]] <= sig_level, "up",
+                                      ifelse(de_stats[[logFC_col]] <= fc_level2 & de_stats[[q_value_col]] <= sig_level, "down", "other"))
+  
+  de_stats[[Log10pvalue_col]] <- -log10(de_stats[[q_value_col]])
+}
+
+####create to_show columns
+####here are the specific upregulated genes for each cluster and not by others
+# Loop through each cluster
+for (i in 1:9) {
+  cluster_name <- paste0("clust", i)
+  
+  # Create column names dynamically
+  treshold_col <- paste0("treshold_cl", i)
+  to_show_col <- paste0("to_show_cl", i)
+  
+  # Create condition dynamically
+  condition <- paste0(
+    "de_stats$", to_show_col, "<-ifelse(",
+    paste(
+      sprintf("de_stats$treshold_cl%d == 'up' & (", i),
+      paste(sprintf("de_stats$treshold_cl%d == 'down' | de_stats$treshold_cl%d == 'other'", 1:9, 1:9), collapse = " | "),
+      ")"
+    ),
+    ", de_stats$geneID, \"\")"
+  )
+  
+  # Evaluate the condition
+  eval(parse(text = condition))
+}
+
+stat_filename = paste0(fname_prefix_csv_c, "_gene_reg_with_directions.csv")
+write.csv(de_stats, stat_filename, quote = F, row.names = T, sep=",")
+
+Rdata_filename = paste0(fname_prefix_csv_c, "_gene_regression_every_clust_against_eachother.RData")
+save(de_stats,
+     file = Rdata_filename)
+```
+
+####make volcano plots
+
+```{r}
+###########
+de_stats=de_stats%>% distinct(geneID, .keep_all = TRUE)#eliminate duplicates
+
+# Loop through clusters to make all the volcano plots in bulk than use the one below to make specific ones
+for (i in 1:9) {
+  logFC_col <- paste0("logFC_", i)
+  treshold_col <- paste0("treshold_cl", i)
+  Log10pvalue_col <- paste0("Log10pvalue_cl", i)
+  q_value_col <- paste0("q_value_", i)
+  to_show_col <- paste0("to_show_cl", i)
+
+  volcano_plot <- ggplot(data = de_stats, aes(x = !!rlang::sym(logFC_col), y = !!rlang::sym(Log10pvalue_col))) +
+    geom_point(aes(colour = as.factor(!!rlang::sym(treshold_col))), size = 1.5) +
+    scale_colour_manual(values = c("up" = "red", "down" = "blue", "other" = "grey")) +
+     ggrepel::geom_text_repel(
+  data = de_stats %>%
+    filter(!!rlang::sym(q_value_col) < 0.05),
+  aes(label = !!rlang::sym(to_show_col)),
+  size = 3,
+  box.padding = unit(0.2, "lines"),
+  point.padding = unit(0.2, "lines"),
+  segment.color = "grey",
+  segment.size = 0.2
+)+
+    theme(legend.position = "none") +
+    geom_hline(yintercept = (log10(sig_level) * -1)) +
+    geom_vline(xintercept = c(fc_level, fc_level2)) +
+    xlim(c(-4, 4)) + ylim(c(0, 200)) +
+    xlab("log2 fold change") + ylab("-Log10 adj p-value")+
+  annotate("text", x = 4, y = 200, label = paste("Cluster ", i), col = "black", size = 4, hjust = 1, vjust = 1) +
+    # Add "other clusters" on the top left for clusters other than the current one
+    annotate("text", x = -4, y = 200, label = "Other Clusters", col = "black", size = 4, hjust = 0, vjust = 1)
+
+
+  ggsave(
+    filename = paste0(fname_prefix_dotplot_c, "_cl", i, ".png"),
+    plot = volcano_plot,
+    width = 8,
+    height = 6
+  )
+}
+```

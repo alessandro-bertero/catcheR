@@ -1,0 +1,903 @@
+---
+title: "n1 2D analysis exp5 exp7 combined: QC and monocle analysis"
+author: "Elisa Balmas PhD"
+date: "2024-02-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set up environment
+
+```{r}
+library(monocle3)
+library(tidyr)
+library(stringr)
+library(grid)
+library(viridis)
+library(viridisLite)
+library(ggthemes)
+library(dplyr)
+library(tidyverse)
+library(ggsignif)
+library(umap)
+library(heatmap3)
+library(plyr)
+library(edgeR)
+library(compareGroups)
+library(dbscan)
+library(MAST)
+library(geosphere)
+library(RColorBrewer)
+library(Seurat)
+library(htmlwidgets)
+library(Matrix)
+library(tidyseurat)
+library(SeuratWrappers)
+library(scMAGeCK)
+library(readxl)
+library(rCASC)
+library(deepToolsUtils)
+library(R.utils)
+
+
+library(ggplot2); library(reshape2); theme_set(theme_bw(26) + theme(panel.grid.major = element_blank(), 
+                                                                    panel.grid.minor = element_blank()) +
+                                                 theme(legend.key = element_blank()))
+update_geom_defaults("point", aes(size = 4))
+
+#setwd("/home/ebalmas/scpHUB/projects/H001AS7_iKDseq_10X_4tp_monocle/analysis_EB")
+
+# Session options
+options(stringsAsFactors = FALSE)
+set.seed(12345)
+
+# Set up the ggplot default params
+theme_set(theme_bw(12) + 
+          theme(panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(),
+                plot.title = element_text(size=15, face="bold", margin = margin(10,0,10,0)),
+                axis.text.x = element_text(angle=45, hjust = 1)))
+
+
+# Set up filename prefixes and output folders with the data
+dir.create("Output")
+dir.create(file.path("Output","scratch"))
+dir.create(file.path("Output","QC"))
+dir.create(file.path("Output","QC", format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","QC", format(Sys.Date(), "%y%m%d"), "csv"))
+dir.create(file.path("Output","QC", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","QC", format(Sys.Date(), "%y%m%d"), "ribomito"))
+
+dir.create(file.path("Output","monocle"))#create forders MONOCLE
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots","single"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "stat"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "csv"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "UMAP"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "mosaic"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "heatmap"))
+
+dir.create(file.path("Output","Seurat"))#create forders Seurat
+dir.create(file.path("Output","Seurat", format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","Seurat", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","Seurat", format(Sys.Date(), "%y%m%d"), "dotplots"))
+dir.create(file.path("Output","Seurat", format(Sys.Date(), "%y%m%d"), "PCA"))
+dir.create(file.path("Output","Seurat", format(Sys.Date(), "%y%m%d"), "UMAP"))
+
+
+fname_scratch <- file.path("Output","scratch")
+#set up folder path QC
+fname_prefix_R_QC <- file.path("Output","QC", format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_csv_QC<-file.path("Output","QC", format(Sys.Date(), "%y%m%d"), "csv", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_ribomito_QC <- file.path("Output","QC", format(Sys.Date(), "%y%m%d"), "ribomito", 
+                               format(Sys.Date(), "%y%m%d"))
+
+#set up forder path MONOCLE
+fname_prefix_R <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot_single <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots", "single", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_csv<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "csv", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_stat<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "stat", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_UMAP<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "UMAP", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_mosaic<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "mosaic", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_heatmap<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "heatmap", 
+                               format(Sys.Date(), "%y%m%d"))
+
+
+#set up forder path Seurat
+fname_prefix_R_Seurat <- file.path("Output","Seurat", format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot_Seurat <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_PCA_Seurat<-file.path("Output","Seurat", format(Sys.Date(), "%y%m%d"), "PCA", 
+                               format(Sys.Date(), "%y%m%d"))
+
+fname_prefix_UMAP_Seurat<-file.path("Output","Seurat", format(Sys.Date(), "%y%m%d"), "UMAP", 
+                               format(Sys.Date(), "%y%m%d"))
+
+okabe_tab=read_excel("Output/scratch/color_scale.xlsx")
+okabe_pal=okabe_tab$hex
+
+okabe_pal=c("#E69F00","#56B4E9","#009E73","#f0E442","#0072B2","#D55E00","#CC79A7","#000000")
+
+pal <- c("#000000","#004949","#009292","#ff6db6","#ffb6db",
+         "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+         "#920000","#924900","#db6d00","#24ff24","#ffff6d")
+```
+
+########load data
+
+```{r}
+load("Output/monocle/240407/R_objects/240407_updated_cds_with_modules_SELECTION_side.RData")
+load("Output/monocle/240407/R_objects/240407_gene_modules_pseudotime_cardio.RData")
+load("Output/monocle/240411/R_objects/240411_cds_updated.RData")
+ID_key=read_excel("shRNA_IDs.xlsx")
+cds@colData[, paste0("module_", 1:74)] <- modules[, 1:74]
+meta[, paste0("module_", 1:74)] <- modules[, 1:74]
+
+####prepare table with cluster assignment
+ct=c("Cardiac fibroblasts","Late cardiomyocytes","Early cardiomyocytes","Cardiac progenitors","Lateral plate mesoderm","Proliferating cardiomyocytes","Endothelial cells","Mesendoderm","Endoderm derivatives")
+ct_sh=c("CF","L-CM","E-CM","CP","LPM","P-CM","EC","MES","ENDO")
+
+clust_df=data.frame(monocle_cluster=c(1:9),cell_types=ct,cell_types_abbreviations=ct_sh)
+
+###prepare color/time order vectors
+cell_order=c("Mesendoderm","Cardiac progenitors","Early cardiomyocytes","Late cardiomyocytes","Proliferating cardiomyocytes","Lateral plate mesoderm","Cardiac fibroblasts","Endothelial cells","Endoderm derivatives")
+cell_order_short=c("MES","CP","E-CM","L-CM","P-CM","LPM","CF","EC","ENDO")
+gene_order=c("NA","SCR","B2M","CHD7","GATA4","KMT2D","NKX2.5","SMAD2")
+gene_polish_order=c("control","CHD7","GATA4","KMT2D","NKX2.5","SMAD2")
+
+
+```
+
+
+###get pseudotime data
+```{r}
+
+Ps_all=as.data.frame(pseudotime(cds, reduction_method = "UMAP"))
+colnames(Ps_all)="pseudotime"
+cds@colData$pseudotime=Ps_all$pseudotime
+
+Ps_cardio=as.data.frame(pseudotime(cds_cardio, reduction_method = "UMAP"))
+colnames(Ps_cardio)="pseudotime"
+cds_cardio@colData$pseudotime=Ps_cardio$pseudotime
+
+colData(cds_cardio)$gene_polish=ifelse(colData(cds_cardio)$shRNA_gene == "CHD7", "CHD7", 
+                                ifelse(colData(cds_cardio)$shRNA_gene == "GATA4", "GATA4",
+                                       ifelse(colData(cds_cardio)$shRNA_gene == "KMT2D", "KMT2D",
+                                              ifelse(colData(cds_cardio)$shRNA_gene == "NKX2.5", "NKX2.5",
+                                                     ifelse(colData(cds_cardio)$shRNA_gene == "SMAD2", "SMAD2","control")))))
+
+meta=as.data.frame(cds@colData@listData)
+meta_cardio=as.data.frame(cds_cardio@colData@listData)
+sel=meta%>%select(has_70_counts,clone_20_counts_clone,shRNA_40_counts,libID)
+
+meta_cardio=meta_cardio%>%left_join(sel, by="libID")
+
+```
+
+####select top 10 modules
+
+```{r}
+########plot all modules 
+plot_cells(cds,
+           genes=gene_module_df %>% filter(module %in% c(1:74)),
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE,cell_size=1)+
+labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle modules")
+last_plot() + scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "Monocle_modules.pdf"),
+     width = 21, height = 30)
+
+####eliminate the modules with expression in only few cells abd general low expression
+select_modules=as.data.frame(agg_mat_test)
+select_modules=select_modules%>%dplyr::filter(rownames(select_modules)!="Module 73"&rownames(select_modules)!="Module 74"&rownames(select_modules)!="Module 58")#####select modules with decent amount of cells expressing genes
+
+hp1=pheatmap::pheatmap(select_modules,
+                   scale="row", clustering_method="ward.D2",main="row normalized modules filtered",color = viridis(n = 256, alpha = 1, 
+                                   begin = 0, end = 1, option = "H"))#scaled on rows (modules) >>>to compare modules between perturbations
+Rdata_filename = paste0(fname_prefix_heatmap, "_hp_modules_filtered.pdf")
+pdf(Rdata_filename, height = 10, width = 8)
+hp1
+dev.off()
+
+####get FC for each couple
+select_modules=select_modules%>%dplyr::rename(empty_CTR=NA_CTR,empty_TET=NA_TET)
+genes=c("empty","SCR","B2M","CHD7","GATA4","KMT2D","NKX2.5","SMAD2")
+
+B2M=select_modules%>%dplyr::select(B2M_CTR,B2M_TET)%>%mutate(B2M_delta=B2M_TET-B2M_CTR)%>%dplyr::select(-B2M_CTR,-B2M_TET)
+SCR=select_modules%>%dplyr::select(SCR_CTR,SCR_TET)%>%mutate(SCR_delta=SCR_TET-SCR_CTR)%>%dplyr::select(-SCR_CTR,-SCR_TET)
+empty=select_modules%>%dplyr::select(empty_CTR,empty_TET)%>%mutate(empty_delta=empty_TET-empty_CTR)%>%dplyr::select(-empty_CTR,-empty_TET)
+CHD7=select_modules%>%dplyr::select(CHD7_CTR,CHD7_TET)%>%mutate(CHD7_delta=CHD7_TET-CHD7_CTR)%>%dplyr::select(-CHD7_CTR,-CHD7_TET)
+GATA4=select_modules%>%dplyr::select(GATA4_CTR,GATA4_TET)%>%mutate(GATA4_delta=GATA4_TET-GATA4_CTR)%>%dplyr::select(-GATA4_CTR,-GATA4_TET)
+KMT2D=select_modules%>%dplyr::select(KMT2D_CTR,KMT2D_TET)%>%mutate(KMT2D_delta=KMT2D_TET-KMT2D_CTR)%>%dplyr::select(-KMT2D_CTR,-KMT2D_TET)
+NKX2.5=select_modules%>%dplyr::select(NKX2.5_CTR,NKX2.5_TET)%>%mutate(NKX2.5_delta=NKX2.5_TET-NKX2.5_CTR)%>%dplyr::select(-NKX2.5_CTR,-NKX2.5_TET)
+SMAD2=select_modules%>%dplyr::select(SMAD2_CTR,SMAD2_TET)%>%mutate(SMAD2_delta=SMAD2_TET-SMAD2_CTR)%>%dplyr::select(-SMAD2_CTR,-SMAD2_TET)
+
+delta=cbind(B2M,SCR,empty,CHD7,GATA4,KMT2D,NKX2.5,SMAD2)
+
+hp2=pheatmap::pheatmap(delta, clustering_method="ward.D2",main="delta modules filtered",color = viridis(n = 256, alpha = 1, 
+                                   begin = 0, end = 1, option = "H"))
+
+hp3=pheatmap::pheatmap(delta,
+                   scale="row", clustering_method="ward.D2",main="Delta row normalized modules filtered",color = viridis(n = 256, alpha = 1, 
+                                   begin = 0, end = 1, option = "H"))#scaled on rows (modules) >>>to compare modules between perturbations
+Rdata_filename = paste0(fname_prefix_heatmap, "_hp_delta_modules_filtered.pdf")
+pdf(Rdata_filename, height = 10, width = 8)
+hp3
+dev.off()
+
+cal_z_score <- function(x){
+  (x - mean(x)) / sd(x)
+}
+
+data_subset_norm <- t(apply(delta, 1, cal_z_score))
+
+abs_delta_norm=abs(as.data.frame(data_subset_norm))
+abs_delta_norm$max=apply(abs_delta_norm,1,FUN=max)
+top=abs_delta_norm[order(-abs_delta_norm$max),] ####select top 10 based on delta
+t10_norm=head(top, n=10)
+t10_norm=rownames(t10_norm)
+t15_norm=head(top, n=15)
+t15_norm=rownames(t15_norm)
+t20_norm=head(top, n=20)
+t20_norm=rownames(t20_norm)
+
+top10_norm=delta%>%filter(rownames(delta)%in%t10_norm)
+top15_norm=delta%>%filter(rownames(delta)%in%t15_norm)
+top20_norm=delta%>%filter(rownames(delta)%in%t20_norm)
+
+
+abs_delta=abs(as.data.frame(delta))
+abs_delta$max=apply(abs_delta,1,FUN=max)
+top=abs_delta[order(-abs_delta$max),] ####select top 10 based on delta
+t10=head(top, n=10)
+t10=rownames(t10)
+t15=head(top, n=15)
+t15=rownames(t15)
+t20=head(top, n=20)
+t20=rownames(t20)
+top10=delta%>%filter(rownames(delta)%in%t10)
+top15=delta%>%filter(rownames(delta)%in%t15)
+top20=delta%>%filter(rownames(delta)%in%t20)
+
+pheatmap::pheatmap(top10_norm,
+                   scale="row", clustering_method="ward.D2",main="top 10 modules from norm",color = viridis(n = 256, alpha = 1, 
+                                   begin = 0, end = 1, option = "H"))
+
+pheatmap::pheatmap(top10, scale="row",clustering_method="ward.D2",main="top 10 modules",color = viridis(n = 256, alpha = 1, 
+                                   begin = 0, end = 1, option = "H"))
+
+hm_t15=pheatmap::pheatmap(top15_norm, scale="row",clustering_method="ward.D2",main="top 15 modules from norm",cutree_rows = 4,color = viridis(n = 256, alpha = 1,begin = 0, end = 1, option = "H"))
+hm_t15
+Rdata_filename = paste0(fname_prefix_heatmap, "_hp_top15_modules.pdf")
+pdf(Rdata_filename, height = 5, width = 8)
+hm_t15
+dev.off()
+
+pheatmap::pheatmap(top15, scale="row",clustering_method="ward.D2",main="top 15 modules",color = viridis(n = 256, alpha = 1, 
+                                   begin = 0, end = 1, option = "H"))
+
+pheatmap::pheatmap(top20_norm, scale="row",clustering_method="ward.D2",main="top 20 modules from norm",color = viridis(n = 256, alpha = 1, 
+                                   begin = 0, end = 1, option = "H"))
+
+pheatmap::pheatmap(top20, scale="row",clustering_method="ward.D2",main="top 20 modules",color = viridis(n = 256, alpha = 1, 
+                                   begin = 0, end = 1, option = "H"))
+
+
+```
+
+
+
+
+###ks statistics for genes along pseudotime trajectory and modules expression
+
+```{r}
+
+analyze=data.frame(t15_norm=t15_norm)
+analyze$module_nb=sapply(strsplit(as.character(t15_norm), " "), "[[", 2)
+analyze$module=paste0("module_",analyze$module_nb)
+analyze$pal=c("#AA0DFE","#3283FE","#85660D","#782AB6","#565656","#1C8356","#16FF32","#F7E1A0","#E2E2E2","#1CBE4F","#C4451C","#DEA0FD","#FE00FA","#325A9B","#FEAF16")
+rownames(analyze)=analyze$t15_norm
+
+row=data.frame(module=rownames(top15_norm))
+rownames(row)=row$module
+
+my_colour = list(module = c("Module 41"="#AA0DFE","Module 13"="#3283FE","Module 30"="#85660D","Module 2"="#782AB6","Module 64"="#565656","Module 1"="#1C8356","Module 14"="#16FF32","Module 16"="#F7E1A0","Module 72"="#E2E2E2","Module 62"="#1CBE4F","Module 22"="#C4451C","Module 26"="#DEA0FD","Module 59"="#FE00FA","Module 33"="#325A9B","Module 20"="#FEAF16"))
+
+hm_t15=pheatmap::pheatmap(top15_norm, scale="row",clustering_method="ward.D2",annotation_colors = my_colour,annotation_row = row,main="top 15 modules from norm",cutree_rows = 4,color = viridis(n = 256, alpha = 1,begin = 0, end = 1, option = "H"))
+hm_t15
+Rdata_filename = paste0(fname_prefix_heatmap, "_hp_top15_modules.pdf")
+pdf(Rdata_filename, height = 5, width = 8)
+hm_t15
+dev.off()
+
+plot_cells(cds,
+           genes=gene_module_df %>% filter(module %in% c(analyze$module_nb)),
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE,cell_size=1)+
+labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle modules")
+last_plot() + scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "Monocle_modules_top_15.pdf"),
+     width = 10, height = 8)
+
+analysis=c(analyze$module)
+
+TET = subset(meta, meta$knockdown == "TET")
+CTR = subset(meta, meta$knockdown == "CTR")
+
+ks_stat = data.frame()
+
+for (c in unique(meta$shRNA_gene)) {
+  for (analysis_type in analysis) {
+    tmp_TET = TET[TET$shRNA_gene == c, analysis_type]
+    tmp_CTR = CTR[CTR$shRNA_gene == c, analysis_type]
+    
+    ks_pval = ks.test(tmp_TET, tmp_CTR)[["p.value"]]
+    
+    ks_stat = rbind(ks_stat, data.frame(gene = c, pval = ks_pval, analysis = analysis_type))
+  }
+}
+
+colnames(ks_stat) <- c("gene", "pval", "analysis")
+
+ks_stat$padj <- p.adjust(ks_stat$pval, method = "BH")
+ks_stat$sig <- ks_stat$padj <= 0.05
+
+ks_stat_filtered_modules=ks_stat
+
+write.csv(ks_stat_filtered_modules, file= paste0(fname_prefix_csv, "_", "ks_statistics_filtered_modules.csv"), row.names=FALSE)
+
+
+#######see modules that stands out
+analysis=c(analyze$module)
+
+TET = subset(meta, meta$knockdown == "TET")
+CTR = subset(meta, meta$knockdown == "CTR")
+
+ks_stat = data.frame()
+
+for (c in unique(meta$shRNA_gene)) {
+  for (analysis_type in analysis) {
+    tmp_TET = TET[TET$shRNA_gene == c, analysis_type]
+    tmp_CTR = CTR[CTR$shRNA_gene == c, analysis_type]
+    
+    ks_pval = ks.test(tmp_TET, tmp_CTR)[["p.value"]]
+    ks_pval_g = ks.test(tmp_TET, tmp_CTR,alternative="greater")[["p.value"]]
+    ks_sig_g = ks.test(tmp_TET, tmp_CTR,alternative="greater")[["statistic"]][["D^+"]]
+    ks_pval_l = ks.test(tmp_TET, tmp_CTR,alternative="less")[["p.value"]]
+    ks_sig_l = ks.test(tmp_TET, tmp_CTR,alternative="less")[["statistic"]][["D^-"]]
+    ks_sig = ks.test(tmp_TET, tmp_CTR)[["statistic"]][["D"]]
+    
+    ks_stat = rbind(ks_stat, data.frame(gene = c, pval = ks_pval, pval_g = ks_pval_g,pval_l = ks_pval_l,ks_sign_g=ks_sig_g,ks_sign_l=ks_sig_l,ks_sign=ks_sig, analysis = analysis_type))
+  }
+}
+
+colnames(ks_stat) <- c("gene", "pval", "pval_greater","pval_less","ks_greater","ks_less","ks_sign","analysis")
+
+ks_stat$padj <- p.adjust(ks_stat$pval, method = "BH")
+ks_stat$sig <- ks_stat$padj <= 0.05
+ks_stat$greater <- ks_stat$pval_greater <= 0.05
+ks_stat$less <- ks_stat$pval_less <= 0.05
+
+ks_stat$k_sign_summary <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks_stat$greater & !ks_stat$less,
+  as.numeric(ks_stat$ks_greater),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks_stat$greater & ks_stat$less,
+    -as.numeric(ks_stat$ks_less),  # Return negative of ks_sign
+    ks_stat$ks_sign  # Otherwise, return ks sign
+  )
+)
+
+ks_stat$k_colour <- ifelse(
+  ks_stat$sig==T,ks_stat$analysis,"")
+ 
+k_stat_all=ks_stat
+write.csv(ks_stat, file= paste0(fname_prefix_csv, "_", "ks_statistics_sign_top15.csv"), row.names=FALSE)
+
+k_stat_all=k_stat_all%>%dplyr::rename(module=analysis)
+k_stat_all=k_stat_all%>%left_join(analyze, by="module")
+```
+
+#####volcano plot statistics
+###genes
+
+```{r}
+library(pals)
+
+a=k_stat_all%>%filter(k_stat_all$sig==T)%>%dplyr::select(module,pal)%>%distinct(module,pal)
+a=a[order(a$module),]
+
+ggplot(data=k_stat_all, aes(x=k_sign_summary, y=log10(padj)*-1)) +
+  geom_point(aes(colour = k_colour), size=1.5) +scale_color_manual(values=c("grey",a$pal))+
+  ggrepel::geom_text_repel(
+    data = subset(k_stat_all, sig==T),
+    aes(label = gene),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  ggtitle("ks test statistics per gene vs its control")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "KS statistic summary",
+    y = "-Log10 adj p-value",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_ks_stats_gene.pdf"),
+       width = 6, height = 4)
+
+```
+#######get statistics for shRNA
+
+```{r}
+
+meta_sh=subset(meta,meta$shRNA_40_counts==T)
+analysis=c(analyze$module)
+
+TET = subset(meta_sh, meta_sh$knockdown == "TET")
+CTR = subset(meta_sh, meta_sh$knockdown == "CTR")
+
+ks_stat = data.frame()
+
+for (c in unique(meta_sh$shRNA_label)) {
+  for (analysis_type in analysis) {
+    tmp_TET = TET[TET$shRNA_label == c, analysis_type]
+    tmp_CTR = CTR[CTR$shRNA_label == c, analysis_type]
+    
+    ks_pval = ks.test(tmp_TET, tmp_CTR)[["p.value"]]
+    
+    ks_stat = rbind(ks_stat, data.frame(shRNA_label = c, pval = ks_pval, analysis = analysis_type))
+  }
+}
+
+colnames(ks_stat) <- c("shRNA_label", "pval", "analysis")
+
+ks_stat$padj <- p.adjust(ks_stat$pval, method = "BH")
+ks_stat$sig <- ks_stat$padj <= 0.05
+
+ks_stat_filtered_modules_shRNA=ks_stat
+
+write.csv(ks_stat_filtered_modules_shRNA, file= paste0(fname_prefix_csv, "_", "ks_statistics_shRNA_filtered_modules.csv"), row.names=FALSE)
+
+
+#######see modules that stands out
+analysis=c(analyze$module)
+
+TET = subset(meta_sh, meta_sh$knockdown == "TET")
+CTR = subset(meta_sh, meta_sh$knockdown == "CTR")
+
+ks_stat = data.frame()
+
+for (c in unique(meta_sh$shRNA_label)) {
+  for (analysis_type in analysis) {
+    tmp_TET = TET[TET$shRNA_label == c, analysis_type]
+    tmp_CTR = CTR[CTR$shRNA_label == c, analysis_type]
+    
+    ks_pval = ks.test(tmp_TET, tmp_CTR)[["p.value"]]
+    ks_pval_g = ks.test(tmp_TET, tmp_CTR,alternative="greater")[["p.value"]]
+    ks_sig_g = ks.test(tmp_TET, tmp_CTR,alternative="greater")[["statistic"]][["D^+"]]
+    ks_pval_l = ks.test(tmp_TET, tmp_CTR,alternative="less")[["p.value"]]
+    ks_sig_l = ks.test(tmp_TET, tmp_CTR,alternative="less")[["statistic"]][["D^-"]]
+    ks_sig = ks.test(tmp_TET, tmp_CTR)[["statistic"]][["D"]]
+    
+    ks_stat = rbind(ks_stat, data.frame(shRNA_label = c, pval = ks_pval, pval_g = ks_pval_g,pval_l = ks_pval_l,ks_sign_g=ks_sig_g,ks_sign_l=ks_sig_l,ks_sign=ks_sig, analysis = analysis_type))
+  }
+}
+
+colnames(ks_stat) <- c("shRNA_label", "pval", "pval_greater","pval_less","ks_greater","ks_less","ks_sign","analysis")
+
+ks_stat$padj <- p.adjust(ks_stat$pval, method = "BH")
+ks_stat$sig <- ks_stat$padj <= 0.05
+ks_stat$greater <- ks_stat$pval_greater <= 0.05
+ks_stat$less <- ks_stat$pval_less <= 0.05
+
+ks_stat$k_sign_summary <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks_stat$greater & !ks_stat$less,
+  as.numeric(ks_stat$ks_greater),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks_stat$greater & ks_stat$less,
+    -as.numeric(ks_stat$ks_less),  # Return negative of ks_sign
+    ks_stat$ks_sign  # Otherwise, return ks sign
+  )
+)
+
+ks_stat$k_colour <- ifelse(
+  ks_stat$sig==T,ks_stat$analysis,"")
+ 
+k_stat_shRNA=ks_stat
+write.csv(ks_stat, file= paste0(fname_prefix_csv, "_", "ks_statistics_shRNA_sign_top15.csv"), row.names=FALSE)
+
+k_stat_shRNA=k_stat_shRNA%>%dplyr::rename(module=analysis)
+k_stat_shRNA=k_stat_shRNA%>%left_join(analyze, by="module")
+```
+
+#####volcano plot statistics
+###shRNA
+
+```{r}
+a=k_stat_shRNA%>%filter(k_stat_shRNA$sig==T)%>%dplyr::select(module,pal)%>%distinct(module,pal)
+a=a[order(a$module),]
+
+ggplot(data=k_stat_shRNA, aes(x=k_sign_summary, y=log10(padj)*-1)) +
+  geom_point(aes(colour = k_colour), size=1.5)+
+  scale_color_manual(values=c("grey",a$pal))+
+  ggrepel::geom_text_repel(
+    data = subset(k_stat_shRNA, sig==T),
+    aes(label =shRNA_label),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  ggtitle("ks test statistics per shRNA vs its control")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "KS statistic summary",
+    y = "-Log10 adj p-value",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_ks_stats_shRNA.pdf"),
+       width = 6, height = 4)
+
+```
+
+#######get statistics for clones
+
+```{r}
+
+meta_cl=subset(meta,meta$clone_20_counts==T)
+analysis=c(analyze$module)
+
+TET = subset(meta_cl, meta_cl$knockdown == "TET")
+CTR = subset(meta_cl, meta_cl$knockdown == "CTR")
+
+ks_stat = data.frame()
+
+for (c in unique(meta_cl$clone)) {
+  for (analysis_type in analysis) {
+    tmp_TET = TET[TET$clone == c, analysis_type]
+    tmp_CTR = CTR[CTR$clone == c, analysis_type]
+    
+    ks_pval = ks.test(tmp_TET, tmp_CTR)[["p.value"]]
+    
+    ks_stat = rbind(ks_stat, data.frame(clone = c, pval = ks_pval, analysis = analysis_type))
+  }
+}
+
+colnames(ks_stat) <- c("clone", "pval", "analysis")
+
+ks_stat$padj <- p.adjust(ks_stat$pval, method = "BH")
+ks_stat$sig <- ks_stat$padj <= 0.05
+
+ks_stat_filtered_modules_clone=ks_stat
+
+write.csv(ks_stat_filtered_modules_clone, file= paste0(fname_prefix_csv, "_", "ks_statistics_clone_filtered_modules.csv"), row.names=FALSE)
+
+
+#######see modules that stands out
+analysis=c(analyze$module)
+
+TET = subset(meta_cl, meta_cl$knockdown == "TET")
+CTR = subset(meta_cl, meta_cl$knockdown == "CTR")
+
+ks_stat = data.frame()
+
+for (c in unique(meta_cl$clone)) {
+  for (analysis_type in analysis) {
+    tmp_TET = TET[TET$clone == c, analysis_type]
+    tmp_CTR = CTR[CTR$clone == c, analysis_type]
+    
+    ks_pval = ks.test(tmp_TET, tmp_CTR)[["p.value"]]
+    ks_pval_g = ks.test(tmp_TET, tmp_CTR,alternative="greater")[["p.value"]]
+    ks_sig_g = ks.test(tmp_TET, tmp_CTR,alternative="greater")[["statistic"]][["D^+"]]
+    ks_pval_l = ks.test(tmp_TET, tmp_CTR,alternative="less")[["p.value"]]
+    ks_sig_l = ks.test(tmp_TET, tmp_CTR,alternative="less")[["statistic"]][["D^-"]]
+    ks_sig = ks.test(tmp_TET, tmp_CTR)[["statistic"]][["D"]]
+    
+    ks_stat = rbind(ks_stat, data.frame(clone = c, pval = ks_pval, pval_g = ks_pval_g,pval_l = ks_pval_l,ks_sign_g=ks_sig_g,ks_sign_l=ks_sig_l,ks_sign=ks_sig, analysis = analysis_type))
+  }
+}
+
+colnames(ks_stat) <- c("clone", "pval", "pval_greater","pval_less","ks_greater","ks_less","ks_sign","analysis")
+
+ks_stat$padj <- p.adjust(ks_stat$pval, method = "BH")
+ks_stat$sig <- ks_stat$padj <= 0.05
+ks_stat$greater <- ks_stat$pval_greater <= 0.05
+ks_stat$less <- ks_stat$pval_less <= 0.05
+
+ks_stat$k_sign_summary <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks_stat$greater & !ks_stat$less,
+  as.numeric(ks_stat$ks_greater),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks_stat$greater & ks_stat$less,
+    -as.numeric(ks_stat$ks_less),  # Return negative of ks_sign
+    ks_stat$ks_sign  # Otherwise, return ks sign
+  )
+)
+
+ks_stat$k_colour <- ifelse(
+  ks_stat$sig==T,ks_stat$analysis,"")
+ 
+k_stat_clone=ks_stat
+k_stat_clone=k_stat_clone%>%left_join(clones_AB03,by="clone")
+write.csv(k_stat_clone, file= paste0(fname_prefix_csv, "_", "ks_statistics_clone_sign_top15.csv"), row.names=FALSE)
+
+k_stat_clone=k_stat_clone%>%dplyr::rename(module=analysis)
+k_stat_clone=k_stat_clone%>%left_join(analyze, by="module")
+
+k_stat_clone$sig_FDR001=k_stat_clone$padj <= 0.01
+```
+
+#####volcano plot statistics
+###clones
+
+```{r}
+a=k_stat_clone%>%filter(k_stat_clone$sig==T)%>%dplyr::select(module,pal)%>%distinct(module,pal)
+a=a[order(a$module),]
+
+ggplot(data=k_stat_clone, aes(x=k_sign_summary, y=log10(padj)*-1)) +
+  geom_point(aes(colour = k_colour), size=1.5)+
+  scale_color_manual(values=c("grey",a$pal))+
+  ggrepel::geom_text_repel(
+    data = subset(k_stat_clone, sig==T),
+    aes(label =clone_short),
+    max.overlaps = 50,
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  ggtitle("ks test statistics per clone vs its control")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "KS statistic summary",
+    y = "-Log10 adj p-value",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_ks_stats_clone.pdf"),
+       width = 6, height = 4)
+
+ggplot(data=k_stat_clone, aes(x=k_sign_summary, y=log10(padj)*-1)) +
+  geom_point(aes(colour = k_colour), size=1.5)+
+  scale_color_manual(values=c("grey",a$pal))+
+  ggrepel::geom_text_repel(
+    data = subset(k_stat_clone, sig_FDR001==T),
+    aes(label =clone_short),
+    max.overlaps = 50,
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  ggtitle("ks test statistics per clone vs its control")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "KS statistic summary",
+    y = "-Log10 adj p-value",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_ks_stats_clone_sig_FDR001.pdf"),
+       width = 6, height = 4)
+
+SIG=k_stat_shRNA%>%filter(k_stat_shRNA$sig==T)%>%dplyr::select(module_nb)%>%distinct(module_nb)
+
+plot_cells(cds,
+           genes=gene_module_df %>% filter(module %in% c(SIG$module_nb)),
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE,cell_size=1)+
+labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle modules")
+last_plot() + scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "Monocle_modules_top_15_SIG.pdf"),
+     width = 9, height = 6)
+
+
+SIG=k_stat_shRNA%>%filter(k_stat_shRNA$sig==T)%>%dplyr::select(module_nb)%>%distinct(module_nb)
+
+plot_cells(cds,
+           genes=gene_module_df %>% filter(module %in% c(2,41,62,64)),
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE,cell_size=1)+
+labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle modules")
+last_plot() + scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "Monocle_modules_MAIN.pdf"),
+     width = 7, height = 5)
+
+plot_cells(cds,
+           genes=gene_module_df %>% filter(module %in% c(2,41,62,64, 1,13,16,20,22,30,59,72)),
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE,cell_size=1)+
+labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle modules")
+last_plot() + scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "Monocle_modules_SUPP.pdf"),
+     width = 13, height = 6)
+
+
+
+```
+
+######get info about gene modules
+
+```{r}
+
+gene_modules=list()
+
+for (c in unique(gene_module_df$module)) {
+ 
+tmp=subset(gene_module_df, gene_module_df$module==c)
+gene_list=tmp$id
+
+gene_modules[[c]]=gene_list
+}
+
+library(topGO)
+
+library(org.Hs.eg.db)
+
+hs <- org.Hs.eg.db
+
+modules=c("41" ,"13", "30", "2","64" ,"1","14", "16", "72", "62", "22", "26", "59", "33", "20")
+
+go.de_list <- list()
+k_list <- list()
+
+# Iterate over each module in 'modules'
+for (module in modules) {
+  # Convert gene symbols to ENSEMBL or ENTREZID
+  gene.df <- clusterProfiler::bitr(gene_modules[[module]], fromType = "SYMBOL",
+                                    toType = c("ENSEMBL", "ENTREZID"),
+                                    OrgDb = org.Hs.eg.db)
+  
+  # Perform GO analysis
+  go.de <- goana(list(DE1 = gene.df$ENTREZID), species = "Hs", convert = TRUE) %>%
+    mutate(module = module)
+  
+  # Perform KEGG analysis
+  k <- kegga(list(DE1 = gene.df$ENTREZID), species = "Hs", convert = TRUE) %>%
+    mutate(module = module)
+  
+  # Store the results in lists
+  go.de_list[[module]] <- go.de
+  k_list[[module]] <- k
+}
+
+# Combine all data frames in the lists into single data frames
+GO <- do.call(rbind, go.de_list)%>%filter(Ont!="CC",DE1>=20,P.DE1<=0.05)
+k <- do.call(rbind, k_list)%>%filter(DE1>=6,P.DE1<=0.05)
+
+write.csv(GO, file= paste0(fname_prefix_csv, "_", "GO_modules.csv"), row.names=FALSE)
+write.csv(k, file= paste0(fname_prefix_csv, "_", "kegg_modules.csv"), row.names=FALSE)
+
+```
+
+#####cluster profiler
+
+```{r}
+
+modules=c("41" ,"13", "30", "2","64" ,"1","14", "16", "72", "62", "26", "59", "33", "20")
+
+eGO_list <- list()
+
+# Iterate over each module in 'modules'
+for (module in modules) {
+  # Perform enrichment analysis for the current module
+  ego <- clusterProfiler::enrichGO(gene = gene_modules[[module]],
+                                    OrgDb = org.Hs.eg.db,
+                                    keyType = 'SYMBOL',
+                                    ont = "ALL",
+                                    pAdjustMethod = "BH")
+  
+  # Store the result in the list
+  eGO_result <- ego@result %>% mutate(module = module)
+  eGO_list[[module]] <- eGO_result
+}
+
+# Combine all data frames in the list into a single data frame
+eGO <- do.call(rbind, eGO_list)
+
+write.csv(eGO, file= paste0(fname_prefix_csv, "_", "eGO_modules.csv"), row.names=FALSE)
+```
+
+
+####cumulative frequency plots
+
+```{r}
+ggplot(meta, aes(pseudotime, colour = KD)) + stat_ecdf(geom = "step")+ 
+  #scale_color_oi(order = c(9, 7))+
+  theme_classic(base_size = 14)+
+  ylab("Cumulative frequency")+
+  xlab("monocle pseudotime")+
+  ggtitle("Cumulative frequency cardio on pseudotime")+
+  facet_grid(~factor(shRNA_gene,levels=gene_order))
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "cumulative_frequency_pseudotime.png"),
+     width = 14, height = 5)
+
+for (module_nb in analyze$module) {
+  # Create the plot for the current module
+  p <- ggplot(meta, aes_string(x = module_nb, colour = "KD")) + 
+    stat_ecdf(geom = "step") + 
+    theme_classic(base_size = 14) + 
+    ylab("Cumulative frequency") + 
+    xlab("mmodule aggregate gene expression") + 
+    ggtitle(paste0("Cumulative frequency on ", module_nb)) + 
+    facet_grid(~factor(shRNA_gene, levels = gene_order))
+  
+  # Save the plot as an image file
+  ggsave(filename = paste0(fname_prefix_dotplot, "_", "cumulative_frequency_", gsub("module_", "", module_nb), ".png"),
+         plot = p, width = 14, height = 5)
+}
+
+```
+
+
+####save data
+
+```{r}
+meta=as.data.frame(cds@colData@listData)
+meta_cardio=as.data.frame(cds_cardio@colData@listData)
+
+#Rdata_filename = paste0(fname_prefix_R, "_calculations_nb_percent_clones_shRNA.RData")
+#save(by_gene_KD,by_gene_KD_ratio,by_shRNA_KD,by_clone_KD,clone_count,shRNA_count,
+ #    file = Rdata_filename)
+
+Rdata_filename = paste0(fname_prefix_R, "_GO.RData")
+save(GO,k,eGO,
+     file = Rdata_filename)
+
+Rdata_filename = paste0(fname_prefix_R, "_cds_updated.RData")
+save(meta,meta_cardio,cds,cds_cardio,
+     file = Rdata_filename)
+
+Rdata_filename = paste0(fname_prefix_R, "_cds_modules.RData")
+save(meta,cds,analyze,agg_mat_test,gene_module_df, modules,top15_norm,delta, data_subset_norm,abs_FC,
+     file = Rdata_filename)
+
+Rdata_filename = paste0(fname_prefix_R, "_gene_modules_pseudotime.RData")
+save(cardio_cds_pr_test_res,genes_mod_pseudotime, gene_module_df, modules,agg_mat,agg_mat_test,
+     file = Rdata_filename)
+
+
+counts=as.data.frame(cds@assays@data@listData[["counts"]])
+counts_n=normalized_counts(cds)
+
+Rdata_filename = paste0(getwd(),"/FILES_PROCESSED_TO_UPLOAD/3D_iPS2seq10X_cds_monocle_processed.rds")
+saveRDS(cds, Rdata_filename)
+
+write.table(counts, file = paste0(getwd(),"/FILES_PROCESSED_TO_UPLOAD/3D_iPS2seq10X_cds_monocle_counts_prenorm.txt"), sep = "\t",
+            row.names = T, col.names = T)
+write.table(counts_n, file = paste0(getwd(),"/FILES_PROCESSED_TO_UPLOAD/3D_iPS2seq10X_cds_monocle_counts_norm.txt"), sep = "\t",
+            row.names = T, col.names = T)
+write.table(meta, file = paste0(getwd(),"/FILES_PROCESSED_TO_UPLOAD/3D_iPS2seq10X_monocle_cell_info.txt"), sep = "\t",
+            row.names = T, col.names = T)
+
+```
+
+

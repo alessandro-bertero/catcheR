@@ -1,0 +1,1689 @@
+---
+title: "n1 2D analysis exp5 exp7 combined: QC and monocle analysis"
+author: "Elisa Balmas PhD"
+date: "2024-02-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set up environment
+
+```{r}
+library(pals)
+library(see)
+library(monocle3)
+library(tidyr)
+library(stringr)
+library(grid)
+library(viridis)
+library(viridisLite)
+library(ggthemes)
+library(dplyr)
+library(tidyverse)
+library(ggsignif)
+library(umap)
+library(heatmap3)
+library(plyr)
+library(edgeR)
+library(compareGroups)
+library(dbscan)
+library(MAST)
+library(geosphere)
+library(RColorBrewer)
+library(Seurat)
+library(htmlwidgets)
+library(Matrix)
+library(tidyseurat)
+library(SeuratWrappers)
+library(scMAGeCK)
+library(readxl)
+library(deepToolsUtils)
+library(R.utils)
+
+
+library(ggplot2); library(reshape2); theme_set(theme_bw(26) + theme(panel.grid.major = element_blank(), 
+                                                                    panel.grid.minor = element_blank()) +
+                                                 theme(legend.key = element_blank()))
+update_geom_defaults("point", aes(size = 4))
+
+#setwd("/home/ebalmas/scpHUB/projects/H001AS7_iKDseq_10X_4tp_monocle/analysis_EB")
+
+# Session options
+options(stringsAsFactors = FALSE)
+set.seed(12345)
+
+# Set up the ggplot default params
+theme_set(theme_bw(12) + 
+          theme(panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(),
+                plot.title = element_text(size=15, face="bold", margin = margin(10,0,10,0)),
+                axis.text.x = element_text(angle=45, hjust = 1)))
+
+
+# Set up filename prefixes and output folders with the data
+dir.create("Output")
+dir.create(file.path("Output","scratch"))
+
+dir.create(file.path("Output","monocle"))#create forders MONOCLE
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "cumulative"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots","single"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "stat"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "csv"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "UMAP"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "mosaic"))
+
+
+fname_scratch <- file.path("Output","scratch")
+
+#set up forder path MONOCLE
+fname_prefix_R <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_cumulative <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "cumulative", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot_single <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots", "single", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_csv<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "csv", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_stat<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "stat", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_UMAP<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "UMAP", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_mosaic<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "mosaic", 
+                               format(Sys.Date(), "%y%m%d"))
+
+
+pal <- c("#000000","#004949","#009292","#ff6db6","#ffb6db",
+         "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+         "#920000","#924900","#db6d00","#24ff24","#ffff6d")
+okabe_pal=c("#E69F00","#56B4E9","#009E73","#F0E442","#0072B2","#D55E00","#CC79A7","#000000","#b6dbff","#004949")
+
+pal_26=alphabet2(n=26)
+
+
+```
+#load data
+#######load only sub-clustered data
+
+```{r}
+load("Output/monocle/240314/R_objects/240314_cluster_composition_cardio_by_gene.RData")
+
+ID_key=read_excel(paste0(fname_scratch,"/shRNA_IDs.xlsx"))
+ID_shRNA=ID_key%>%dplyr::select(shRNA_ID_unified, shRNA,shRNA_BC,shRNA_label,hex, col_name)
+order_cell_types=c("CF","P-CP","CP","L-CP","E-CM","CM1","CM2","L-CM","P-CM")
+
+meta=as.data.frame(cds@colData@listData)
+meta <- replace(meta, is.na(meta), "empty")
+meta=meta%>%left_join(ID_shRNA, by=c("shRNA_ID_unified", "shRNA","shRNA_BC"))#36019
+cds@colData$shRNA_label=meta$shRNA_label
+cds@colData$hex=meta$hex
+cds@colData$col_name=meta$col_name
+
+meta_cardio <- replace(meta_cardio, is.na(meta_cardio), "empty")
+meta_cardio=meta_cardio%>%left_join(ID_shRNA, by=c("shRNA_ID_unified", "shRNA","shRNA_BC"))#15862
+cds_cardio@colData$shRNA_label=meta_cardio$shRNA_label
+cds_cardio@colData$hex=meta_cardio$hex
+cds_cardio@colData$col_name=meta_cardio$col_name
+
+order_genes=c("empty","SCR","B2M","CHD7","GATA4","SMAD2","NKX2.5","KMT2D")
+order_genes_2=c("NA","SCR","B2M","CHD7","GATA4","SMAD2","NKX2.5","KMT2D")
+
+###makea df for color code
+okabe_clust=c("#E69F00","#56B4E9","#009E73","#F0E442","#0072B2","#D55E00","#CC79A7","gray","#000000")
+cell_type_pal=data.frame(order_cell_types=order_cell_types,okabe_clust=okabe_clust)
+
+
+```
+
+#####subset cds to plot evenly
+
+```{r}
+
+min_events <- min(table(cds_cardio$shRNA_gene))
+
+# subset cardiomyocites to the same number, unfortunately there is so much variability in number that stats risk to change due to number differences
+merged.exp=data.frame(cds_cardio$libID,cds_cardio$shRNA_gene,cds_cardio$sample_ID)#15862
+colnames(merged.exp)=c("libID","shRNA_gene","sample_ID")
+all_events_downsampled <- merged.exp %>% group_by(shRNA_gene) %>% do((function(x) {
+  sample_idx <- sample(nrow(x), min_events)
+  ds_df <- x[sample_idx,]
+  return(ds_df)
+})(.))#2536
+downsampled=all_events_downsampled$libID#2536
+cds_subset <- cds_cardio[,colData(cds_cardio)$libID %in% downsampled]
+```
+
+
+
+## mosaic plots of the late timepoints
+####plots by gene (no distinction by shRNA)
+
+```{r}
+
+#meta_cardio$gene_new
+meta_cardio$gene_new=ifelse(meta_cardio$shRNA_gene=="CHD7", "CHD7",
+                            ifelse(meta_cardio$shRNA_gene=="GATA4", "GATA4",
+                                   ifelse(meta_cardio$shRNA_gene=="KMT2D", "KMT2D",
+                                          ifelse(meta_cardio$shRNA_gene=="NKX2.5", "NKX2.5",
+                                                 ifelse(meta_cardio$shRNA_gene=="SMAD2", "SMAD2","control")))))
+
+#update cds file
+colData(cds_cardio)$gene_polish=meta_cardio$gene_new
+
+###eliminate cell types without pseudotime
+cds_cardio=cds_cardio[,cds_cardio$cell_type_short!="FHF"]
+cds_cardio=cds_cardio[,cds_cardio$cell_type_short!="SHF"]
+
+Ps_all=as.data.frame(pseudotime(cds_cardio, reduction_method = "UMAP"))
+colnames(Ps_all)="pseudotime"
+cds_cardio@colData$pseudotime=Ps_all$pseudotime
+
+cdsD12=cds_cardio[,cds_cardio$sample_ID=="CM day 12"]
+cdsD23=cds_cardio[,cds_cardio$sample_ID=="CM day 23"]
+
+#update full meta and divide between timepoints
+meta_cardio=as.data.frame(cds_cardio@colData)
+
+metaD6=meta_cardio[meta_cardio$sample_ID=="Cardiac progenitors",]
+metaD12=meta_cardio[meta_cardio$sample_ID=="CM day 12",]
+metaD23=meta_cardio[meta_cardio$sample_ID=="CM day 23",]
+
+```
+
+##Make pseudotime plots
+
+```{r}
+plot_cells(cds_subset,
+           color_cells_by = "pseudotime",
+           label_cell_groups=F,
+           label_leaves=FALSE,
+           label_branch_points=FALSE,
+           graph_label_size=20,
+           cell_size = 1,
+           show_trajectory_graph=F)+scale_color_viridis(discrete=F, option="A")
+last_plot()+facet_grid(~factor(shRNA_gene, levels =c("NA","SCR","B2M","CHD7","GATA4","SMAD2","KMT2D","NKX2.5" )))
+
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_late_cardio_pseudotime.png"),
+     width = 6, height = 10)
+
+```
+########
+#make plots for cumulative frequency
+
+```{r}
+
+#ggplot(to.plot.set, aes(pseudotime, colour = gene)) + stat_ecdf()+ facet_grid(~day)
+ggplot(meta_cardio, aes(pseudotime, colour = shRNA_gene)) +
+  stat_ecdf(geom = "step")+ 
+  scale_color_okabeito(name = "gene")+
+  ylab("Cumulative frequency")+
+  ggtitle("Cumulative frequency by gene")+
+  facet_grid(~sample_ID)
+
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "cumulative_frequency.png"),
+     width = 14, height = 14)
+
+
+gene_names <- c("CHD7", "GATA4", "KMT2D", "NKX2.5", "SMAD2")
+
+for (gene_name in gene_names) {
+  gene_subset <- subset(meta_cardio, meta_cardio$shRNA_gene %in% c("B2M", "SCR", gene_name))
+
+  ggplot(gene_subset, aes(pseudotime, colour = factor(shRNA_gene, c("B2M", "SCR", gene_name)))) +
+    stat_ecdf(geom = "step") +
+    scale_color_okabeito(name = "gene") +
+    theme_classic(base_size = 14) +
+    labs(
+      x = "pseudotime",
+      y = "Cumulative frequency",
+      color = "gene"  # Legend title
+    ) +
+    ggtitle(paste("Cumulative frequency", gene_name, "clones")) +
+    facet_grid(~sample_ID)
+
+  ggsave(
+    filename = paste0(fname_prefix_cumulative, "_", "cumulative_frequency_", gene_name, ".png"),
+    width = 12, height = 8
+  )
+}
+
+
+```
+######ks statistics
+##analysis for genes
+#DD6
+```{r}
+#calculate stats day 6
+meta=metaD6
+# List of genes
+genes <- c("B2M", "SCR", "CHD7", "GATA4", "KMT2D", "NKX2.5", "SMAD2")
+
+# Initialize an empty data frame to store results
+ks.stat <- data.frame(
+  genes = character(),
+  pval_vs_SCR = numeric(),
+  padj_vs_SCR = numeric(),
+  pval_vs_B2M = numeric(),
+  padj_vs_B2M = numeric(),
+  pval_greater_SCR= numeric(),
+  pval_less_SCR= numeric(),
+  ks_sign_SCR= numeric(),
+  ks_greater_SCR= numeric(),
+  ks_less_SCR= numeric(),
+  pval_greater_B2M= numeric(),
+  pval_less_B2M= numeric(),
+  ks_sign_B2M= numeric(),
+  ks_greater_B2m= numeric(),
+  ks_less_B2M= numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop through genes
+for (gene in genes) {
+  # Subset data for the current gene
+  gene_ecdf <- subset(meta,meta$shRNA_gene == gene)
+  gene_ecdf <- gene_ecdf$pseudotime
+
+  # Subset SCR data
+  SCR_ecdf <- subset(meta, meta$shRNA_gene == "SCR")
+  SCR_ecdf <- SCR_ecdf$pseudotime
+  
+  # Subset B2M data
+  B2M_ecdf <- subset(meta, meta$shRNA_gene == "B2M")
+  B2M_ecdf <- B2M_ecdf$pseudotime
+
+  # Perform ks.test
+  ks.controls <- ks.test(gene_ecdf, SCR_ecdf)
+  ks.controls_g <- ks.test(gene_ecdf, SCR_ecdf,alternative="greater")
+  ks.controls_l <- ks.test(gene_ecdf, SCR_ecdf,alternative="less")
+  
+  ks.b2m <- ks.test(B2M_ecdf, gene_ecdf)
+  ks.b2m_g <- ks.test(B2M_ecdf, gene_ecdf,alternative="greater")
+  ks.b2m_l <- ks.test(B2M_ecdf, gene_ecdf,alternative="less")
+
+  # Calculate adjusted p-values
+  adj_vs_SCR <- p.adjust(ks.controls$p.value, method = "BH")
+  adj_vs_B2M <- p.adjust(ks.b2m$p.value, method = "BH")
+
+  # Append results to the data frame
+  ks.stat <- bind_rows(
+    ks.stat,
+    data.frame(
+      genes = gene,
+      pval_vs_SCR = ks.controls$p.value,
+      padj_vs_SCR = adj_vs_SCR,
+      pval_greater_SCR=ks.controls_g[["p.value"]],
+      pval_less_SCR=ks.controls_l[["p.value"]],
+      ks_sign_SCR=ks.controls[["statistic"]][["D"]],
+      ks_greater_SCR=ks.controls_g[["statistic"]][["D^+"]],
+      ks_less_SCR=ks.controls_l[["statistic"]][["D^-"]],
+      
+      pval_vs_B2M = ks.b2m$p.value,
+      padj_vs_B2M = adj_vs_B2M,
+      pval_greater_B2M=ks.b2m_g[["p.value"]],
+      pval_less_B2M=ks.b2m_l[["p.value"]],
+      ks_sign_B2M=ks.b2m[["statistic"]][["D"]],
+      ks_greater_B2m=ks.b2m_g[["statistic"]][["D^+"]],
+      ks_less_B2M=ks.b2m_l[["statistic"]][["D^-"]]
+    )
+  )
+}
+
+# Add additional columns
+ks.stat$sig_vs_SCR <- ks.stat$padj_vs_SCR <= 0.05
+ks.stat$sig_vs_B2M <- ks.stat$padj_vs_B2M <= 0.05
+ks.stat$greater_SCR <- ks.stat$pval_greater_SCR <= 0.05
+ks.stat$less_SCR <- ks.stat$pval_less_SCR <= 0.05
+ks.stat$greater_B2M <- ks.stat$pval_greater_B2M  <= 0.05
+ks.stat$less_B2M <- ks.stat$pval_less_B2M  <= 0.05
+
+ks.stat$k_sign_summary_SCR <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks.stat$greater_SCR & !ks.stat$less_SCR,
+  as.numeric(ks.stat$ks_sign_SCR),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks.stat$greater_SCR & ks.stat$less_SCR,
+    -as.numeric(ks.stat$ks_sign_SCR),  # Return negative of ks_sign
+    ks.stat$ks_sign_SCR  # Otherwise, return 0
+  )
+)
+
+ks.stat$k_sign_summary_B2M <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks.stat$greater_B2M & !ks.stat$less_B2M,
+  as.numeric(ks.stat$ks_sign_B2M),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks.stat$greater_B2M & ks.stat$less_B2M,
+    -as.numeric(ks.stat$ks_sign_B2M),  # Return negative of ks_sign
+    ks.stat$ks_sign_B2M  # Otherwise, return 0
+  )
+)
+
+ks.stat= replace(ks.stat, is.na(ks.stat), "empty")
+
+ks.stat$k_colour_SCR <- ifelse(
+ks.stat$sig_vs_SCR==T,ks.stat$genes,"") 
+
+ks.stat_D6_genes=ks.stat
+write.csv(ks.stat_D6_genes, file= paste0(fname_prefix_csv, "_", "D6_ks.stat_D6_genes.csv"), row.names=T)
+```
+
+#DD12
+
+```{r}
+#calculate stats day 12
+meta=metaD12
+# List of genes
+genes <- c("B2M", "SCR", "CHD7", "GATA4", "KMT2D", "NKX2.5", "SMAD2")
+
+# Initialize an empty data frame to store results
+ks.stat <- data.frame(
+  genes = character(),
+  pval_vs_SCR = numeric(),
+  padj_vs_SCR = numeric(),
+  pval_vs_B2M = numeric(),
+  padj_vs_B2M = numeric(),
+  pval_greater_SCR= numeric(),
+  pval_less_SCR= numeric(),
+  ks_sign_SCR= numeric(),
+  ks_greater_SCR= numeric(),
+  ks_less_SCR= numeric(),
+  pval_greater_B2M= numeric(),
+  pval_less_B2M= numeric(),
+  ks_sign_B2M= numeric(),
+  ks_greater_B2m= numeric(),
+  ks_less_B2M= numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop through genes
+for (gene in genes) {
+  # Subset data for the current gene
+  gene_ecdf <- subset(meta,meta$shRNA_gene == gene)
+  gene_ecdf <- gene_ecdf$pseudotime
+
+  # Subset SCR data
+  SCR_ecdf <- subset(meta, meta$shRNA_gene == "SCR")
+  SCR_ecdf <- SCR_ecdf$pseudotime
+  
+  # Subset B2M data
+  B2M_ecdf <- subset(meta, meta$shRNA_gene == "B2M")
+  B2M_ecdf <- B2M_ecdf$pseudotime
+
+  # Perform ks.test
+  ks.controls <- ks.test(gene_ecdf, SCR_ecdf)
+  ks.controls_g <- ks.test(gene_ecdf, SCR_ecdf,alternative="greater")
+  ks.controls_l <- ks.test(gene_ecdf, SCR_ecdf,alternative="less")
+  
+  ks.b2m <- ks.test(B2M_ecdf, gene_ecdf)
+  ks.b2m_g <- ks.test(B2M_ecdf, gene_ecdf,alternative="greater")
+  ks.b2m_l <- ks.test(B2M_ecdf, gene_ecdf,alternative="less")
+
+  # Calculate adjusted p-values
+  adj_vs_SCR <- p.adjust(ks.controls$p.value, method = "BH")
+  adj_vs_B2M <- p.adjust(ks.b2m$p.value, method = "BH")
+
+  # Append results to the data frame
+  ks.stat <- bind_rows(
+    ks.stat,
+    data.frame(
+      genes = gene,
+      pval_vs_SCR = ks.controls$p.value,
+      padj_vs_SCR = adj_vs_SCR,
+      pval_greater_SCR=ks.controls_g[["p.value"]],
+      pval_less_SCR=ks.controls_l[["p.value"]],
+      ks_sign_SCR=ks.controls[["statistic"]][["D"]],
+      ks_greater_SCR=ks.controls_g[["statistic"]][["D^+"]],
+      ks_less_SCR=ks.controls_l[["statistic"]][["D^-"]],
+      
+      pval_vs_B2M = ks.b2m$p.value,
+      padj_vs_B2M = adj_vs_B2M,
+      pval_greater_B2M=ks.b2m_g[["p.value"]],
+      pval_less_B2M=ks.b2m_l[["p.value"]],
+      ks_sign_B2M=ks.b2m[["statistic"]][["D"]],
+      ks_greater_B2m=ks.b2m_g[["statistic"]][["D^+"]],
+      ks_less_B2M=ks.b2m_l[["statistic"]][["D^-"]]
+    )
+  )
+}
+
+# Add additional columns
+ks.stat$sig_vs_SCR <- ks.stat$padj_vs_SCR <= 0.05
+ks.stat$sig_vs_B2M <- ks.stat$padj_vs_B2M <= 0.05
+ks.stat$greater_SCR <- ks.stat$pval_greater_SCR <= 0.05
+ks.stat$less_SCR <- ks.stat$pval_less_SCR <= 0.05
+ks.stat$greater_B2M <- ks.stat$pval_greater_B2M  <= 0.05
+ks.stat$less_B2M <- ks.stat$pval_less_B2M  <= 0.05
+
+ks.stat$k_sign_summary_SCR <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks.stat$greater_SCR & !ks.stat$less_SCR,
+  as.numeric(ks.stat$ks_sign_SCR),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks.stat$greater_SCR & ks.stat$less_SCR,
+    -as.numeric(ks.stat$ks_sign_SCR),  # Return negative of ks_sign
+    ks.stat$ks_sign_SCR  # Otherwise, return 0
+  )
+)
+
+ks.stat$k_sign_summary_B2M <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks.stat$greater_B2M & !ks.stat$less_B2M,
+  as.numeric(ks.stat$ks_sign_B2M),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks.stat$greater_B2M & ks.stat$less_B2M,
+    -as.numeric(ks.stat$ks_sign_B2M),  # Return negative of ks_sign
+    ks.stat$ks_sign_B2M  # Otherwise, return 0
+  )
+)
+
+ks.stat= replace(ks.stat, is.na(ks.stat), "empty")
+
+ks.stat$k_colour_SCR <- ifelse(
+ks.stat$sig_vs_SCR==T,ks.stat$genes,"") 
+ks.stat_D12_genes=ks.stat
+write.csv(ks.stat_D12_genes, file= paste0(fname_prefix_csv, "_", "D12_ks.stat_D12_genes.csv"), row.names=T)
+
+```
+
+##DD23
+```{r}
+#calculate stats day 23
+meta=metaD23
+
+# List of genes
+genes <- c("B2M", "SCR", "CHD7", "GATA4", "KMT2D", "NKX2.5", "SMAD2")
+
+# Initialize an empty data frame to store results
+ks.stat <- data.frame(
+  genes = character(),
+  pval_vs_SCR = numeric(),
+  padj_vs_SCR = numeric(),
+  pval_vs_B2M = numeric(),
+  padj_vs_B2M = numeric(),
+  pval_greater_SCR= numeric(),
+  pval_less_SCR= numeric(),
+  ks_sign_SCR= numeric(),
+  ks_greater_SCR= numeric(),
+  ks_less_SCR= numeric(),
+  pval_greater_B2M= numeric(),
+  pval_less_B2M= numeric(),
+  ks_sign_B2M= numeric(),
+  ks_greater_B2m= numeric(),
+  ks_less_B2M= numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop through genes
+for (gene in genes) {
+  # Subset data for the current gene
+  gene_ecdf <- subset(meta,meta$shRNA_gene == gene)
+  gene_ecdf <- gene_ecdf$pseudotime
+
+  # Subset SCR data
+  SCR_ecdf <- subset(meta, meta$shRNA_gene == "SCR")
+  SCR_ecdf <- SCR_ecdf$pseudotime
+  
+  # Subset B2M data
+  B2M_ecdf <- subset(meta, meta$shRNA_gene == "B2M")
+  B2M_ecdf <- B2M_ecdf$pseudotime
+
+  # Perform ks.test
+  ks.controls <- ks.test(gene_ecdf, SCR_ecdf)
+  ks.controls_g <- ks.test(gene_ecdf, SCR_ecdf,alternative="greater")
+  ks.controls_l <- ks.test(gene_ecdf, SCR_ecdf,alternative="less")
+  
+  ks.b2m <- ks.test(B2M_ecdf, gene_ecdf)
+  ks.b2m_g <- ks.test(B2M_ecdf, gene_ecdf,alternative="greater")
+  ks.b2m_l <- ks.test(B2M_ecdf, gene_ecdf,alternative="less")
+
+  # Calculate adjusted p-values
+  adj_vs_SCR <- p.adjust(ks.controls$p.value, method = "BH")
+  adj_vs_B2M <- p.adjust(ks.b2m$p.value, method = "BH")
+
+  # Append results to the data frame
+  ks.stat <- bind_rows(
+    ks.stat,
+    data.frame(
+      genes = gene,
+      pval_vs_SCR = ks.controls$p.value,
+      padj_vs_SCR = adj_vs_SCR,
+      pval_greater_SCR=ks.controls_g[["p.value"]],
+      pval_less_SCR=ks.controls_l[["p.value"]],
+      ks_sign_SCR=ks.controls[["statistic"]][["D"]],
+      ks_greater_SCR=ks.controls_g[["statistic"]][["D^+"]],
+      ks_less_SCR=ks.controls_l[["statistic"]][["D^-"]],
+      
+      pval_vs_B2M = ks.b2m$p.value,
+      padj_vs_B2M = adj_vs_B2M,
+      pval_greater_B2M=ks.b2m_g[["p.value"]],
+      pval_less_B2M=ks.b2m_l[["p.value"]],
+      ks_sign_B2M=ks.b2m[["statistic"]][["D"]],
+      ks_greater_B2m=ks.b2m_g[["statistic"]][["D^+"]],
+      ks_less_B2M=ks.b2m_l[["statistic"]][["D^-"]]
+    )
+  )
+}
+
+# Add additional columns
+ks.stat$sig_vs_SCR <- ks.stat$padj_vs_SCR <= 0.05
+ks.stat$sig_vs_B2M <- ks.stat$padj_vs_B2M <= 0.05
+ks.stat$greater_SCR <- ks.stat$pval_greater_SCR <= 0.05
+ks.stat$less_SCR <- ks.stat$pval_less_SCR <= 0.05
+ks.stat$greater_B2M <- ks.stat$pval_greater_B2M  <= 0.05
+ks.stat$less_B2M <- ks.stat$pval_less_B2M  <= 0.05
+
+ks.stat$k_sign_summary_SCR <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks.stat$greater_SCR & !ks.stat$less_SCR,
+  as.numeric(ks.stat$ks_sign_SCR),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks.stat$greater_SCR & ks.stat$less_SCR,
+    -as.numeric(ks.stat$ks_sign_SCR),  # Return negative of ks_sign
+    ks.stat$ks_sign_SCR  # Otherwise, return 0
+  )
+)
+
+ks.stat$k_sign_summary_B2M <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks.stat$greater_B2M & !ks.stat$less_B2M,
+  as.numeric(ks.stat$ks_sign_B2M),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks.stat$greater_B2M & ks.stat$less_B2M,
+    -as.numeric(ks.stat$ks_sign_B2M),  # Return negative of ks_sign
+    ks.stat$ks_sign_B2M  # Otherwise, return 0
+  )
+)
+
+ks.stat= replace(ks.stat, is.na(ks.stat), "empty")
+
+ks.stat$k_colour_SCR <- ifelse(
+ks.stat$sig_vs_SCR==T,ks.stat$genes,"") 
+
+ks.stat_D23_genes=ks.stat
+write.csv(ks.stat_D23_genes, file= paste0(fname_prefix_csv, "_", "D23_ks.stat_D23_genes.csv"), row.names=T)
+
+```
+
+#####make volcano plot
+ks genes
+```{r}
+ks.stat_D6_genes$analysis= "Cardiac Progenitors"
+ks.stat_D12_genes$analysis= "CM day 12"
+ks.stat_D23_genes$analysis= "CM day 23"
+
+ks.genes=rbind(ks.stat_D6_genes,ks.stat_D12_genes,ks.stat_D23_genes)
+
+ks.genes$k_colour_SCR_all <- ifelse(
+ks.genes$sig_vs_SCR==T,ks.genes$analysis,"NS") 
+
+
+ggplot(data=subset(ks.genes,ks.genes$genes!="B2M"&ks.genes$genes!="SCR"&ks.genes$genes!="empty"), aes(x=k_sign_summary_SCR, y=log10(padj_vs_SCR)*-1)) +
+  geom_point(aes(colour = k_colour_SCR_all), size=2)+
+  scale_colour_manual(values=c("#009E73","#D55E00","#CC79A7","grey"))+
+  ggrepel::geom_text_repel(
+    data = subset(ks.genes,ks.genes$genes!="B2M"&ks.genes$genes!="SCR"&ks.genes$genes!="empty"&ks.genes$sig_vs_SCR==T),
+    aes(label = genes),
+    size = 4,
+    #max.overlaps=50,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  geom_hline(yintercept = log10(0.05)*-1,linetype="dotted", color="red")+
+  geom_vline(xintercept = 0,linetype="dotted")+
+  ggtitle("ks test statistics KD genes")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "KS statistic summary",
+    y = "-Log10 adj p-value",
+    color = "Timepoint"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_ks_stats_genes.pdf"),
+       width = 7, height = 4)
+```
+
+
+####Now make the analysis by shRNA
+##pre select shRNA
+
+```{r}
+
+######pre select shRNA
+###use metaD12 and metaD23 with selection of clusters 
+tot_shRNA_D6=as.data.frame(table(metaD6$shRNA_ID))
+colnames(tot_shRNA_D6)=c("shRNA_ID","tot_shRNA_D6")
+tot_shRNA_D6$select_D6=tot_shRNA_D6$tot_shRNA_D6>=70
+
+tot_shRNA_D12=as.data.frame(table(metaD12$shRNA_ID))
+colnames(tot_shRNA_D12)=c("shRNA_ID","tot_shRNA_D12")
+tot_shRNA_D12$select_D12=tot_shRNA_D12$tot_shRNA_D12>=70
+
+tot_shRNA_D23=as.data.frame(table(metaD23$shRNA_ID))
+colnames(tot_shRNA_D23)=c("shRNA_ID","tot_shRNA_D23")
+tot_shRNA=tot_shRNA_D23%>%left_join(tot_shRNA_D6, by="shRNA_ID")%>%left_join(tot_shRNA_D12, by="shRNA_ID")
+
+stat_filename = paste0(fname_prefix_stat, "_tot_freq_cells_by_shRNA_cardio_for_cumulative_freq.csv")
+write.csv(tot_shRNA, stat_filename, quote = F, row.names = T, sep=",")
+
+###add data on meta
+meta_cardio <- replace(meta_cardio, is.na(meta_cardio), "empty")
+meta_cardio$shRNA_polished=recode(meta_cardio$shRNA_ID,"empty"="control",
+                                   "B2M"="control","SCR"="control")
+empty_T=data.frame(shRNA_ID="empty","select_D12"=T)
+t=tot_shRNA%>%dplyr::select(shRNA_ID,select_D12)
+t=rbind(t,empty_T)
+
+meta_cardio=meta_cardio%>%left_join(t,by="shRNA_ID")
+
+metaD6=meta_cardio[meta_cardio$sample_ID=="Cardiac progenitors",]
+metaD6=subset(metaD6,metaD6$select_D12==T)#5971
+metaD12=meta_cardio[meta_cardio$sample_ID=="CM day 12",]#6328
+metaD12=subset(metaD12,metaD12$select_D12==T)#5971
+metaD23=meta_cardio[meta_cardio$sample_ID=="CM day 23",]#2872
+metaD23=subset(metaD23,metaD23$select_D12==T)#2830
+
+meta_shRNA=subset(meta_cardio,meta_cardio$select_D12==T)
+```
+
+####make cumulative plots 
+##shRNA
+```{r}
+gene_names <- c("CHD7", "GATA4", "KMT2D", "NKX2.5", "SMAD2")
+colors <- c("#ff6db6","#b66dff", "darkblue", "darkgreen", "orange", "red")
+shRNA=unique(meta_shRNA$shRNA_ID)
+
+for (gene_name in gene_names) {
+  gene_subset <- subset(meta_shRNA, meta_shRNA$shRNA_gene %in% c("B2M", "SCR", gene_name))
+
+  ggplot(gene_subset, aes(pseudotime, colour =shRNA_ID_unified)) +
+    stat_ecdf(geom = "step") +
+    scale_colour_manual(values = c("grey", colors)) +
+    theme_classic(base_size = 14) +
+    labs(
+      x = "pseudotime",
+      y = "Cumulative frequency",
+      color = "gene"  # Legend title
+    ) +
+    ggtitle(paste("Cumulative frequency", gene_name, "clones")) +
+    facet_grid(~sample_ID)
+
+  ggsave(
+    filename = paste0(fname_prefix_cumulative, "_", "cumulative_frequency_shRNA_", gene_name, ".png"),
+    width = 12, height = 8
+  )
+}
+```
+ 
+######ks statistics
+#####analysis for shRNA
+
+```{r}
+#calculate stats day 6
+meta=metaD6
+# List of genes
+
+genes=unique(meta$shRNA_ID_unified)
+
+# Initialize an empty data frame to store results
+ks.stat <- data.frame(
+  genes = character(),
+  pval_vs_SCR = numeric(),
+  padj_vs_SCR = numeric(),
+  pval_vs_B2M = numeric(),
+  padj_vs_B2M = numeric(),
+  pval_greater_SCR= numeric(),
+  pval_less_SCR= numeric(),
+  ks_sign_SCR= numeric(),
+  ks_greater_SCR= numeric(),
+  ks_less_SCR= numeric(),
+  pval_greater_B2M= numeric(),
+  pval_less_B2M= numeric(),
+  ks_sign_B2M= numeric(),
+  ks_greater_B2m= numeric(),
+  ks_less_B2M= numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop through genes
+for (gene in genes) {
+  # Subset data for the current gene
+  gene_ecdf <- subset(meta, meta$shRNA_ID_unified == gene)
+  gene_ecdf <- gene_ecdf$pseudotime
+
+  # Subset SCR data
+  SCR_ecdf <- subset(meta, meta$shRNA_gene == "SCR")
+  SCR_ecdf <- SCR_ecdf$pseudotime
+  B2M_ecdf <- subset(meta, meta$shRNA_gene == "B2M")
+  B2M_ecdf <- B2M_ecdf$pseudotime
+
+  # Perform ks.test
+  ks.controls <- ks.test(gene_ecdf, SCR_ecdf)
+  ks.controls_g <- ks.test(gene_ecdf, SCR_ecdf,alternative="greater")
+  ks.controls_l <- ks.test(gene_ecdf, SCR_ecdf,alternative="less")
+  
+  ks.b2m <- ks.test(B2M_ecdf, gene_ecdf)
+  ks.b2m_g <- ks.test(B2M_ecdf, gene_ecdf,alternative="greater")
+  ks.b2m_l <- ks.test(B2M_ecdf, gene_ecdf,alternative="less")
+
+  # Calculate adjusted p-values
+  adj_vs_SCR <- p.adjust(ks.controls$p.value, method = "BH")
+  adj_vs_B2M <- p.adjust(ks.b2m$p.value, method = "BH")
+
+  # Append results to the data frame
+  ks.stat <- bind_rows(
+    ks.stat,
+    data.frame(
+      genes = gene,
+      pval_vs_SCR = ks.controls$p.value,
+      padj_vs_SCR = adj_vs_SCR,
+      pval_greater_SCR=ks.controls_g[["p.value"]],
+      pval_less_SCR=ks.controls_l[["p.value"]],
+      ks_sign_SCR=ks.controls[["statistic"]][["D"]],
+      ks_greater_SCR=ks.controls_g[["statistic"]][["D^+"]],
+      ks_less_SCR=ks.controls_l[["statistic"]][["D^-"]],
+      
+      pval_vs_B2M = ks.b2m$p.value,
+      padj_vs_B2M = adj_vs_B2M,
+      pval_greater_B2M=ks.b2m_g[["p.value"]],
+      pval_less_B2M=ks.b2m_l[["p.value"]],
+      ks_sign_B2M=ks.b2m[["statistic"]][["D"]],
+      ks_greater_B2m=ks.b2m_g[["statistic"]][["D^+"]],
+      ks_less_B2M=ks.b2m_l[["statistic"]][["D^-"]]
+    )
+  )
+}
+
+# Add additional columns
+ks.stat$sig_vs_SCR <- ks.stat$padj_vs_SCR <= 0.05
+ks.stat$sig_vs_B2M <- ks.stat$padj_vs_B2M <= 0.05
+ks.stat$greater_SCR <- ks.stat$pval_greater_SCR <= 0.05
+ks.stat$less_SCR <- ks.stat$pval_less_SCR <= 0.05
+ks.stat$greater_B2M <- ks.stat$pval_greater_B2M  <= 0.05
+ks.stat$less_B2M <- ks.stat$pval_less_B2M  <= 0.05
+
+ks.stat$k_sign_summary_SCR <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks.stat$greater_SCR & !ks.stat$less_SCR,
+  as.numeric(ks.stat$ks_sign_SCR),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks.stat$greater_SCR & ks.stat$less_SCR,
+    -as.numeric(ks.stat$ks_sign_SCR),  # Return negative of ks_sign
+    ks.stat$ks_sign_SCR  # Otherwise, return 0
+  )
+)
+
+ks.stat$k_sign_summary_B2M <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks.stat$greater_B2M & !ks.stat$less_B2M,
+  as.numeric(ks.stat$ks_sign_B2M),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks.stat$greater_B2M & ks.stat$less_B2M,
+    -as.numeric(ks.stat$ks_sign_B2M),  # Return negative of ks_sign
+    ks.stat$ks_sign_B2M  # Otherwise, return 0
+  )
+)
+
+ks.stat= replace(ks.stat, is.na(ks.stat), "empty")
+
+ks.stat=ks.stat%>%dplyr::rename(shRNA_ID_unified=genes)
+ks.stat=ks.stat%>%left_join(ID_shRNA, by="shRNA_ID_unified")
+
+ks.stat$k_colour_SCR <- ifelse(
+ks.stat$sig_vs_SCR==T,ks.stat$shRNA_label,"") 
+
+ks.stat$k_colour_palette <- ifelse(
+ks.stat$sig_vs_SCR==T,ks.stat$hex,"grey") 
+
+ks.stat_D6_shRNA=ks.stat
+
+write.csv(ks.stat_D6_shRNA, file= paste0(fname_prefix_csv, "_", "D6_ks.stat_D12_shRNA.csv"), row.names=T)
+
+#calculate stats day 12
+meta=metaD12
+# List of genes
+
+genes=unique(meta$shRNA_ID_unified)
+
+# Initialize an empty data frame to store results
+ks.stat <- data.frame(
+  genes = character(),
+  pval_vs_SCR = numeric(),
+  padj_vs_SCR = numeric(),
+  pval_vs_B2M = numeric(),
+  padj_vs_B2M = numeric(),
+  pval_greater_SCR= numeric(),
+  pval_less_SCR= numeric(),
+  ks_sign_SCR= numeric(),
+  ks_greater_SCR= numeric(),
+  ks_less_SCR= numeric(),
+  pval_greater_B2M= numeric(),
+  pval_less_B2M= numeric(),
+  ks_sign_B2M= numeric(),
+  ks_greater_B2m= numeric(),
+  ks_less_B2M= numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop through genes
+for (gene in genes) {
+  # Subset data for the current gene
+  gene_ecdf <- subset(meta, meta$shRNA_ID_unified == gene)
+  gene_ecdf <- gene_ecdf$pseudotime
+
+  # Subset SCR data
+  SCR_ecdf <- subset(meta, meta$shRNA_gene == "SCR")
+  SCR_ecdf <- SCR_ecdf$pseudotime
+  B2M_ecdf <- subset(meta, meta$shRNA_gene == "B2M")
+  B2M_ecdf <- B2M_ecdf$pseudotime
+
+  # Perform ks.test
+  ks.controls <- ks.test(gene_ecdf, SCR_ecdf)
+  ks.controls_g <- ks.test(gene_ecdf, SCR_ecdf,alternative="greater")
+  ks.controls_l <- ks.test(gene_ecdf, SCR_ecdf,alternative="less")
+  
+  ks.b2m <- ks.test(B2M_ecdf, gene_ecdf)
+  ks.b2m_g <- ks.test(B2M_ecdf, gene_ecdf,alternative="greater")
+  ks.b2m_l <- ks.test(B2M_ecdf, gene_ecdf,alternative="less")
+
+  # Calculate adjusted p-values
+  adj_vs_SCR <- p.adjust(ks.controls$p.value, method = "BH")
+  adj_vs_B2M <- p.adjust(ks.b2m$p.value, method = "BH")
+
+  # Append results to the data frame
+  ks.stat <- bind_rows(
+    ks.stat,
+    data.frame(
+      genes = gene,
+      pval_vs_SCR = ks.controls$p.value,
+      padj_vs_SCR = adj_vs_SCR,
+      pval_greater_SCR=ks.controls_g[["p.value"]],
+      pval_less_SCR=ks.controls_l[["p.value"]],
+      ks_sign_SCR=ks.controls[["statistic"]][["D"]],
+      ks_greater_SCR=ks.controls_g[["statistic"]][["D^+"]],
+      ks_less_SCR=ks.controls_l[["statistic"]][["D^-"]],
+      
+      pval_vs_B2M = ks.b2m$p.value,
+      padj_vs_B2M = adj_vs_B2M,
+      pval_greater_B2M=ks.b2m_g[["p.value"]],
+      pval_less_B2M=ks.b2m_l[["p.value"]],
+      ks_sign_B2M=ks.b2m[["statistic"]][["D"]],
+      ks_greater_B2m=ks.b2m_g[["statistic"]][["D^+"]],
+      ks_less_B2M=ks.b2m_l[["statistic"]][["D^-"]]
+    )
+  )
+}
+
+# Add additional columns
+ks.stat$sig_vs_SCR <- ks.stat$padj_vs_SCR <= 0.05
+ks.stat$sig_vs_B2M <- ks.stat$padj_vs_B2M <= 0.05
+ks.stat$greater_SCR <- ks.stat$pval_greater_SCR <= 0.05
+ks.stat$less_SCR <- ks.stat$pval_less_SCR <= 0.05
+ks.stat$greater_B2M <- ks.stat$pval_greater_B2M  <= 0.05
+ks.stat$less_B2M <- ks.stat$pval_less_B2M  <= 0.05
+
+ks.stat$k_sign_summary_SCR <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks.stat$greater_SCR & !ks.stat$less_SCR,
+  as.numeric(ks.stat$ks_sign_SCR),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks.stat$greater_SCR & ks.stat$less_SCR,
+    -as.numeric(ks.stat$ks_sign_SCR),  # Return negative of ks_sign
+    ks.stat$ks_sign_SCR  # Otherwise, return 0
+  )
+)
+
+ks.stat$k_sign_summary_B2M <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks.stat$greater_B2M & !ks.stat$less_B2M,
+  as.numeric(ks.stat$ks_sign_B2M),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks.stat$greater_B2M & ks.stat$less_B2M,
+    -as.numeric(ks.stat$ks_sign_B2M),  # Return negative of ks_sign
+    ks.stat$ks_sign_B2M  # Otherwise, return 0
+  )
+)
+
+ks.stat= replace(ks.stat, is.na(ks.stat), "empty")
+
+ks.stat= replace(ks.stat, is.na(ks.stat), "empty")
+
+ks.stat=ks.stat%>%dplyr::rename(shRNA_ID_unified=genes)
+ks.stat=ks.stat%>%left_join(ID_shRNA, by="shRNA_ID_unified")
+
+ks.stat$k_colour_SCR <- ifelse(
+ks.stat$sig_vs_SCR==T,ks.stat$shRNA_label,"") 
+
+ks.stat$k_colour_palette <- ifelse(
+ks.stat$sig_vs_SCR==T,ks.stat$hex,"grey") 
+
+ks.stat_D12_shRNA=ks.stat
+write.csv(ks.stat_D12_shRNA, file= paste0(fname_prefix_csv, "_", "D12_ks.stat_D12_shRNA.csv"), row.names=T)
+
+#calculate stats day 23
+meta=metaD23
+# List of genes
+
+genes=unique(meta$shRNA_ID_unified)
+
+# Initialize an empty data frame to store results
+ks.stat <- data.frame(
+  genes = character(),
+  pval_vs_SCR = numeric(),
+  padj_vs_SCR = numeric(),
+  pval_vs_B2M = numeric(),
+  padj_vs_B2M = numeric(),
+  pval_greater_SCR= numeric(),
+  pval_less_SCR= numeric(),
+  ks_sign_SCR= numeric(),
+  ks_greater_SCR= numeric(),
+  ks_less_SCR= numeric(),
+  pval_greater_B2M= numeric(),
+  pval_less_B2M= numeric(),
+  ks_sign_B2M= numeric(),
+  ks_greater_B2m= numeric(),
+  ks_less_B2M= numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop through genes
+for (gene in genes) {
+  # Subset data for the current gene
+  gene_ecdf <- subset(meta, meta$shRNA_ID_unified == gene)
+  gene_ecdf <- gene_ecdf$pseudotime
+
+  # Subset SCR data
+  SCR_ecdf <- subset(meta, meta$shRNA_gene == "SCR")
+  SCR_ecdf <- SCR_ecdf$pseudotime
+  B2M_ecdf <- subset(meta, meta$shRNA_gene == "B2M")
+  B2M_ecdf <- B2M_ecdf$pseudotime
+
+  # Perform ks.test
+  ks.controls <- ks.test(gene_ecdf, SCR_ecdf)
+  ks.controls_g <- ks.test(gene_ecdf, SCR_ecdf,alternative="greater")
+  ks.controls_l <- ks.test(gene_ecdf, SCR_ecdf,alternative="less")
+  
+  ks.b2m <- ks.test(B2M_ecdf, gene_ecdf)
+  ks.b2m_g <- ks.test(B2M_ecdf, gene_ecdf,alternative="greater")
+  ks.b2m_l <- ks.test(B2M_ecdf, gene_ecdf,alternative="less")
+
+  # Calculate adjusted p-values
+  adj_vs_SCR <- p.adjust(ks.controls$p.value, method = "BH")
+  adj_vs_B2M <- p.adjust(ks.b2m$p.value, method = "BH")
+
+  # Append results to the data frame
+  ks.stat <- bind_rows(
+    ks.stat,
+    data.frame(
+      genes = gene,
+      pval_vs_SCR = ks.controls$p.value,
+      padj_vs_SCR = adj_vs_SCR,
+      pval_greater_SCR=ks.controls_g[["p.value"]],
+      pval_less_SCR=ks.controls_l[["p.value"]],
+      ks_sign_SCR=ks.controls[["statistic"]][["D"]],
+      ks_greater_SCR=ks.controls_g[["statistic"]][["D^+"]],
+      ks_less_SCR=ks.controls_l[["statistic"]][["D^-"]],
+      
+      pval_vs_B2M = ks.b2m$p.value,
+      padj_vs_B2M = adj_vs_B2M,
+      pval_greater_B2M=ks.b2m_g[["p.value"]],
+      pval_less_B2M=ks.b2m_l[["p.value"]],
+      ks_sign_B2M=ks.b2m[["statistic"]][["D"]],
+      ks_greater_B2m=ks.b2m_g[["statistic"]][["D^+"]],
+      ks_less_B2M=ks.b2m_l[["statistic"]][["D^-"]]
+    )
+  )
+}
+
+# Add additional columns
+ks.stat$sig_vs_SCR <- ks.stat$padj_vs_SCR <= 0.05
+ks.stat$sig_vs_B2M <- ks.stat$padj_vs_B2M <= 0.05
+ks.stat$greater_SCR <- ks.stat$pval_greater_SCR <= 0.05
+ks.stat$less_SCR <- ks.stat$pval_less_SCR <= 0.05
+ks.stat$greater_B2M <- ks.stat$pval_greater_B2M  <= 0.05
+ks.stat$less_B2M <- ks.stat$pval_less_B2M  <= 0.05
+
+ks.stat$k_sign_summary_SCR <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks.stat$greater_SCR & !ks.stat$less_SCR,
+  as.numeric(ks.stat$ks_sign_SCR),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks.stat$greater_SCR & ks.stat$less_SCR,
+    -as.numeric(ks.stat$ks_sign_SCR),  # Return negative of ks_sign
+    ks.stat$ks_sign_SCR  # Otherwise, return 0
+  )
+)
+
+ks.stat$k_sign_summary_B2M <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks.stat$greater_B2M & !ks.stat$less_B2M,
+  as.numeric(ks.stat$ks_sign_B2M),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks.stat$greater_B2M & ks.stat$less_B2M,
+    -as.numeric(ks.stat$ks_sign_B2M),  # Return negative of ks_sign
+    ks.stat$ks_sign_B2M  # Otherwise, return 0
+  )
+)
+
+ks.stat= replace(ks.stat, is.na(ks.stat), "empty")
+
+ks.stat= replace(ks.stat, is.na(ks.stat), "empty")
+
+ks.stat=ks.stat%>%dplyr::rename(shRNA_ID_unified=genes)
+ks.stat=ks.stat%>%left_join(ID_shRNA, by="shRNA_ID_unified")
+
+ks.stat$k_colour_SCR <- ifelse(
+ks.stat$sig_vs_SCR==T,ks.stat$shRNA_label,"") 
+
+ks.stat$k_colour_palette <- ifelse(
+ks.stat$sig_vs_SCR==T,ks.stat$hex,"grey") 
+
+ks.stat_D23_shRNA=ks.stat
+write.csv(ks.stat_D23_shRNA, file= paste0(fname_prefix_csv, "_", "D23_ks.stat_D23_shRNA.csv"), row.names=T)
+```
+
+#####make volcano plots
+###shRNA
+
+```{r}
+ks.stat_D6_shRNA$analysis= "Cardiac Progenitors"
+ks.stat_D12_shRNA$analysis= "CM day 12"
+ks.stat_D23_shRNA$analysis= "CM day 23"
+
+ks.shRNA=rbind(ks.stat_D6_shRNA,ks.stat_D12_shRNA,ks.stat_D23_shRNA)
+
+ks.shRNA$k_colour_SCR_all <- ifelse(
+ks.shRNA$sig_vs_SCR==T&ks.shRNA$k_sign_summary_SCR!=0,ks.shRNA$analysis,"NS") 
+
+
+ggplot(data=subset(ks.shRNA,ks.shRNA$shRNA!="B2M"&ks.shRNA$shRNA!="SCR"&ks.shRNA$shRNA!="empty"), aes(x=k_sign_summary_SCR, y=log10(padj_vs_SCR)*-1)) +
+  geom_point(aes(colour = k_colour_SCR_all), size=2) +
+  scale_colour_manual(values=c("#009E73","#D55E00","#CC79A7","grey"))+
+  ggrepel::geom_text_repel(
+    data = subset(ks.shRNA, ks.shRNA$shRNA!="B2M"&ks.shRNA$shRNA!="SCR"&ks.shRNA$shRNA!="empty"&ks.shRNA$sig_vs_SCR==T&ks.shRNA$k_sign_summary_SCR!=0),
+    aes(label = k_colour_SCR),
+    size = 4,
+    max.overlaps=50,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  geom_hline(yintercept = log10(0.05)*-1,linetype="dotted", color="red")+
+  geom_vline(xintercept = 0,linetype="dotted")+
+  ggtitle("ks test statistics KD shRNA")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "KS statistic summary",
+    y = "-Log10 adj p-value",
+    color = "Timepoint"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_ks_stats_shRNA.pdf"),
+       width = 7, height = 4)
+```
+
+
+##pre select clones 
+
+```{r}
+
+######pre select clones
+###use metaD12 and metaD23 with selection of clusters 
+metaD6=meta_cardio[meta_cardio$sample_ID=="Cardiac progenitors",]#6328
+tot_cl_D6=as.data.frame(table(metaD6$clone))
+colnames(tot_cl_D6)=c("clone","tot_cl_D6")
+tot_cl_D6$select_cl_D6=tot_cl_D6$tot_cl_D6>=70
+
+metaD12=meta_cardio[meta_cardio$sample_ID=="CM day 12",]#6328
+tot_cl_D12=as.data.frame(table(metaD12$clone))
+colnames(tot_cl_D12)=c("clone","tot_cl_D12")
+tot_cl_D12$select_cl_D12=tot_cl_D12$tot_cl_D12>=70
+
+metaD23=meta_cardio[meta_cardio$sample_ID=="CM day 23",]#2872
+tot_cl_D23=as.data.frame(table(metaD23$clone))
+colnames(tot_cl_D23)=c("clone","tot_cl_D23")
+tot_cl_D23$select_cl_D23=tot_cl_D23$tot_cl_D23>=70
+tot_clone=tot_cl_D6%>%left_join(tot_cl_D12, by="clone")%>%left_join(tot_cl_D23, by="clone")
+tot_clone=tot_clone %>%
+  mutate_at(vars(tot_cl_D23), ~replace_na(., 0))
+tot_clone=tot_clone %>%
+  mutate_at(vars(select_cl_D23), ~replace_na(., F))
+
+stat_filename = paste0(fname_prefix_stat, "_tot_freq_cells_by_clone_cardio_for_cumulative_freq.csv")
+write.csv(tot_shRNA, stat_filename, quote = F, row.names = T, sep=",")
+
+###add data on meta
+
+t=tot_clone%>%select(clone,select_cl_D6)
+
+meta_cardio=meta_cardio%>%left_join(t,by="clone")#9020
+
+metaD6=meta_cardio[meta_cardio$sample_ID=="Cardiac progenitors",]#6148
+metaD12=meta_cardio[meta_cardio$sample_ID=="CM day 12",]#6148
+metaD23=meta_cardio[meta_cardio$sample_ID=="CM day 23",]#2872
+
+metaD6=subset(metaD6,metaD6$select_cl_D6==T)#5547
+metaD12=subset(metaD12,metaD12$select_cl_D6==T)#5547
+metaD23=subset(metaD23,metaD23$select_cl_D6==T)#2701
+
+meta_clone=subset(meta_cardio,meta_cardio$select_cl_D6==T)#
+
+```
+
+######make cumulative plot by clone
+
+```{r}
+gene_names <- c("CHD7", "GATA4", "KMT2D", "NKX2.5", "SMAD2")
+colors <- c("#ff6db6","#b66dff", "darkblue", "darkgreen", "orange", "red")
+clone=unique(meta_cardio$clone)
+
+for (gene_name in gene_names) {
+  gene_subset <- subset(meta_clone, meta_clone$shRNA_gene %in% c("B2M", "SCR", gene_name))
+
+  ggplot(gene_subset, aes(pseudotime, colour =clone)) +
+    stat_ecdf(geom = "step") +
+    scale_colour_manual(values = c("grey", colors)) +
+    theme_classic(base_size = 14) +
+    labs(
+      x = "pseudotime",
+      y = "Cumulative frequency",
+      color = "gene"  # Legend title
+    ) +
+    ggtitle(paste("Cumulative frequency", gene_name, "barcoded clones")) +
+    facet_grid(~sample_ID)
+
+  ggsave(
+    filename = paste0(fname_prefix_cumulative, "_", "cumulative_frequency_clones_", gene_name, ".png"),
+    width = 12, height = 8
+  )
+}
+```
+
+
+#build clone nomenclature
+```{r}
+meta=as.data.frame(cds@colData@listData)
+cl_ID=read_excel(paste0(fname_scratch,"/clones.xlsx"))
+
+cl_ID$clone_short=paste0("cl",cl_ID$cl_ID," ",cl_ID$shRNA_ID_unified)
+
+```
+
+
+######ks statistics
+#####analysis for clones
+
+```{r}
+
+#calculate stats day 6
+meta=metaD6
+# List of genes
+
+genes=unique(meta$clone)
+
+# Initialize an empty data frame to store results
+ks.stat <- data.frame(
+  genes = character(),
+  pval_vs_SCR = numeric(),
+  padj_vs_SCR = numeric(),
+  pval_vs_B2M = numeric(),
+  padj_vs_B2M = numeric(),
+  pval_greater_SCR= numeric(),
+  pval_less_SCR= numeric(),
+  ks_sign_SCR= numeric(),
+  ks_greater_SCR= numeric(),
+  ks_less_SCR= numeric(),
+  pval_greater_B2M= numeric(),
+  pval_less_B2M= numeric(),
+  ks_sign_B2M= numeric(),
+  ks_greater_B2m= numeric(),
+  ks_less_B2M= numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop through genes
+for (gene in genes) {
+  # Subset data for the current gene
+  gene_ecdf <- subset(meta, meta$clone == gene)
+  gene_ecdf <- gene_ecdf$pseudotime
+
+  # Subset SCR data
+  SCR_ecdf <- subset(meta, meta$shRNA_gene == "SCR")
+  SCR_ecdf <- SCR_ecdf$pseudotime
+   # Subset B2M data
+  B2M_ecdf <- subset(meta, meta$shRNA_gene == "B2M")
+  B2M_ecdf <- B2M_ecdf$pseudotime
+
+  # Perform ks.test
+  ks.controls <- ks.test(gene_ecdf, SCR_ecdf)
+  ks.controls_g <- ks.test(gene_ecdf, SCR_ecdf,alternative="greater")
+  ks.controls_l <- ks.test(gene_ecdf, SCR_ecdf,alternative="less")
+  
+  ks.b2m <- ks.test(B2M_ecdf, gene_ecdf)
+  ks.b2m_g <- ks.test(B2M_ecdf, gene_ecdf,alternative="greater")
+  ks.b2m_l <- ks.test(B2M_ecdf, gene_ecdf,alternative="less")
+
+  # Calculate adjusted p-values
+  adj_vs_SCR <- p.adjust(ks.controls$p.value, method = "BH")
+  adj_vs_B2M <- p.adjust(ks.b2m$p.value, method = "BH")
+
+  # Append results to the data frame
+  ks.stat <- bind_rows(
+    ks.stat,
+    data.frame(
+      genes = gene,
+      pval_vs_SCR = ks.controls$p.value,
+      padj_vs_SCR = adj_vs_SCR,
+      pval_greater_SCR=ks.controls_g[["p.value"]],
+      pval_less_SCR=ks.controls_l[["p.value"]],
+      ks_sign_SCR=ks.controls[["statistic"]][["D"]],
+      ks_greater_SCR=ks.controls_g[["statistic"]][["D^+"]],
+      ks_less_SCR=ks.controls_l[["statistic"]][["D^-"]],
+      
+      pval_vs_B2M = ks.b2m$p.value,
+      padj_vs_B2M = adj_vs_B2M,
+      pval_greater_B2M=ks.b2m_g[["p.value"]],
+      pval_less_B2M=ks.b2m_l[["p.value"]],
+      ks_sign_B2M=ks.b2m[["statistic"]][["D"]],
+      ks_greater_B2m=ks.b2m_g[["statistic"]][["D^+"]],
+      ks_less_B2M=ks.b2m_l[["statistic"]][["D^-"]]
+    )
+  )
+}
+
+# Add additional columns
+ks.stat$sig_vs_SCR <- ks.stat$padj_vs_SCR <= 0.05
+ks.stat$sig_vs_B2M <- ks.stat$padj_vs_B2M <= 0.05
+ks.stat$greater_SCR <- ks.stat$pval_greater_SCR <= 0.05
+ks.stat$less_SCR <- ks.stat$pval_less_SCR <= 0.05
+ks.stat$greater_B2M <- ks.stat$pval_greater_B2M  <= 0.05
+ks.stat$less_B2M <- ks.stat$pval_less_B2M  <= 0.05
+
+ks.stat$k_sign_summary_SCR <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks.stat$greater_SCR & !ks.stat$less_SCR,
+  as.numeric(ks.stat$ks_sign_SCR),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks.stat$greater_SCR & ks.stat$less_SCR,
+    -as.numeric(ks.stat$ks_sign_SCR),  # Return negative of ks_sign
+    ks.stat$ks_sign_SCR  # Otherwise, return 0
+  )
+)
+
+ks.stat$k_sign_summary_B2M <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks.stat$greater_B2M & !ks.stat$less_B2M,
+  as.numeric(ks.stat$ks_sign_B2M),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks.stat$greater_B2M & ks.stat$less_B2M,
+    -as.numeric(ks.stat$ks_sign_B2M),  # Return negative of ks_sign
+    ks.stat$ks_sign_B2M  # Otherwise, return 0
+  )
+)
+ks.stat=ks.stat%>%dplyr::rename(clone=genes)
+ks.stat=ks.stat%>%left_join(cl_ID,by="clone")
+ks.stat= replace(ks.stat, is.na(ks.stat), "empty")
+
+ks.stat$k_colour_SCR <- ifelse(
+  ks.stat$sig_vs_SCR==T,ks.stat$clone_short,"") 
+
+ks.stat_D6_clones=ks.stat
+write.csv(ks.stat_D6_clones, file= paste0(fname_prefix_csv, "_", "D6_ks.stat_D6_clones.csv"), row.names=T)
+
+#calculate stats day 12
+meta=metaD12
+# List of genes
+
+genes=unique(meta$clone)
+
+# Initialize an empty data frame to store results
+ks.stat <- data.frame(
+  genes = character(),
+  pval_vs_SCR = numeric(),
+  padj_vs_SCR = numeric(),
+  pval_vs_B2M = numeric(),
+  padj_vs_B2M = numeric(),
+  pval_greater_SCR= numeric(),
+  pval_less_SCR= numeric(),
+  ks_sign_SCR= numeric(),
+  ks_greater_SCR= numeric(),
+  ks_less_SCR= numeric(),
+  pval_greater_B2M= numeric(),
+  pval_less_B2M= numeric(),
+  ks_sign_B2M= numeric(),
+  ks_greater_B2m= numeric(),
+  ks_less_B2M= numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop through genes
+for (gene in genes) {
+  # Subset data for the current gene
+  gene_ecdf <- subset(meta, meta$clone == gene)
+  gene_ecdf <- gene_ecdf$pseudotime
+
+  # Subset SCR data
+  SCR_ecdf <- subset(meta, meta$shRNA_gene == "SCR")
+  SCR_ecdf <- SCR_ecdf$pseudotime
+   # Subset B2M data
+  B2M_ecdf <- subset(meta, meta$shRNA_gene == "B2M")
+  B2M_ecdf <- B2M_ecdf$pseudotime
+
+  # Perform ks.test
+  ks.controls <- ks.test(gene_ecdf, SCR_ecdf)
+  ks.controls_g <- ks.test(gene_ecdf, SCR_ecdf,alternative="greater")
+  ks.controls_l <- ks.test(gene_ecdf, SCR_ecdf,alternative="less")
+  
+  ks.b2m <- ks.test(B2M_ecdf, gene_ecdf)
+  ks.b2m_g <- ks.test(B2M_ecdf, gene_ecdf,alternative="greater")
+  ks.b2m_l <- ks.test(B2M_ecdf, gene_ecdf,alternative="less")
+
+  # Calculate adjusted p-values
+  adj_vs_SCR <- p.adjust(ks.controls$p.value, method = "BH")
+  adj_vs_B2M <- p.adjust(ks.b2m$p.value, method = "BH")
+
+  # Append results to the data frame
+  ks.stat <- bind_rows(
+    ks.stat,
+    data.frame(
+      genes = gene,
+      pval_vs_SCR = ks.controls$p.value,
+      padj_vs_SCR = adj_vs_SCR,
+      pval_greater_SCR=ks.controls_g[["p.value"]],
+      pval_less_SCR=ks.controls_l[["p.value"]],
+      ks_sign_SCR=ks.controls[["statistic"]][["D"]],
+      ks_greater_SCR=ks.controls_g[["statistic"]][["D^+"]],
+      ks_less_SCR=ks.controls_l[["statistic"]][["D^-"]],
+      
+      pval_vs_B2M = ks.b2m$p.value,
+      padj_vs_B2M = adj_vs_B2M,
+      pval_greater_B2M=ks.b2m_g[["p.value"]],
+      pval_less_B2M=ks.b2m_l[["p.value"]],
+      ks_sign_B2M=ks.b2m[["statistic"]][["D"]],
+      ks_greater_B2m=ks.b2m_g[["statistic"]][["D^+"]],
+      ks_less_B2M=ks.b2m_l[["statistic"]][["D^-"]]
+    )
+  )
+}
+
+# Add additional columns
+ks.stat$sig_vs_SCR <- ks.stat$padj_vs_SCR <= 0.05
+ks.stat$sig_vs_B2M <- ks.stat$padj_vs_B2M <= 0.05
+ks.stat$greater_SCR <- ks.stat$pval_greater_SCR <= 0.05
+ks.stat$less_SCR <- ks.stat$pval_less_SCR <= 0.05
+ks.stat$greater_B2M <- ks.stat$pval_greater_B2M  <= 0.05
+ks.stat$less_B2M <- ks.stat$pval_less_B2M  <= 0.05
+
+ks.stat$k_sign_summary_SCR <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks.stat$greater_SCR & !ks.stat$less_SCR,
+  as.numeric(ks.stat$ks_sign_SCR),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks.stat$greater_SCR & ks.stat$less_SCR,
+    -as.numeric(ks.stat$ks_sign_SCR),  # Return negative of ks_sign
+    ks.stat$ks_sign_SCR  # Otherwise, return 0
+  )
+)
+
+ks.stat$k_sign_summary_B2M <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks.stat$greater_B2M & !ks.stat$less_B2M,
+  as.numeric(ks.stat$ks_sign_B2M),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks.stat$greater_B2M & ks.stat$less_B2M,
+    -as.numeric(ks.stat$ks_sign_B2M),  # Return negative of ks_sign
+    ks.stat$ks_sign_B2M  # Otherwise, return 0
+  )
+)
+
+ks.stat=ks.stat%>%dplyr::rename(clone=genes)
+ks.stat=ks.stat%>%left_join(cl_ID,by="clone")
+ks.stat= replace(ks.stat, is.na(ks.stat), "empty")
+
+ks.stat$k_colour_SCR <- ifelse(
+ks.stat$sig_vs_SCR==T,ks.stat$clone_short,"") 
+
+ks.stat_D12_clones=ks.stat
+write.csv(ks.stat_D12_clones, file= paste0(fname_prefix_csv, "_", "D12_ks.stat_D12_clones.csv"), row.names=T)
+
+#calculate stats day 23
+meta=metaD23
+# List of genes
+
+genes=unique(meta$clone)
+
+# Initialize an empty data frame to store results
+ks.stat <- data.frame(
+  genes = character(),
+  pval_vs_SCR = numeric(),
+  padj_vs_SCR = numeric(),
+  pval_vs_B2M = numeric(),
+  padj_vs_B2M = numeric(),
+  pval_greater_SCR= numeric(),
+  pval_less_SCR= numeric(),
+  ks_sign_SCR= numeric(),
+  ks_greater_SCR= numeric(),
+  ks_less_SCR= numeric(),
+  pval_greater_B2M= numeric(),
+  pval_less_B2M= numeric(),
+  ks_sign_B2M= numeric(),
+  ks_greater_B2m= numeric(),
+  ks_less_B2M= numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop through genes
+for (gene in genes) {
+  # Subset data for the current gene
+  gene_ecdf <- subset(meta, meta$clone == gene)
+  gene_ecdf <- gene_ecdf$pseudotime
+
+  # Subset SCR data
+  SCR_ecdf <- subset(meta, meta$shRNA_gene == "SCR")
+  SCR_ecdf <- SCR_ecdf$pseudotime
+   # Subset B2M data
+  B2M_ecdf <- subset(meta, meta$shRNA_gene == "B2M")
+  B2M_ecdf <- B2M_ecdf$pseudotime
+
+  # Perform ks.test
+  ks.controls <- ks.test(gene_ecdf, SCR_ecdf)
+  ks.controls_g <- ks.test(gene_ecdf, SCR_ecdf,alternative="greater")
+  ks.controls_l <- ks.test(gene_ecdf, SCR_ecdf,alternative="less")
+  
+  ks.b2m <- ks.test(B2M_ecdf, gene_ecdf)
+  ks.b2m_g <- ks.test(B2M_ecdf, gene_ecdf,alternative="greater")
+  ks.b2m_l <- ks.test(B2M_ecdf, gene_ecdf,alternative="less")
+
+  # Calculate adjusted p-values
+  adj_vs_SCR <- p.adjust(ks.controls$p.value, method = "BH")
+  adj_vs_B2M <- p.adjust(ks.b2m$p.value, method = "BH")
+
+  # Append results to the data frame
+  ks.stat <- bind_rows(
+    ks.stat,
+    data.frame(
+      genes = gene,
+      pval_vs_SCR = ks.controls$p.value,
+      padj_vs_SCR = adj_vs_SCR,
+      pval_greater_SCR=ks.controls_g[["p.value"]],
+      pval_less_SCR=ks.controls_l[["p.value"]],
+      ks_sign_SCR=ks.controls[["statistic"]][["D"]],
+      ks_greater_SCR=ks.controls_g[["statistic"]][["D^+"]],
+      ks_less_SCR=ks.controls_l[["statistic"]][["D^-"]],
+      
+      pval_vs_B2M = ks.b2m$p.value,
+      padj_vs_B2M = adj_vs_B2M,
+      pval_greater_B2M=ks.b2m_g[["p.value"]],
+      pval_less_B2M=ks.b2m_l[["p.value"]],
+      ks_sign_B2M=ks.b2m[["statistic"]][["D"]],
+      ks_greater_B2m=ks.b2m_g[["statistic"]][["D^+"]],
+      ks_less_B2M=ks.b2m_l[["statistic"]][["D^-"]]
+    )
+  )
+}
+
+# Add additional columns
+ks.stat$sig_vs_SCR <- ks.stat$padj_vs_SCR <= 0.05
+ks.stat$sig_vs_B2M <- ks.stat$padj_vs_B2M <= 0.05
+ks.stat$greater_SCR <- ks.stat$pval_greater_SCR <= 0.05
+ks.stat$less_SCR <- ks.stat$pval_less_SCR <= 0.05
+ks.stat$greater_B2M <- ks.stat$pval_greater_B2M  <= 0.05
+ks.stat$less_B2M <- ks.stat$pval_less_B2M  <= 0.05
+
+ks.stat$k_sign_summary_SCR <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks.stat$greater_SCR & !ks.stat$less_SCR,
+  as.numeric(ks.stat$ks_sign_SCR),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks.stat$greater_SCR & ks.stat$less_SCR,
+    -as.numeric(ks.stat$ks_sign_SCR),  # Return negative of ks_sign
+    ks.stat$ks_sign_SCR  # Otherwise, return 0
+  )
+)
+
+ks.stat$k_sign_summary_B2M <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks.stat$greater_B2M & !ks.stat$less_B2M,
+  as.numeric(ks.stat$ks_sign_B2M),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks.stat$greater_B2M & ks.stat$less_B2M,
+    -as.numeric(ks.stat$ks_sign_B2M),  # Return negative of ks_sign
+    ks.stat$ks_sign_B2M  # Otherwise, return 0
+  )
+)
+
+ks.stat=ks.stat%>%dplyr::rename(clone=genes)
+ks.stat=ks.stat%>%left_join(cl_ID,by="clone")
+ks.stat= replace(ks.stat, is.na(ks.stat), "empty")
+
+ks.stat$k_colour_SCR <- ifelse(
+ks.stat$sig_vs_SCR==T,ks.stat$clone_short,"") 
+
+ks.stat_D23_clones=ks.stat
+write.csv(ks.stat_D23_clones, file= paste0(fname_prefix_csv, "_", "D23_ks.stat_D23_clones.csv"), row.names=T)
+```
+
+####make volcano plot for ks results
+
+```{r}
+ggplot(data=ks.stat_D6_clones, aes(x=k_sign_summary_SCR, y=log10(padj_vs_SCR)*-1)) +
+  geom_point(aes(colour = k_colour_SCR), size=1.5) +scale_colour_okabeito(reverse=T)+
+  ggrepel::geom_text_repel(
+    data = subset(ks.stat_D6_clones, sig_vs_SCR==T),
+    aes(label = clone_short),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  ggtitle("ks test statistics clones at D6")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "KS statistic summary",
+    y = "-Log10 adj p-value",
+    color = "clones"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_ks_stats_clones_D6.pdf"),
+       width = 8, height = 5)
+
+ggplot(data=ks.stat_D12_clones, aes(x=k_sign_summary_SCR, y=log10(padj_vs_SCR)*-1)) +
+  geom_point(aes(colour = k_colour_SCR), size=1.5) +scale_colour_okabeito(reverse=T)+
+  ggrepel::geom_text_repel(
+    data = subset(ks.stat_D12_clones, sig_vs_SCR==T),
+    aes(label = clone_short),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  ggtitle("ks test statistics clones at D12")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "KS statistic summary",
+    y = "-Log10 adj p-value",
+    color = "clones"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_ks_stats_clones_D12.pdf"),
+       width = 8, height = 5)
+
+ggplot(data=ks.stat_D23_clones, aes(x=k_sign_summary_SCR, y=log10(padj_vs_SCR)*-1)) +
+  geom_point(aes(colour = k_colour_SCR), size=1.5) +scale_colour_okabeito(reverse=T)+
+  ggrepel::geom_text_repel(
+    data = subset(ks.stat_D23_clones, sig_vs_SCR==T),
+    aes(label = clone_short),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  ggtitle("ks test statistics clones at D23")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "KS statistic summary",
+    y = "-Log10 adj p-value",
+    color = "clones"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_ks_stats_clones_D23.pdf"),
+       width = 8, height = 5)
+
+ks.stat_D6_clones$analysis= "Cardiac Progenitors"
+ks.stat_D12_clones$analysis= "CM day 12"
+ks.stat_D23_clones$analysis= "CM day 23"
+
+ks.clones=rbind(ks.stat_D6_clones,ks.stat_D12_clones,ks.stat_D23_clones)
+
+ks.clones$k_colour_SCR <- ifelse(
+ks.clones$sig_vs_SCR==T,ks.clones$analysis,"NS") 
+
+
+ggplot(data=subset(ks.clones,ks.clones$shRNA_gene!="B2M"&ks.clones$shRNA_gene!="empty"&ks.clones$shRNA_gene!="SCR"), aes(x=k_sign_summary_SCR, y=log10(padj_vs_SCR)*-1)) +
+  geom_point(aes(colour = k_colour_SCR), size=1.5) +
+  scale_colour_manual(values=c("#009E73","#D55E00","#CC79A7","grey"))+
+  ggrepel::geom_text_repel(
+    data = subset(ks.clones,ks.clones$shRNA_gene!="B2M"&ks.clones$shRNA_gene!="empty"&ks.clones$shRNA_gene!="SCR"&ks.clones$sig_vs_SCR==T),
+    aes(label = clone_short),
+    size = 3,
+    max.overlaps=50,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  geom_hline(yintercept = log10(0.05)*-1,linetype="dotted", color="red")+
+  geom_vline(xintercept = 0,linetype="dotted")+
+  ggtitle("ks test statistics clones")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "KS statistic summary",
+    y = "-Log10 adj p-value",
+    color = "Timepoint"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_ks_stats_clones.pdf"),
+       width = 7, height = 4)
+
+```
+

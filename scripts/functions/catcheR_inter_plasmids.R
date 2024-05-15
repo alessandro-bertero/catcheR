@@ -1,28 +1,3 @@
-#' @title catcheR_inter_plasmids
-#' @description For the analysis of the plasmids in their final form, i.e. where only the barcode is present
-#' @param group, a character string. Two options: sudo or docker, depending to which group the user belongs
-#' @param folder, a character string indicating the path of the working folder containing the input files
-#' @param fastq.read1, a character string indicating the filename of read 1 fastq or fastq.gz containing barcodes sequencing
-#' @param fastq.read2, a character string indicating the filename of read 2 fastq or fastq.gz containing barcodes sequencing
-#' @param clones, a character string indicating the filename of txt file containing a newline separated list of clones of interest in the format of barcode_UCI
-#' 
-#' @author Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
-#'
-#' @return plots and stats
-#'
-#' @examples
-#'\dontrun{
-#'
-#' catcheR_inter_plasmids(
-#'   group=("docker"),
-#'   folder = "/20tb/ratto/catcheR/napoli_inter/", 
-#'   fastq.read1 = "V350180591_L04_SPIKEIN_1.fq", 
-#'   fastq.read2 = "V350180591_L04_SPIKEIN_2.fq",
-#'   clones = "clones.txt")
-#'
-#' @export
-
-
 catcheR_inter_plasmids <- function(
   group=c("docker","sudo"),
   folder, fastq.read1, fastq.read2, clones = NULL){ 

@@ -1,4 +1,4 @@
-#' @title catcheR_barcodes_sci
+#' @title catcheR_scicatch
 #' @description Data analysis pipeline for the iPS2-seq methods from HEDGe lab, using combinatorial single cell indexing sequencing.
 #' @param group, a character string. Two options: sudo or docker, depending to which group the user belongs
 #' @param folder, a character string indicating the path of the working folder containing the input files. Must contain a folder "fastq" with demultiplexed fastq files
@@ -17,7 +17,7 @@
 #'\dontrun{
 #'
 #' folder = "/20tb/ratto/catcheR/sci_8/"
-#' catcheR_barcodes_sci(group = "docker", 
+#' catcheR_scicatch(group = "docker", 
 #'                      folder = folder, 
 #'                      expression.matrix = "exp_mat.csv", 
 #'                      threads = 12, 
@@ -25,7 +25,7 @@
 #'
 #' @export
 
-catcheR_barcodes_sci <- function(
+catcheR_scicatch <- function(
   group=c("docker","sudo"),
   folder, expression.matrix, reference = "GGCGCGTTCATCTGGGGGAGCCG", UCI.length = 6, threads = 2, percentage = 15, mode = "bimodal"){
   
@@ -41,13 +41,13 @@ catcheR_barcodes_sci <- function(
   home <- getwd()
   setwd(folder)
   #initialize status
-  system("echo 0 > ExitStatusFile")
+  #system("echo 0 > ExitStatusFile")
   
   #testing if docker is running
   test <- dockerTest()
   if(!test){
     cat("\nERROR: Docker seems not to be installed in your system\n")
-    system("echo 10 > ExitStatusFile")
+    #system("echo 10 > ExitStatusFile")
     setwd(home)
     return(10)
   }
@@ -67,13 +67,13 @@ catcheR_barcodes_sci <- function(
   #preprocess matrix and copying files
   if (!file.exists(paste(folder,"/fastq",sep=""))){
     cat(paste("\n It Seems that fastq folder file is not in ",folder,"\n"))
-    system("echo 3 > ExitStatusFile 2>&1 &")
+    #system("echo 3 > ExitStatusFile 2>&1 &")
     setwd(folder)
     return(3)
   }
   if (!file.exists(paste(folder,"/", expression.matrix, sep=""))){
     cat(paste("\n It Seems that expression.matrix file is not in ",folder,"\n"))
-    system("echo 3 > ExitStatusFile 2>&1 &")
+    #system("echo 3 > ExitStatusFile 2>&1 &")
     setwd(folder)
     return(3)
   }
@@ -87,38 +87,19 @@ catcheR_barcodes_sci <- function(
     cat("\nData filtering is finished\n")
   }
   
-  #running time 2
-  ptm <- proc.time() - ptm
-  dir <- dir(folder)
-  dir <- dir[grep("run.info",dir)]
-  if(length(dir)>0){
-    con <- file("run.info", "r")
-    tmp.run <- readLines(con)
-    close(con)
-    tmp.run[length(tmp.run)+1] <- paste("catcheR_barcodes user run time mins ",ptm[1]/60, sep="")
-    tmp.run[length(tmp.run)+1] <- paste("catcheR_barcodes system run time mins ",ptm[2]/60, sep="")
-    tmp.run[length(tmp.run)+1] <- paste("catcheR_barcodes elapsed run time mins ",ptm[3]/60, sep="")
-    writeLines(tmp.run,"run.info")
-  }else{
-    tmp.run <- NULL
-    tmp.run[1] <- paste("catcheR_barcodes run time mins ",ptm[1]/60, sep="")
-    tmp.run[length(tmp.run)+1] <- paste("catcheR_barcodes system run time mins ",ptm[2]/60, sep="")
-    tmp.run[length(tmp.run)+1] <- paste("catcheR_barcodes elapsed run time mins ",ptm[3]/60, sep="")
-    
-    writeLines(tmp.run,"run.info")
-  }
-  
   #saving log and removing docker container
   container.id <- readLines(paste(folder,"/dockerID", sep=""), warn = FALSE)
-  #system(paste("docker logs ", substr(container.id,1,12), " &> ",folder,"/", substr(container.id,1,12),".log", sep=""))
-  system(paste("docker logs ", substr(container.id,1,12), " > ", folder,"/", substr(container.id,1,12),".log", " 2>&1", sep=""))
+  #system(paste("docker logs ", substr(container.id,1,12), " >& ",folder,"/", substr(container.id,1,12),".log", sep=""))
+  system(paste("docker logs ", substr(container.id,1,12), " > ",folder,"/", substr(container.id,1,12),".log 2>&1", sep=""))
   system(paste("docker rm ", container.id, sep=""))
+  
+  
   #removing temporary folder
-  #  cat("\n\nRemoving the temporary file ....\n")
-  #  system(paste("rm -fR ",scrat_tmp.folder))
-  system("rm -fR out.info")
-  system("rm -fR dockerID")
-  system("rm  -fR tempFolderID")
-  system(paste("cp ",paste(path.package(package="rCASC"),"containers/containers.txt",sep="/")," ",folder, sep=""))
+  cat("\n\nRemoving the temporary file ....\n")
+  # system(paste("rm -R ",scrat_tmp.folder))
+  #file.remove(paste0(folder,"out.info"))
+  file.remove(paste0(folder,"dockerID"))
+  #file.remove(paste0(folder,"tempFolderID"))
+  #system(paste("cp ",paste(path.package(package="rCASC"),"containers/containers.txt",sep="/")," ",data.folder, sep=""))
   setwd(home)
 } 

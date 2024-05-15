@@ -1,25 +1,33 @@
-#' @title catcheR_sortcatch
-#' @description Modify annotated gene expression matrix from catcheR_10Xcatch or catcheR_scicatch based on the barcode swaps identified with catcheR_step1QC.
-#' @param folder, a character string indicating the path of the working folder containing the input files
+#' @title catcheR_step2QC
+#' @description For the analysis of the plasmids in their final form, i.e. where only the barcode is present
 #' @param group, a character string. Two options: sudo or docker, depending to which group the user belongs
-#' @param expression.matrix, a character string indicating the filename of the csv file of the annotated gene expression produced by catcheR_10Xcatch or catcheR_scicatch i.e. silencing_matrix.csv
-#' @param swaps, a character string indicating the filename of the txt file indicating swaps to be corrected, output of catcheR_step1QC, i.e. ”reliable_clones_swaps.txt"
+#' @param folder, a character string indicating the path of the working folder containing the input files
+#' @param fastq.read1, a character string indicating the filename of read 1 fastq or fastq.gz containing barcodes sequencing
+#' @param fastq.read2, a character string indicating the filename of read 2 fastq or fastq.gz containing barcodes sequencing
+#' @param threshold.percentage, integer, a minimum of reads associated to a clone to show it in plots of percentage of reads per clone, for visualization purposes.
+#' @param plot.threshold, integer, a minimum of reads associated to a clone to show it in plots of reads per clone, for visualization purposes.
+#' @param clones, a character string indicating the filename of txt file containing a newline separated list of clones of interest in the format of barcode_UCI
 #' 
 #' @author Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 #'
-#' @return Updated gene expression matrix called ”silencing_matrix_updated.csv"
+#' @return plots and stats
 #'
 #' @examples
 #'\dontrun{
 #'
-#' catcheR_sortcatch(group="docker",folder = "/home/user/Documents/reassign/", expression.matrix="silencing_matrix.csv", swaps="reliable_clones_swaps_50.txt")
+#' catcheR_step2QC(
+#'   group=("docker"),
+#'   folder = "/20tb/ratto/catcheR/napoli_final/", 
+#'   fastq.read1 = "V350180591_L04_SPIKEIN_1.fq", 
+#'   fastq.read2 = "V350180591_L04_SPIKEIN_2.fq",
+#'   threshold.percentage = 300, 
+#'   clones = "clones.txt")
 #'
 #' @export
 
-
-catcheR_sortcatch <- function(
-    group=c("docker","sudo"),
-    folder, expression.matrix, swaps){ #noise or bimodal
+catcheR_step2QC <- function(
+  group=c("docker","sudo"),
+  folder, fastq.read1, fastq.read2, threshold.percentage = 300, plot.threshold = 2000, clones = NULL){ 
   
   #running time 1
   ptm <- proc.time()
@@ -53,7 +61,7 @@ catcheR_sortcatch <- function(
   
   #executing the docker job
   #docker run --platform linux/amd64 -v /20tb/ratto/catcheR/test_CM5/:/data/scratch repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_slicing.sh /data/scratch 1st2nd_hiPSC_CM_S5_R1_001.fastq 1st2nd_hiPSC_CM_S5_R2_001.fastq y12.csv GGCGCGTTCATCTGGGGGAGCCG 6 12
-  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline Rscript /home/sortcatch.R /data/scratch/ ", expression.matrix, " ", swaps, sep="")
+  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline /home/plasmid_final.sh /data/scratch ", fastq.read1, " ", fastq.read2, " ", threshold.percentage, " ",plot.threshold, " ",clones, sep="")
   #params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data -d docker.io/repbioinfo/desc.2018.01 Rscript /bin/top.R ", matrixName," ",format," ",separator, " ", logged, " ", threshold," ",type, sep="")
   resultRun <- runDocker(group=group, params=params)
   

@@ -1,27 +1,6 @@
-#' @title catcheR_sci_tomatrix
-#' @description From fastq to gene expression matrix for SCI data.
-#' @param group, a character string. Two options: sudo or docker, depending to which group the user belongs
-#' @param folder, a character string indicating the path of the working folder containing the input files
-#' @param sample.name, a character string indicating the name of the experiment
-#' @param UMI.cutoff, integer indicating the minimum number of UMI per cell to consider the cell valid
-#'
-#' @author Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
-#'
-#' @return a gene expression matrix + QC plots and stats
-#'
-#' @examples
-#'\dontrun{
-#'
-#'catcheR_sci_tomatrix(
-#'  group="docker",
-#'  folder="/20tb/ratto/catcheR/tomatrix/", 
-#'  sample.name="H001AS8", UMI.cutoff=500)
-#'
-#' @export
-
-catcheR_sci_tomatrix <- function(
+catcheR_cell_filtering <- function(
   group=c("docker","sudo"),
-  folder, sample.name, UMI.cutoff){
+  folder, expression.matrix, UMI.count, percentage = 15){
   
   #running time 1
   ptm <- proc.time()
@@ -45,30 +24,18 @@ catcheR_sci_tomatrix <- function(
     setwd(home)
     return(10)
   }
-  
-  #check  if scratch folder exist
-  #  if (!file.exists(scratch.folder)){
-  #    cat(paste("\nIt seems that the ",scratch.folder, " folder does not exist\n"))
-  #    system("echo 3 > ExitStatusFile 2>&1")
-  setwd(folder)
-  #   return(3)
+  # if(!test){
+  #   cat("\nERROR: Docker seems not to be installed in your system\n")
+  #   system("echo 10 >& ExitStatusFile")
+  #   setwd(home)
+  #   return(10)
   # }
-  #  tmp.folder <- gsub(":","-",gsub(" ","-",date()))
-  scrat_tmp.folder=folder
-  writeLines(scrat_tmp.folder,paste(folder,"/tempFolderID", sep=""))
-  # cat("\ncreating a folder in scratch folder\n")
-  #dir.create(file.path(scrat_tmp.folder))
-  #preprocess matrix and copying files
-  if (!dir.exists(paste(folder,"/fastq",sep=""))){
-    cat(paste("\n It Seems that fastaq read1 file is not in ",folder,"\n"))
-    system("echo 3 > ExitStatusFile 2>&1 &")
-    setwd(folder)
-    return(3)
-  }
+  #if(logged){logged="TRUE"}else{logged="FALSE"}
   
   #executing the docker job
-  params <- paste("--cidfile ",folder,"/dockerID -v ",folder,":/data/scratch -d repbioinfo/sci_tomatrix /home/tomatrix.sh ", sample.name, " " ,UMI.cutoff, " ", sep="")
-  
+  #docker run --platform linux/amd64 -v /20tb/ratto/catcheR/test_CM5/:/data/scratch repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_slicing.sh /data/scratch 1st2nd_hiPSC_CM_S5_R1_001.fastq 1st2nd_hiPSC_CM_S5_R2_001.fastq y12.csv GGCGCGTTCATCTGGGGGAGCCG 6 12
+  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_cell_filtering.R /data/scratch ",percentage," ",UMI_count, " ", expression.matrix, sep="")
+  #params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data -d docker.io/repbioinfo/desc.2018.01 Rscript /bin/top.R ", matrixName," ",format," ",separator, " ", logged, " ", threshold," ",type, sep="")
   resultRun <- runDocker(group=group, params=params)
   
   #waiting for the end of the container work
@@ -111,4 +78,3 @@ catcheR_sci_tomatrix <- function(
   system(paste("cp ",paste(path.package(package="rCASC"),"containers/containers.txt",sep="/")," ",folder, sep=""))
   setwd(home)
 } 
-

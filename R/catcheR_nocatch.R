@@ -1,25 +1,24 @@
-#' @title catcheR_sortcatch
-#' @description Modify annotated gene expression matrix from catcheR_10Xcatch or catcheR_scicatch based on the barcode swaps identified with catcheR_step1QC.
-#' @param folder, a character string indicating the path of the working folder containing the input files
+#' @title catcheR_nocatch
+#' @description Empty selection step of the data analysis pipeline for the iPS2-seq methods from HEDGe lab.
 #' @param group, a character string. Two options: sudo or docker, depending to which group the user belongs
-#' @param expression.matrix, a character string indicating the filename of the csv file of the annotated gene expression produced by catcheR_10Xcatch or catcheR_scicatch i.e. silencing_matrix.csv
-#' @param swaps, a character string indicating the filename of the txt file indicating swaps to be corrected, output of catcheR_step1QC, i.e. ”reliable_clones_swaps.txt"
+#' @param folder, a character string indicating the path of the working folder containing the input files
+#' @param expression.matrix, a character string indicating the filename of the gene expression matrix csv
 #' 
 #' @author Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 #'
-#' @return Updated gene expression matrix called ”silencing_matrix_updated.csv"
+#' @return a gene expression matrix with empty cells
 #'
 #' @examples
 #'\dontrun{
 #'
-#' catcheR_sortcatch(group="docker",folder = "/home/user/Documents/reassign/", expression.matrix="silencing_matrix.csv", swaps="reliable_clones_swaps_50.txt")
+#' catcheR_nocatch(group = "docker", folder = folder, expression.matrix = "matrix.csv")
 #'
 #' @export
 
-
-catcheR_sortcatch <- function(
+catcheR_nocatch <- function(
     group=c("docker","sudo"),
-    folder, expression.matrix, swaps){ #noise or bimodal
+    folder, 
+    expression.matrix){
   
   #running time 1
   ptm <- proc.time()
@@ -33,13 +32,13 @@ catcheR_sortcatch <- function(
   home <- getwd()
   setwd(folder)
   #initialize status
-  system("echo 0 > ExitStatusFile")
+  #system("echo 0 > ExitStatusFile")
   
   #testing if docker is running
   test <- dockerTest()
   if(!test){
     cat("\nERROR: Docker seems not to be installed in your system\n")
-    system("echo 10 > ExitStatusFile")
+    #system("echo 10 > ExitStatusFile")
     setwd(home)
     return(10)
   }
@@ -53,7 +52,7 @@ catcheR_sortcatch <- function(
   
   #executing the docker job
   #docker run --platform linux/amd64 -v /20tb/ratto/catcheR/test_CM5/:/data/scratch repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_slicing.sh /data/scratch 1st2nd_hiPSC_CM_S5_R1_001.fastq 1st2nd_hiPSC_CM_S5_R2_001.fastq y12.csv GGCGCGTTCATCTGGGGGAGCCG 6 12
-  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline Rscript /home/sortcatch.R /data/scratch/ ", expression.matrix, " ", swaps, sep="")
+  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_empty_selection.R /data/scratch ", expression.matrix, sep="")
   #params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data -d docker.io/repbioinfo/desc.2018.01 Rscript /bin/top.R ", matrixName," ",format," ",separator, " ", logged, " ", threshold," ",type, sep="")
   resultRun <- runDocker(group=group, params=params)
   

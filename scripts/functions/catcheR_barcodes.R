@@ -1,25 +1,6 @@
-#' @title catcheR_explorative
-#' @description Explorative step of the data analysis pipeline for the iPS2-seq methods from HEDGe lab.
-#' @param group, a character string. Two options: sudo or docker, depending to which group the user belongs
-#' @param folder, a character string indicating the path of the working folder containing the input files
-#' @param reference, a character string indicating the sequence to identify reads containing barcodes. Should be found at at the beginning of read2. Use reverse complement!
-#' @param mode, a character string. Two options: "bimodal" or "noise". To evaluate a threshold number of UMIs to consider a UCI valid there are 2 options: "bimodal" (default) which sets the threshold at the valley of the UMIxUCI distribution, or "noise", which sets the threshold at 1.35 * number of UCI supported by a single UMI.
-#' 
-#' @author Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
-#'
-#' @return QC plots and intermediate data
-#'
-#' @examples
-#'\dontrun{
-#'
-#' catcheR_explorative(group = "docker", folder = "/20tb/ratto/catcheR/test_CM5/", reference = "GGCGCGTTCATCTGGGGGAGCCG", mode = "noise")
-#'
-#' @export
-
-
-catcheR_explorative <- function(
+catcheR_barcodes <- function(
   group=c("docker","sudo"),
-  folder, reference = "GGCGCGTTCATCTGGGGGAGCCG", mode = "bimodal"){ #noise or bimodal
+  folder, fastq.read1, fastq.read2, expression.matrix, reference = "GGCGCGTTCATCTGGGGGAGCCG", UCI.length = 6, threads = 2, percentage = 15, mode = "bimodal"){
   
   #running time 1
   ptm <- proc.time()
@@ -43,18 +24,35 @@ catcheR_explorative <- function(
     setwd(home)
     return(10)
   }
-  # if(!test){
-  #   cat("\nERROR: Docker seems not to be installed in your system\n")
-  #   system("echo 10 >& ExitStatusFile")
-  #   setwd(home)
-  #   return(10)
-  # }
-  #if(logged){logged="TRUE"}else{logged="FALSE"}
   
+  #check  if scratch folder exist
+  #  if (!file.exists(scratch.folder)){
+  #    cat(paste("\nIt seems that the ",scratch.folder, " folder does not exist\n"))
+  #    system("echo 3 > ExitStatusFile 2>&1")
+  setwd(folder)
+  #   return(3)
+  # }
+  #  tmp.folder <- gsub(":","-",gsub(" ","-",date()))
+  scrat_tmp.folder=folder
+  writeLines(scrat_tmp.folder,paste(folder,"/tempFolderID", sep=""))
+  # cat("\ncreating a folder in scratch folder\n")
+  #dir.create(file.path(scrat_tmp.folder))
+  #preprocess matrix and copying files
+  if (!file.exists(paste(folder,"/",fastq.read1,sep=""))){
+    cat(paste("\n It Seems that fastaq read1 file is not in ",folder,"\n"))
+    system("echo 3 > ExitStatusFile 2>&1 &")
+    setwd(folder)
+    return(3)
+  }
+  if (!file.exists(paste(folder,"/",fastq.read2,sep=""))){
+    cat(paste("\n It Seems that fastaq read2 file is not in ",folder,"\n"))
+    system("echo 3 > ExitStatusFile 2>&1 &")
+    setwd(folder)
+    return(3)
+  }
   #executing the docker job
-  #docker run --platform linux/amd64 -v /20tb/ratto/catcheR/test_CM5/:/data/scratch repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_slicing.sh /data/scratch 1st2nd_hiPSC_CM_S5_R1_001.fastq 1st2nd_hiPSC_CM_S5_R2_001.fastq y12.csv GGCGCGTTCATCTGGGGGAGCCG 6 12
-  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_explorative_analysis.R /data/scratch ", reference, " ", mode, sep="")
-  #params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data -d docker.io/repbioinfo/desc.2018.01 Rscript /bin/top.R ", matrixName," ",format," ",separator, " ", logged, " ", threshold," ",type, sep="")
+  params <- paste("--cidfile ",folder,"/dockerID -v ",folder,":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_slicing.sh /data/scratch ", fastq.read1, " " ,fastq.read2, " ", expression.matrix, " ", reference, " ", UCI.length, " ", threads, " ", percentage, " ", mode, " ", sep="")
+
   resultRun <- runDocker(group=group, params=params)
   
   #waiting for the end of the container work

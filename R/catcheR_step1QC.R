@@ -1,11 +1,9 @@
-#' @title catcheR_final_plasmids
+#' @title catcheR_step1QC
 #' @description For the analysis of the plasmids in their final form, i.e. where only the barcode is present
 #' @param group, a character string. Two options: sudo or docker, depending to which group the user belongs
 #' @param folder, a character string indicating the path of the working folder containing the input files
 #' @param fastq.read1, a character string indicating the filename of read 1 fastq or fastq.gz containing barcodes sequencing
 #' @param fastq.read2, a character string indicating the filename of read 2 fastq or fastq.gz containing barcodes sequencing
-#' @param threshold.percentage, integer, a minimum of reads associated to a clone to show it in plots of percentage of reads per clone, for visualization purposes.
-#' @param plot.threshold, integer, a minimum of reads associated to a clone to show it in plots of reads per clone, for visualization purposes.
 #' @param clones, a character string indicating the filename of txt file containing a newline separated list of clones of interest in the format of barcode_UCI
 #' 
 #' @author Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
@@ -15,19 +13,19 @@
 #' @examples
 #'\dontrun{
 #'
-#' catcheR_final_plasmids(
+#' catcheR_step1QC(
 #'   group=("docker"),
-#'   folder = "/20tb/ratto/catcheR/napoli_final/", 
+#'   folder = "/20tb/ratto/catcheR/napoli_inter/", 
 #'   fastq.read1 = "V350180591_L04_SPIKEIN_1.fq", 
 #'   fastq.read2 = "V350180591_L04_SPIKEIN_2.fq",
-#'   threshold.percentage = 300, 
 #'   clones = "clones.txt")
 #'
 #' @export
 
-catcheR_final_plasmids <- function(
+
+catcheR_step1QC <- function(
   group=c("docker","sudo"),
-  folder, fastq.read1, fastq.read2, threshold.percentage = 300, plot.threshold = 2000, clones = NULL){ 
+  folder, fastq.read1, fastq.read2, clones = NULL){ 
   
   #running time 1
   ptm <- proc.time()
@@ -61,7 +59,7 @@ catcheR_final_plasmids <- function(
   
   #executing the docker job
   #docker run --platform linux/amd64 -v /20tb/ratto/catcheR/test_CM5/:/data/scratch repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_slicing.sh /data/scratch 1st2nd_hiPSC_CM_S5_R1_001.fastq 1st2nd_hiPSC_CM_S5_R2_001.fastq y12.csv GGCGCGTTCATCTGGGGGAGCCG 6 12
-  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline /home/plasmid_final.sh /data/scratch ", fastq.read1, " ", fastq.read2, " ", threshold.percentage, " ",plot.threshold, " ",clones, sep="")
+  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline /home/plasmid_inter.sh /data/scratch ", fastq.read1, " ", fastq.read2, " ",clones, sep="")
   #params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data -d docker.io/repbioinfo/desc.2018.01 Rscript /bin/top.R ", matrixName," ",format," ",separator, " ", logged, " ", threshold," ",type, sep="")
   resultRun <- runDocker(group=group, params=params)
   
@@ -70,38 +68,19 @@ catcheR_final_plasmids <- function(
     cat("\nData filtering is finished\n")
   }
   
-  #running time 2
-  ptm <- proc.time() - ptm
-  dir <- dir(folder)
-  dir <- dir[grep("run.info",dir)]
-  if(length(dir)>0){
-    con <- file("run.info", "r")
-    tmp.run <- readLines(con)
-    close(con)
-    tmp.run[length(tmp.run)+1] <- paste("catcheR_plasmids user run time mins ",ptm[1]/60, sep="")
-    tmp.run[length(tmp.run)+1] <- paste("catcheR_plasmids system run time mins ",ptm[2]/60, sep="")
-    tmp.run[length(tmp.run)+1] <- paste("catcheR_plasmids elapsed run time mins ",ptm[3]/60, sep="")
-    writeLines(tmp.run,"run.info")
-  }else{
-    tmp.run <- NULL
-    tmp.run[1] <- paste("catcheR_plasmids run time mins ",ptm[1]/60, sep="")
-    tmp.run[length(tmp.run)+1] <- paste("catcheR_plasmids system run time mins ",ptm[2]/60, sep="")
-    tmp.run[length(tmp.run)+1] <- paste("catcheR_plasmids elapsed run time mins ",ptm[3]/60, sep="")
-    
-    writeLines(tmp.run,"run.info")
-  }
-  
   #saving log and removing docker container
   container.id <- readLines(paste(folder,"/dockerID", sep=""), warn = FALSE)
-  #system(paste("docker logs ", substr(container.id,1,12), " &> ",folder,"/", substr(container.id,1,12),".log", sep=""))
-  system(paste("docker logs ", substr(container.id,1,12), " > ", folder,"/", substr(container.id,1,12),".log", " 2>&1", sep=""))
+  #system(paste("docker logs ", substr(container.id,1,12), " >& ",folder,"/", substr(container.id,1,12),".log", sep=""))
+  system(paste("docker logs ", substr(container.id,1,12), " > ",folder,"/", substr(container.id,1,12),".log 2>&1", sep=""))
   system(paste("docker rm ", container.id, sep=""))
+  
+  
   #removing temporary folder
-  #  cat("\n\nRemoving the temporary file ....\n")
-  #  system(paste("rm -fR ",scrat_tmp.folder))
-  system("rm -fR out.info")
-  system("rm -fR dockerID")
-  system("rm  -fR tempFolderID")
-  system(paste("cp ",paste(path.package(package="rCASC"),"containers/containers.txt",sep="/")," ",folder, sep=""))
+  cat("\n\nRemoving the temporary file ....\n")
+  # system(paste("rm -R ",scrat_tmp.folder))
+  #file.remove(paste0(folder,"out.info"))
+  file.remove(paste0(folder,"dockerID"))
+  #file.remove(paste0(folder,"tempFolderID"))
+  #system(paste("cp ",paste(path.package(package="rCASC"),"containers/containers.txt",sep="/")," ",data.folder, sep=""))
   setwd(home)
 } 

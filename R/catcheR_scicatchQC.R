@@ -1,25 +1,29 @@
-#' @title catcheR_sortcatch
-#' @description Modify annotated gene expression matrix from catcheR_10Xcatch or catcheR_scicatch based on the barcode swaps identified with catcheR_step1QC.
-#' @param folder, a character string indicating the path of the working folder containing the input files
+#' @title catcheR_scicatchQC
+#' @description Explorative step of the data analysis pipeline for the iPS2-seq methods from HEDGe lab with SCI.
 #' @param group, a character string. Two options: sudo or docker, depending to which group the user belongs
-#' @param expression.matrix, a character string indicating the filename of the csv file of the annotated gene expression produced by catcheR_10Xcatch or catcheR_scicatch i.e. silencing_matrix.csv
-#' @param swaps, a character string indicating the filename of the txt file indicating swaps to be corrected, output of catcheR_step1QC, i.e. ”reliable_clones_swaps.txt"
+#' @param folder, a character string indicating the path of the working folder containing the input files
+#' @param expression.matrix, a character string indicating the filename of the gene expression matrix csv
+#' @param reference, a character string indicating the sequence to identify reads containing barcodes. Should be found at at the beginning of read2. Use reverse complement!
+#' @param mode, a character string. Two options: "bimodal" or "noise". To evaluate a threshold number of UMIs to consider a UCI valid there are 2 options: "bimodal" (default) which sets the threshold at the valley of the UMIxUCI distribution, or "noise", which sets the threshold at 1.35 * number of UCI supported by a single UMI.
 #' 
 #' @author Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 #'
-#' @return Updated gene expression matrix called ”silencing_matrix_updated.csv"
+#' @return QC plots and intermediate data
 #'
 #' @examples
 #'\dontrun{
 #'
-#' catcheR_sortcatch(group="docker",folder = "/home/user/Documents/reassign/", expression.matrix="silencing_matrix.csv", swaps="reliable_clones_swaps_50.txt")
+#' catcheR_scicatchQC(group = "docker", 
+#'     folder = "/20tb/ratto/catcheR/sci_8/", 
+#'     expression.matrix = "exp_mat.csv", 
+#'     mode = "noise")
 #'
 #' @export
 
 
-catcheR_sortcatch <- function(
-    group=c("docker","sudo"),
-    folder, expression.matrix, swaps){ #noise or bimodal
+catcheR_scicatchQC <- function(
+  group=c("docker","sudo"),
+  folder, expression.matrix, reference = "GGCGCGTTCATCTGGGGGAGCCG", mode = "bimodal"){ #noise or bimodal
   
   #running time 1
   ptm <- proc.time()
@@ -53,7 +57,7 @@ catcheR_sortcatch <- function(
   
   #executing the docker job
   #docker run --platform linux/amd64 -v /20tb/ratto/catcheR/test_CM5/:/data/scratch repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_slicing.sh /data/scratch 1st2nd_hiPSC_CM_S5_R1_001.fastq 1st2nd_hiPSC_CM_S5_R2_001.fastq y12.csv GGCGCGTTCATCTGGGGGAGCCG 6 12
-  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline Rscript /home/sortcatch.R /data/scratch/ ", expression.matrix, " ", swaps, sep="")
+  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline /home/sci_barcode_silencing_explorative_analysis.R /data/scratch ", reference, " ", mode, " ", expression.matrix, sep="")
   #params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data -d docker.io/repbioinfo/desc.2018.01 Rscript /bin/top.R ", matrixName," ",format," ",separator, " ", logged, " ", threshold," ",type, sep="")
   resultRun <- runDocker(group=group, params=params)
   

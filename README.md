@@ -8,7 +8,7 @@ See associated protocol and CatcheR protocol from preprint XXXXX.
 Repository contains 2 sets of scripts: 
 
 - CatcheR barcode pipeline curated by Maria Luisa Ratto: first step of the analysis, to assign perturbation to single cells.
-  There are two different versions: one for 10X data and one for double indexing sci-RMNAseq.
+  There are two different versions: one for 10X data and one for double indexing sci-RMNAseq. An overview of the workflow can be found in the DOCUMENTATION folder.
   
 - single cell analysis curated by Elisa Balmas: Evaluate the perturbation effect of a gene or shRNA at the clonal or population level.
   Clustering is done with Monocle 3 and customized statistical methods have been employed to assess:
@@ -30,11 +30,11 @@ Alternatively, the repository can be download manually and loaded as follows:
 The following R functions require docker, since each of them opens a docker, computes the analysis inside of it to ensure reproducibility and then closes it. 
 
 # Barcode pipeline for 10X
-Starting from a single-cell gene expression matrix, the wrapper function catcheR_barcodes() produces a gene expression matrix where cell names contain annotations about the perturbation present in each cell. 
+Starting from a single-cell gene expression matrix, the wrapper function catcheR_10Xcatch() produces a gene expression matrix where cell names contain annotations about the perturbation present in each cell. 
 Inputs:
 - read 1 fastq (or fastq.gz) containing the barcodes sequencing library (from cellranger mkfastq)
 - read 2 fastq (or fastq.gz) containing the barcodes sequencing library (from cellranger mkfastq)
-- gene expression matrix in csv format (transform the cellranger count matrix to a csv file  with XXXXXXX)
+- gene expression matrix in csv format (transform the cellranger count matrix to a csv file with XXXXXXX)
 - a file called rc_barcodes_gene.csv, containing the association between barcodes and shRNAs, comma separated. Use the reverse complement of the shRNA barcode. E.g.
   
       CTTCTTTC,CHD7.1
@@ -67,9 +67,9 @@ Inputs:
       GATA4.1a,#565656
       ...
 
-## catcheR_barcodes()
+## catcheR_10Xcatch()
 
-    catcheR_barcodes(group=c("docker","sudo"),folder, fastq.read1, fastq.read2, expression.matrix, reference = "GGCGCGTTCATCTGGGGGAGCCG", UCI.length = 6, threads = 2, percentage = 15, mode = "bimodal")
+    catcheR_10Xcatch(group=c("docker","sudo"),folder, fastq.read1, fastq.read2, expression.matrix, reference = "GGCGCGTTCATCTGGGGGAGCCG", UCI.length = 6, threads = 2, percentage = 15, mode = "bimodal")
 
 
 Wrapper function arguments: 
@@ -88,7 +88,7 @@ Wrapper function arguments:
 Example
 
     folder = "/20tb/ratto/catcheR/test_02_7/"
-    catcheR_barcodes(group = "docker", 
+    catcheR_10Xcatch(group = "docker", 
                  folder = folder, 
                  fastq.read1 = list.files(folder, pattern = "R1"), 
                  fastq.read2 = list.files(folder, pattern = "R2"), 
@@ -101,16 +101,15 @@ Example
 
 Note. Check the UMIxUCI plots and the percentage_of_UMIxUCI_dist plots showing the distribution of shRNA and assess the noise of the dataset. Then re-run the previous analysis when, for example, to change the thresholds to custom values or the mode for threshold identification. In this case, run the catcheR_explorative function.
 
-  catcheR_explorative(
+  catcheR_10XcatchQC(
                 group = "docker", 
                 folder = "/20tb/ratto/catcheR/test_CM5/", 
                 reference = "GGCGCGTTCATCTGGGGGAGCCG", 
                 mode = "noise")
                 
-  catcheR_cell_filtering(group = "docker", 
+  catcheR_filtercatch(group = "docker", 
                        folder = "/20tb/ratto/catcheR/sci_8/", 
                        expression.matrix = "exp_mat.csv", 
                        UMI.count = 5, 
                        percentage = 15)
 
-# Barcode pipeline for sci-RNAseq

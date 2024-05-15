@@ -10,7 +10,7 @@
 #' @examples
 #'\dontrun{
 #'
-#'catcheR_sci_sparsetodense(
+#'catcheR_scicsv(
 #'  group="docker",
 #'  folder="/20tb/ratto/catcheR/tomatrix/final-output")
 #'

@@ -10,11 +10,11 @@ read2="$3"
 #4 threshold percentage
 t_p="$4"
 echo "$t_p"
-#5 threshold 
-t="$5"
-echo "$t"
+# #5 threshold 
+# t="$5"
+# echo "$t"
 #5 clones
-clones="$6"
+clones="$5"
 echo "$clones"
 
 # #decompress files
@@ -41,17 +41,9 @@ echo "$clones"
 # cut -c 1-12 <<< cat "$D"/final.txt >> "$D"/final_UMI.txt
 # cut -c 30-37 <<< cat "$D"/final.txt >> "$D"/final_BC.txt
 # cut -c 38-43 <<< cat "$D"/final.txt >> "$D"/final_UCI.txt
+# cut -c 44-66 <<< cat "$D"/final.txt >> "$D"/final_reference.txt
 # #cut -c 69-93 <<< cat "$D"/final.txt >> "$D"/final_shRNA.txt
-#EMPTY
-cut -c 27-49 <<< cat "$D"/final_uniq.txt >> "$D"/final_reference_empty.txt
-cut -c 44-66 <<< cat "$D"/final_uniq.txt >> "$D"/final_reference.txt
-echo "Unique reads:"
-wc -l "$D"/final_uniq.txt
-echo "References:"
-grep GGCGCGTTCATCTGGGGGAGCCG "$D"/final_reference.txt | wc -l
-echo "Empty:"
-grep TACGCGTTCATCTGGGGGAGCCG "$D"/final_reference_empty.txt | wc -l
-
-wc -l "$D"/final*.txt
-
-#Rscript /home/plasmid_final2.R /data/scratch/ "$t_p" "$t" "$clones"
+# 
+# wc -l "$D"/final*.txt
+# 
+ Rscript /home/plasmid_final2.R /data/scratch/ "$t_p" "$t" "$clones"

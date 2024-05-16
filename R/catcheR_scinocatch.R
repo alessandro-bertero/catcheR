@@ -1,4 +1,4 @@
-#' @title catcheR_nocatch
+#' @title catcheR_scinocatch
 #' @description Empty selection step of the data analysis pipeline for the iPS2-seq methods from HEDGe lab.
 #' @param group, a character string. Two options: sudo or docker, depending to which group the user belongs
 #' @param folder, a character string indicating the path of the working folder containing the input files
@@ -12,11 +12,11 @@
 #' @examples
 #'\dontrun{
 #'
-#' catcheR_nocatch(group = "docker", folder = folder, expression.matrix = "matrix.csv", threshold = 10)
+#' catcheR_scinocatch(group = "docker", folder = folder, expression.matrix = "matrix.csv", threshold = 5)
 #'
 #' @export
 
-catcheR_nocatch <- function(
+catcheR_scinocatch <- function(
     group=c("docker","sudo"),
     folder, 
     expression.matrix,
@@ -54,7 +54,7 @@ catcheR_nocatch <- function(
   
   #executing the docker job
   #docker run --platform linux/amd64 -v /20tb/ratto/catcheR/test_CM5/:/data/scratch repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_slicing.sh /data/scratch 1st2nd_hiPSC_CM_S5_R1_001.fastq 1st2nd_hiPSC_CM_S5_R2_001.fastq y12.csv GGCGCGTTCATCTGGGGGAGCCG 6 12
-  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_empty_selection.R /data/scratch ", expression.matrix, " ", threshold, sep="")
+  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline /home/sci_barcode_silencing_empty_selection.R /data/scratch ", expression.matrix, " ", threshold, sep="")
   #params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data -d docker.io/repbioinfo/desc.2018.01 Rscript /bin/top.R ", matrixName," ",format," ",separator, " ", logged, " ", threshold," ",type, sep="")
   resultRun <- runDocker(group=group, params=params)
   

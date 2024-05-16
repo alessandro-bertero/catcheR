@@ -17,13 +17,13 @@ catcheR_final_plasmids <- function(
   system("echo 0 > ExitStatusFile")
   
   #testing if docker is running
-  test <- dockerTest()
-  if(!test){
-    cat("\nERROR: Docker seems not to be installed in your system\n")
-    system("echo 10 > ExitStatusFile")
-    setwd(home)
-    return(10)
-  }
+  # test <- dockerTest()
+  # if(!test){
+  #   cat("\nERROR: Docker seems not to be installed in your system\n")
+  #   system("echo 10 > ExitStatusFile")
+  #   setwd(home)
+  #   return(10)
+  # }
   # if(!test){
   #   cat("\nERROR: Docker seems not to be installed in your system\n")
   #   system("echo 10 >& ExitStatusFile")
@@ -34,7 +34,7 @@ catcheR_final_plasmids <- function(
   
   #executing the docker job
   #docker run --platform linux/amd64 -v /20tb/ratto/catcheR/test_CM5/:/data/scratch repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_slicing.sh /data/scratch 1st2nd_hiPSC_CM_S5_R1_001.fastq 1st2nd_hiPSC_CM_S5_R2_001.fastq y12.csv GGCGCGTTCATCTGGGGGAGCCG 6 12
-  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline /home/plasmid_final.sh /data/scratch ", fastq.read1, " ", fastq.read2, " ", threshold.percentage, " ",plot.threshold, " ",clones, sep="")
+  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d repbioinfo/catcher_barcode_pipeline /home/plasmid_final.sh /data/scratch ", fastq.read1, " ", fastq.read2, " ", threshold.percentage, " ",clones, sep="")
   #params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data -d docker.io/repbioinfo/desc.2018.01 Rscript /bin/top.R ", matrixName," ",format," ",separator, " ", logged, " ", threshold," ",type, sep="")
   resultRun <- runDocker(group=group, params=params)
   
@@ -75,6 +75,6 @@ catcheR_final_plasmids <- function(
   system("rm -fR out.info")
   system("rm -fR dockerID")
   system("rm  -fR tempFolderID")
-  system(paste("cp ",paste(path.package(package="rCASC"),"containers/containers.txt",sep="/")," ",folder, sep=""))
+  #system(paste("cp ",paste(path.package(package="rCASC"),"containers/containers.txt",sep="/")," ",folder, sep=""))
   setwd(home)
 } 

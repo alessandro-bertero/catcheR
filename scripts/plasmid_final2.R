@@ -9,10 +9,10 @@ dir = args[1]
 #dir = "/20tb/ratto/Bertero/plasmid analysis/MiSeq/"
 #2 threshold percentage
 threshold_percentage = args[2]
-#3 threshold
-threshold = args[3]
+# #3 threshold
+# threshold = args[3]
 #4 clones of int
-clones = args[4]
+clones = args[3]
 if (clones == "NULL" | (clones == "")) {
   clones = NULL
 }
@@ -22,8 +22,8 @@ print(clones)
 
 UMI = fread(paste(dir,"/final_UMI.txt", sep=""), sep = "\n", data.table = F)
 UCI = fread(paste(dir,"/final_UCI.txt", sep=""), sep = "\n", data.table = F)
+reference = fread(paste(dir,"/final_reference.txt", sep=""), sep = "\n", data.table = F)
 barcode = fread(paste(dir,"/final_BC.txt", sep=""), sep = "\n", data.table = F)
-reference = fread(paste(dir,"/final_reference_empty.txt", sep=""), sep = "\n", data.table = F)
 complete_table = data.frame(UMI, barcode, UCI)
 names(complete_table) = c("UMI","barcode", "UCI")
 complete_table = mutate(complete_table, clone = paste(barcode, UCI, sep = "_"))
@@ -91,7 +91,7 @@ clone_t = separate(data = clone_t, col = name, into = c("gene"),sep = "\\.", rem
 write.csv(clone_t, paste(dir, "/distribution_all_clones.csv", sep = ""))
 
 #filter
-clone_t = filter(clone_t, Freq > threshold)
+clone_t = filter(clone_t, Freq > 2000)
 p = ggplot(clone_t) + 
   geom_col(aes(x = fct_reorder(Var1, Freq, .desc = T), y = Freq, fill = name))  +
   theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
@@ -107,11 +107,11 @@ if (file.exists(paste(dir, "/colors.csv", sep = ""))) {
 } else {
   print("Colors file does not exist, using palette.")
 }
-ggsave(paste(dir,"/clone_distribution_filter_", threshold, ".jpg",sep=""), 
+ggsave(paste(dir,"/clone_distribution_filter_", 2000, ".jpg",sep=""), 
        plot = p, 
        width = 20, height = 15, 
        limitsize = F)
-ggsave(paste(dir,"/clone_distribution_filter_", threshold, ".pdf",sep=""), 
+ggsave(paste(dir,"/clone_distribution_filter_", 2000, ".pdf",sep=""), 
        plot = p, 
        width = 20, height = 15, 
        limitsize = F)
@@ -142,14 +142,14 @@ ggsave(paste(dir,"/clone_distribution_filter_", threshold, ".pdf",sep=""),
 #        width = 20, height = 15, 
 #        limitsize = F)
 
-clone_t = filter(clone_t, Freq > threshold)
+clone_t = filter(clone_t, Freq > 2000)
 p = ggplot(clone_t) +
   geom_histogram(aes(y = after_stat(density), x = Freq, fill = name), binwidth = 1000) + 
   geom_line(aes(y = after_stat(density), x = Freq),stat = "density")+
   #geom_density(aes(y = after_stat(density), x = Freq))+
   labs(x = "Reads per clone", 
        y = "Number of clones", 
-       title = paste("Histogram of reads per clone, Freq > ", threshold, sep = "")) +
+       title = paste("Histogram of reads per clone, Freq > ", 2000, sep = "")) +
   theme_minimal() #+
 #stat_function(fun = dnorm, args = list(mean = mean(clone_t$Freq), sd = sd(clone_t$Freq)))
 #coord_cartesian(ylim = c(0,5))
@@ -163,11 +163,11 @@ if (file.exists(paste(dir, "/colors.csv", sep = ""))) {
   print("Colors file does not exist, using palette.")
 }
 
-ggsave(paste(dir,"/density_all_filtering_", threshold, ".jpg",sep=""), 
+ggsave(paste(dir,"/density_all_filtering_", 2000, ".jpg",sep=""), 
        plot = p, 
        width = 20, height = 15, 
        limitsize = F)
-ggsave(paste(dir,"/density_all_filtering_", threshold, ".pdf",sep=""), 
+ggsave(paste(dir,"/density_all_filtering_", 2000, ".pdf",sep=""), 
        plot = p, 
        width = 20, height = 15, 
        limitsize = F)
@@ -310,18 +310,17 @@ if (is.null(clones) == F) {
   
 }
 
-# #EMPTY
-# complete_table = data.frame(UMI, barcode, UCI, reference)
-# complete_table = distinct(complete_table)
-# names(complete_table) = c("UMI","barcode", "UCI", "reference")
-# 
-# #Select empty reads #TACGCGTTCATCTGGGGGAGCCG
-# tr_complete_table = filter(complete_table, reference == "TACGCGTTCATCTGGGGGAGCCG")
-# 
-# #Save complete table
-# write.csv(tr_complete_table, paste(dir,"/complete_table_empty.csv",sep=""))
-# 
-# 
-# print(paste("Empty reads:", length(unique(tr_complete_table$UMI)), sep = ""))
-# 
+#EMPTY
+complete_table = data.frame(UMI, barcode, UCI, reference)
+complete_table = distinct(complete_table)
+names(complete_table) = c("UMI","barcode", "UCI", "reference")
+
+#Select empty reads #TACGCGTTCATCTGGGGGAGCCG
+tr_complete_table = filter(complete_table, reference == "TACGCGTTCATCTGGGGGAGCCG")
+                                                         
+#Save complete table
+write.csv(tr_complete_table, paste(dir,"/complete_table_empty.csv",sep=""))
+
+
+print(paste("Empty reads:", length(unique(tr_complete_table$UMI)), sep = ""))
 

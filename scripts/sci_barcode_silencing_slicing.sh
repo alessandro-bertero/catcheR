@@ -221,7 +221,7 @@ Rscript /home/barcode_silencing_cell_filtering.R "$D" 15 "$UMI_count" "$matrix"
 wait
 
 #run epmty selection
-Rscript /home/barcode_silencing_empty_selection.R "$D" "$matrix"
+Rscript /home/barcode_silencing_empty_selection.R "$D" "$matrix" "$UMI_count"
 wait
 
 chmod 777 /data/scratch

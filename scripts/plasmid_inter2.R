@@ -294,4 +294,35 @@ if (is.null(clones) == F) {
     ggsave(paste(dir,"/shRNA_distribution_UCI/", seq, "_of_int.pdf",sep=""), plot = p)
   }
   
+  #auto swaps
+  good_c = c()
+  res_table = data.frame()
+  for (c in unique(t$clone)) {
+    df = filter(t, clone == c)
+    if (max(df$Freq) > 50) {
+      #print(max(df$Freq))
+      freqs = sort(df$Freq, decreasing = TRUE)
+      #print(freqs[2])
+      if (length(df$Freq) == 1) {
+        good_c = append(good_c, c)
+        res_table = rbind(res_table, filter(df, Freq == freqs[1]))
+      }
+      else if (freqs[1] / freqs[2] > 10) {
+        good_c = append(good_c, c)
+        res_table = rbind(res_table, filter(df, Freq == freqs[1]))
+      }
+    }
+  }
+  
+  good_table = filter(table, clone %in% good_c)
+  
+  swaps = filter(res_table, same == "no")
+  print(paste0("Swaps: ", length(swaps$clone)))
+  correct = filter(res_table, same == "yes")
+  print(paste0("Correct: ", length(correct$clone)))
+  
+  write.table(good_table, paste(dir, "/reliable_clones_ofint.txt", sep = ""), sep = "\t")
+  write.table(swaps, paste(dir, "/reliable_clones_swaps_ofint.txt", sep = ""), sep = "\t")
+  write.table(correct, paste(dir, "/reliable_clones_confirmations_ofint.txt", sep = ""), sep = "\t")
+  
 }

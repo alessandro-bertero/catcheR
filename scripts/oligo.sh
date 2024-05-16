@@ -33,10 +33,10 @@ restr_file="$D/restr.txt"
 
 
 output_file="$D/output.txt"
-rm "$D/tmp.txt"
+rm $output_file
 
 # Read each line from the file
-while IFS=',' read -r line barcode gene; do
+while IFS=',' read -r line barcode; do
     #echo "$line"
     #echo "$barcode"
     # Select the first 52 characters of the line
@@ -59,20 +59,19 @@ while IFS=',' read -r line barcode gene; do
     
     # Add 6 random characters choosing between A, C, G, and T
     # Generate a random sequence of 6 numbers from 0 to 3
-    #random_sequence=""
-    #for ((i = 0; i < 6; i++)); do
-    #  random_number=$((RANDOM % 4))  # Generate a random number from 0 to 3
-    # case $random_number in
-    #    0) random_sequence+="A";;
-     #   1) random_sequence+="C";;
-    #    2) random_sequence+="G";;
-    #    3) random_sequence+="T";;
-     # esac
-    #done
+    random_sequence=""
+    for ((i = 0; i < 6; i++)); do
+      random_number=$((RANDOM % 4))  # Generate a random number from 0 to 3
+      case $random_number in
+        0) random_sequence+="A";;
+        1) random_sequence+="C";;
+        2) random_sequence+="G";;
+        3) random_sequence+="T";;
+      esac
+    done
 
     #echo "$random_sequence"
-    #result+="$random_sequence"
-    result+="NNNNNN"
+    result+="$random_sequence"
     
     # Add $barcode
     result+="$barcode"
@@ -80,10 +79,7 @@ while IFS=',' read -r line barcode gene; do
     # Add $gibsonthree
     result+="$gibsonthree"
     
-    #add barcode and gene
-    result+=,"$barcode","$gene"
-    
-    echo "$result" >> "$D/tmp.txt"
+    echo "$result" >> "$output_file"
 done < "$full_path"
 
 
@@ -93,8 +89,5 @@ if [ -f "$restr_file" ]; then
     sed -i "s/$subsequence/$(echo "$subsequence" | tr '[:upper:]' '[:lower:]')/gI" "$output_file"
   done < "$restr_file"
 fi
-
-grep -v -f "$restr_file" "$D/tmp.txt" > $output_file
-grep -f "$restr_file" "$D/tmp.txt" > "$D/bad_oligos.txt"
 
 chmod 777 /data/scratch/*

@@ -19,12 +19,34 @@ mode=$10
 
 #DECOMPRESS AND GET FASTA 
 #gzip -d ./1st2nd_hiPSC_S3_R1_001.fastq.gz
-gzip -fd "$D/$2"
-gzip -fd "$D/$3"
-cat "$D"/*R1_001.fastq | sed -n '1~4s/^@/>/p;2~4p' >> "$D"/R1.fa
+gzip -fd "$D/$2" 
+gzip -fd "$D/$3"  
+# Check if the filename ends with ".gz"
+if [[ $2 == *.gz ]]; then
+    # Remove ".gz" from the filename
+    filename1="${2%.gz}"
+else
+    filename1="$2"
+fi
+
+echo "$filename1"
+
+# Check if the filename ends with ".gz"
+if [[ $3 == *.gz ]]; then
+    # Remove ".gz" from the filename
+    filename2="${3%.gz}"
+else
+    filename2="$3"
+fi
+
+echo "$filename2"
+
+cat "$D/$filename1" | sed -n '1~4s/^@/>/p;2~4p' >> "$D"/R1.fa
+cat "$D/$filename2" | sed -n '1~4s/^@/>/p;2~4p' > "$D"/R2.fa
+
 #gzip -d ./1st2nd_hiPSC_S3_R2_001.fastq.gz
-cat "$D"/*R2_001.fastq | sed -n '1~4s/^@/>/p;2~4p' > "$D"/R2.fa
 wc -l "$D"/* >> "$D"/log.txt
+
 
 #GET SEQ WITH NO ID
 #paste ./R1.fa ./R2.fa > read1and2_check.fasta
@@ -118,7 +140,7 @@ Rscript /home/barcode_silencing_cell_filtering.R "$D" 15 "$UMI_count" "$4"
 wait
 
 #run epmty selection
-Rscript /home/barcode_silencing_empty_selection.R "$D" "$4"
+Rscript /home/barcode_silencing_empty_selection.R "$D" "$4" "$UMI_count"
 wait
 
 chmod 777 /data/scratch

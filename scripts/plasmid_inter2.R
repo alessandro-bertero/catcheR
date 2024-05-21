@@ -10,14 +10,18 @@ args = commandArgs(trailingOnly=TRUE)
 #1 dir
 dir = args[1]
 #2 threshold
-#threshold = args[2]
+threshold = args[2]
+print(paste0("Threshold:", threshold))
+DIs = args[3]
+print(paste0("DIs:", DIs))
+ratio = args[4]
+print(paste0("ratio:", ratio))
 #3 clones
-clones = args[2]
+clones = args[5]
 if (clones == "NULL" | (clones == "")) {
   clones = NULL
 }
 print(clones)
-
 #fastqc(group = "docker", data.folder = paste(dir, "../fastqc", sep = ""))
 
 if (file.exists(paste(dir, "/colors.csv", sep = ""))) {
@@ -50,14 +54,14 @@ complete_table = distinct(complete_table)
 complete_table = mutate(complete_table, clone = paste(barcode, UCI, sep = "_"))
 
 #distribution of clone
-# clone_t = as.data.frame(table(complete_table[,c("clone")]))
-# print("Total clones:")
-# length(clone_t$Var1)
-# print("Clones with only 1 read:")
-# length(filter(clone_t, Freq == 1)$Var1)
-# clone_t = separate(clone_t, Var1, into = c("barcode", "UCI"), sep = "_", remove = F)
-# #add barcode name
-# clone_t = left_join(clone_t, barcodes_names)
+clone_t = as.data.frame(table(complete_table[,c("clone")]))
+print("Total clones:")
+length(clone_t$Var1)
+print("Clones with only 1 read:")
+length(filter(clone_t, Freq == 1)$Var1)
+clone_t = separate(clone_t, Var1, into = c("barcode", "UCI"), sep = "_", remove = F)
+#add barcode name
+clone_t = left_join(clone_t, barcodes_names)
 # p = ggplot(filter(clone_t, Freq > 1)) +
 #   geom_col(aes(x = fct_reorder(Var1, Freq, .desc = T), y = Freq, fill = name))  +
 #   theme_minimal() +
@@ -76,26 +80,26 @@ complete_table = mutate(complete_table, clone = paste(barcode, UCI, sep = "_"))
 #        width = 10, height = 15,
 #        limitsize = F)
 # 
-# clone_t = filter(clone_t, Freq > threshold)
-# p = ggplot(clone_t) +
-#   geom_col(aes(x = fct_reorder(Var1, Freq, .desc = T), y = Freq, fill = name))  +
-#   theme_minimal() +
-#   theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
-# 
-# if (exists("color_mapping")) {
-#   p = p+
-#     scale_fill_manual(values = color_mapping)
-# }
-# #labs(title = data$name) +
-# #scale_fill_manual(values = c("#00AFBB", "#E7B800"), drop = F)
-# ggsave(paste(dir,"/clone_distribution_filter_", threshold, ".jpg",sep=""),
-#        plot = p,
-#        width = 10, height = 15,
-#        limitsize = F)
-# ggsave(paste(dir,"/clone_distribution_filter_", threshold, ".pdf",sep=""),
-#        plot = p,
-#        width = 10, height = 15,
-#        limitsize = F)
+clone_t = filter(clone_t, Freq > threshold)
+p = ggplot(clone_t) +
+  geom_col(aes(x = fct_reorder(Var1, Freq, .desc = T), y = Freq, fill = name))  +
+  theme_minimal() +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+if (exists("color_mapping")) {
+  p = p+
+    scale_fill_manual(values = color_mapping)
+}
+#labs(title = data$name) +
+#scale_fill_manual(values = c("#00AFBB", "#E7B800"), drop = F)
+ggsave(paste(dir,"/clone_distribution_filter_", threshold, ".jpg",sep=""),
+       plot = p,
+       width = 10, height = 15,
+       limitsize = F)
+ggsave(paste(dir,"/clone_distribution_filter_", threshold, ".pdf",sep=""),
+       plot = p,
+       width = 10, height = 15,
+       limitsize = F)
 
 #ADD NAME AND shRNA
 complete_table = left_join(complete_table, barcodes_names, by = "barcode")
@@ -150,6 +154,20 @@ if (exists("color_mapping")) {
 ggsave(paste(dir,"/name_distribution.jpg",sep=""), plot = p)
 ggsave(paste(dir,"/name_distribution.pdf",sep=""), plot = p)
 
+#shRNA distribution
+actual_name_dis = as.data.frame(table(distinct(complete_table[, c("UMI", "actual_name")])[, "actual_name"]))
+names(actual_name_dis) = c("actual_name", "UMI")
+p = ggplot(actual_name_dis) +
+  geom_col(aes(x = actual_name, y = UMI, fill = actual_name)) +
+  theme_minimal()+ 
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) 
+if (exists("color_mapping")) {
+  p = p+
+    scale_fill_manual(values = color_mapping)
+}
+ggsave(paste(dir,"/shRNA_distribution.jpg",sep=""), plot = p)
+ggsave(paste(dir,"/shRNA_distribution.pdf",sep=""), plot = p)
+
 
 #total swaps
 table = filter(table, Freq > 3)
@@ -161,7 +179,7 @@ good_c = c()
 res_table = data.frame()
 for (c in unique(table$clone)) {
   df = filter(table, clone == c)
-  if (max(df$Freq) > 30000) {
+  if (max(df$Freq) > DIs) {
     #print(max(df$Freq))
     freqs = sort(df$Freq, decreasing = TRUE)
     #print(freqs[2])
@@ -169,7 +187,7 @@ for (c in unique(table$clone)) {
       good_c = append(good_c, c)
       res_table = rbind(res_table, filter(df, Freq == freqs[1]))
     }
-    else if (freqs[1] / freqs[2] > 2) {
+    else if (freqs[1] / freqs[2] > ratio) {
       good_c = append(good_c, c)
       res_table = rbind(res_table, filter(df, Freq == freqs[1]))
     }
@@ -183,22 +201,22 @@ print(paste0("Swaps: ", length(swaps$clone)))
 correct = filter(res_table, same == "yes")
 print(paste0("Correct: ", length(correct$clone)))
 
-write.table(good_table, paste(dir, "/reliable_clones_30000_2.txt", sep = ""), sep = "\t")
-write.table(swaps, paste(dir, "/reliable_clones_swaps_30000_2.txt", sep = ""), sep = "\t")
-write.table(correct, paste(dir, "/reliable_clones_confirmations_30000_2.txt", sep = ""), sep = "\t")
+write.table(good_table, paste(dir, "/reliable_clones_", DIs, "_", ratio, ".txt", sep = ""), sep = "\t")
+write.table(swaps, paste(dir, "/reliable_clones_swaps_", DIs, "_", ratio, ".txt", sep = ""), sep = "\t")
+write.table(correct, paste(dir, "/reliable_clones_confirmations_", DIs, "_", ratio, ".txt", sep = ""), sep = "\t")
 
 #correct dis
 c_dis = as.data.frame(table(correct[, c("name")]))
 names(c_dis) = c("name", "correct")
 #swap dis
-swap_dis = as.data.frame(table(swaps[, c("name")]))
-names(swap_dis) = c("name", "swaps")
-swap_dis = merge(swap_dis, c_dis)
-swap_per = mutate(swap_dis, percentage = swaps / correct * 100)
-swap_per[sapply(swap_per, is.infinite)] <- 100
+swap_dis = as.data.frame(table(swaps[, c("actual_name")]))
+names(swap_dis) = c("actual_name", "swaps")
+# swap_dis = merge(swap_dis, c_dis)
+# swap_per = mutate(swap_dis, percentage = swaps / correct * 100)
+# swap_per[sapply(swap_per, is.infinite)] <- 100
 
 p = ggplot(swap_dis) +
-  geom_col(aes(x = name, y = swaps, fill = name)) +
+  geom_col(aes(x = actual_name, y = swaps, fill = actual_name)) +
   theme_minimal()+ 
   theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) 
 if (exists("color_mapping")) {

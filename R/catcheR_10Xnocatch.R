@@ -1,35 +1,26 @@
-#' @title catcheR_step1QC
-#' @description For the analysis of the plasmids in their final form, i.e. where only the barcode is present
+#' @title catcheR_10Xnocatch
+#' @description Empty selection step of the data analysis pipeline for the iPS2-seq methods from HEDGe lab.
 #' @param group, a character string. Two options: sudo or docker, depending to which group the user belongs
 #' @param folder, a character string indicating the path of the working folder containing the input files
-#' @param fastq.read1, a character string indicating the filename of read 1 fastq or fastq.gz containing barcodes sequencing
-#' @param DIs, integer of the minimum number of diversity indexes (DIs, pseudo-unique reads) of the most represented shRNA matching to a given UCI-BC; in combination with "ratio", it selects UCI-BCs for which it is possible to reliably assign an shRNA. Default is 100
-#' @param ratio, integer of the minimum ratio between the number of DIs of the most represented and second most represented shRNAs matching to a given UCI-BC. in combination with DI, it is employed to filter UCI-BCs for which it is possible to reliably assign an shRNA. Default is 10
-#' @param plot.threshold, integer of the minimum number of DIs per UCI-BC for output plot
-#' @param clones, a character string indicating the filename of txt file containing a newline separated list of clones of interest in the format of barcode_UCI
+#' @param expression.matrix, a character string indicating the filename of the gene expression matrix csv
+#' @param threshold, an integer indicating the minimum number of UMIs associated to the empty reference to consider a cell empty
 #' 
 #' @author Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 #'
-#' @return plots and stats
+#' @return a gene expression matrix with empty cells
 #'
 #' @examples
 #'\dontrun{
 #'
-#' catcheR_step1QC(
-#'   group=("docker"),
-#'   folder = "/20tb/ratto/catcheR/napoli_inter/", 
-#'   fastq.read1 = "V350180591_L04_SPIKEIN_1.fq", 
-#'   DIs = 100,
-#'   ratio = 10,
-#'   plot.threshold = 2000,
-#'   clones = "clones.txt")
+#' catcheR_10Xnocatch(group = "docker", folder = folder, expression.matrix = "matrix.csv", threshold = 10)
 #'
 #' @export
 
-
-catcheR_step1QC <- function(
-  group=c("docker","sudo"),
-  folder, fastq.read1, DIs = 100, ratio = 10, plot.threshold = 2000, clones = NULL){ 
+catcheR_10Xnocatch <- function(
+    group=c("docker","sudo"),
+    folder, 
+    expression.matrix,
+    threshold){
   
   #running time 1
   ptm <- proc.time()
@@ -43,13 +34,13 @@ catcheR_step1QC <- function(
   home <- getwd()
   setwd(folder)
   #initialize status
-  system("echo 0 > ExitStatusFile")
+  #system("echo 0 > ExitStatusFile")
   
   #testing if docker is running
   test <- dockerTest()
   if(!test){
     cat("\nERROR: Docker seems not to be installed in your system\n")
-    system("echo 10 > ExitStatusFile")
+    #system("echo 10 > ExitStatusFile")
     setwd(home)
     return(10)
   }
@@ -63,7 +54,7 @@ catcheR_step1QC <- function(
   
   #executing the docker job
   #docker run --platform linux/amd64 -v /20tb/ratto/catcheR/test_CM5/:/data/scratch repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_slicing.sh /data/scratch 1st2nd_hiPSC_CM_S5_R1_001.fastq 1st2nd_hiPSC_CM_S5_R2_001.fastq y12.csv GGCGCGTTCATCTGGGGGAGCCG 6 12
-  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline /home/plasmid_inter.sh /data/scratch ", fastq.read1, " ", plot.threshold, " ", DIs, " ", ratio, " ",clones,sep="")
+  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_empty_selection.R /data/scratch ", expression.matrix, " ", threshold, sep="")
   #params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data -d docker.io/repbioinfo/desc.2018.01 Rscript /bin/top.R ", matrixName," ",format," ",separator, " ", logged, " ", threshold," ",type, sep="")
   resultRun <- runDocker(group=group, params=params)
   

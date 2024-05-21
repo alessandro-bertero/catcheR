@@ -8,9 +8,7 @@ catcheR_step2QC(
   group = c("docker", "sudo"),
   folder,
   fastq.read1,
-  fastq.read2,
-  threshold.percentage = 300,
-  plot.threshold = 2000,
+  DIs = 1000,
   clones = NULL
 )
 }
@@ -21,11 +19,7 @@ catcheR_step2QC(
 
 \item{fastq.read1, }{a character string indicating the filename of read 1 fastq or fastq.gz containing barcodes sequencing}
 
-\item{fastq.read2, }{a character string indicating the filename of read 2 fastq or fastq.gz containing barcodes sequencing}
-
-\item{threshold.percentage, }{integer, a minimum of reads associated to a clone to show it in plots of percentage of reads per clone, for visualization purposes.}
-
-\item{plot.threshold, }{integer, a minimum of reads associated to a clone to show it in plots of reads per clone, for visualization purposes.}
+\item{DIs, }{integer, a minimum of reads associated to a clone to show it in plots of clones, for visualization purposes.}
 
 \item{clones, }{a character string indicating the filename of txt file containing a newline separated list of clones of interest in the format of barcode_UCI}
 }

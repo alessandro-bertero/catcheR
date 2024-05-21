@@ -8,7 +8,7 @@ args = commandArgs(trailingOnly=TRUE)
 dir = args[1]
 #dir = "/20tb/ratto/Bertero/plasmid analysis/MiSeq/"
 #2 threshold percentage
-threshold_percentage = args[2]
+DIs = args[2]
 # #3 threshold
 # threshold = args[3]
 #4 clones of int
@@ -40,7 +40,7 @@ clone_t = left_join(clone_t, barcodes_names, by = "barcode")
 clone_t = na.omit(clone_t)
 
 #PERCENTAGE
-f300 = filter(clone_t, Freq > threshold_percentage)
+f300 = filter(clone_t, Freq > DIs)
 tmp = filter(complete_table, clone %in% f300$Var1)
 tmp = distinct(tmp[,c("barcode", "UCI")])
 tmp = as.data.frame(table(tmp[,c("barcode")]))
@@ -91,7 +91,7 @@ clone_t = separate(data = clone_t, col = name, into = c("gene"),sep = "\\.", rem
 write.csv(clone_t, paste(dir, "/distribution_all_clones.csv", sep = ""))
 
 #filter
-clone_t = filter(clone_t, Freq > 2000)
+clone_t = filter(clone_t, Freq > DIs)
 p = ggplot(clone_t) + 
   geom_col(aes(x = fct_reorder(Var1, Freq, .desc = T), y = Freq, fill = name))  +
   theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
@@ -107,11 +107,11 @@ if (file.exists(paste(dir, "/colors.csv", sep = ""))) {
 } else {
   print("Colors file does not exist, using palette.")
 }
-ggsave(paste(dir,"/clone_distribution_filter_", 2000, ".jpg",sep=""), 
+ggsave(paste(dir,"/clone_distribution_filter_", DIs, ".jpg",sep=""), 
        plot = p, 
        width = 20, height = 15, 
        limitsize = F)
-ggsave(paste(dir,"/clone_distribution_filter_", 2000, ".pdf",sep=""), 
+ggsave(paste(dir,"/clone_distribution_filter_", DIs, ".pdf",sep=""), 
        plot = p, 
        width = 20, height = 15, 
        limitsize = F)
@@ -142,14 +142,14 @@ ggsave(paste(dir,"/clone_distribution_filter_", 2000, ".pdf",sep=""),
 #        width = 20, height = 15, 
 #        limitsize = F)
 
-clone_t = filter(clone_t, Freq > 2000)
+clone_t = filter(clone_t, Freq > DIs)
 p = ggplot(clone_t) +
   geom_histogram(aes(y = after_stat(density), x = Freq, fill = name), binwidth = 1000) + 
   geom_line(aes(y = after_stat(density), x = Freq),stat = "density")+
   #geom_density(aes(y = after_stat(density), x = Freq))+
   labs(x = "Reads per clone", 
        y = "Number of clones", 
-       title = paste("Histogram of reads per clone, Freq > ", 2000, sep = "")) +
+       title = paste("Histogram of reads per clone, Freq > ", DIs, sep = "")) +
   theme_minimal() #+
 #stat_function(fun = dnorm, args = list(mean = mean(clone_t$Freq), sd = sd(clone_t$Freq)))
 #coord_cartesian(ylim = c(0,5))
@@ -163,11 +163,11 @@ if (file.exists(paste(dir, "/colors.csv", sep = ""))) {
   print("Colors file does not exist, using palette.")
 }
 
-ggsave(paste(dir,"/density_all_filtering_", 2000, ".jpg",sep=""), 
+ggsave(paste(dir,"/density_all_filtering_", DIs, ".jpg",sep=""), 
        plot = p, 
        width = 20, height = 15, 
        limitsize = F)
-ggsave(paste(dir,"/density_all_filtering_", 2000, ".pdf",sep=""), 
+ggsave(paste(dir,"/density_all_filtering_", DIs, ".pdf",sep=""), 
        plot = p, 
        width = 20, height = 15, 
        limitsize = F)
@@ -228,18 +228,18 @@ if (is.null(clones) == F) {
   barcodes_names = distinct(read.table(paste(dir,"/rc_barcodes_genes.csv", sep=""), sep = ","))
   names(barcodes_names) = c("barcode", "name")
   clone_t = left_join(clone_t, barcodes_names)
-  clone_t = filter(clone_t, Freq > 2000)
+  clone_t = filter(clone_t, Freq > DIs)
   p = ggplot(clone_t) + 
     geom_col(aes(x = fct_reorder(Var1, Freq, .desc = T), y = Freq, fill = name))  +
     theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) + 
     theme_minimal()
   #labs(title = data$name) +
   #scale_fill_manual(values = c("#00AFBB", "#E7B800"), drop = F) 
-  ggsave(paste(dir,"/clone_distribution_ofint_filter_2000.jpg",sep=""), 
+  ggsave(paste(dir,"/clone_distribution_ofint_filter_", DIs, ".jpg",sep=""), 
          plot = p, 
          width = 20, height = 15, 
          limitsize = F)
-  ggsave(paste(dir,"/clone_distribution_ofint_filter_2000.pdf",sep=""), 
+  ggsave(paste(dir,"/clone_distribution_ofint_filter_", DIs, ".pdf",sep=""), 
          plot = p, 
          width = 20, height = 15, 
          limitsize = F)

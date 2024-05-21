@@ -29,14 +29,13 @@ if [ ! -f "$full_path" ]; then
     exit 1
 fi
 
-restr_file="$D/restr.txt"
-
+restr_file="$D/$restr"
 
 output_file="$D/output.txt"
 rm $output_file
 
 # Read each line from the file
-while IFS=',' read -r line barcode; do
+while IFS=',' read -r line barcode name; do
     #echo "$line"
     #echo "$barcode"
     # Select the first 52 characters of the line
@@ -59,19 +58,20 @@ while IFS=',' read -r line barcode; do
     
     # Add 6 random characters choosing between A, C, G, and T
     # Generate a random sequence of 6 numbers from 0 to 3
-    random_sequence=""
-    for ((i = 0; i < 6; i++)); do
-      random_number=$((RANDOM % 4))  # Generate a random number from 0 to 3
-      case $random_number in
-        0) random_sequence+="A";;
-        1) random_sequence+="C";;
-        2) random_sequence+="G";;
-        3) random_sequence+="T";;
-      esac
-    done
+    # random_sequence=""
+    # for ((i = 0; i < 6; i++)); do
+    #   random_number=$((RANDOM % 4))  # Generate a random number from 0 to 3
+    #   case $random_number in
+    #     0) random_sequence+="A";;
+    #     1) random_sequence+="C";;
+    #     2) random_sequence+="G";;
+    #     3) random_sequence+="T";;
+    #   esac
+    # done
 
     #echo "$random_sequence"
-    result+="$random_sequence"
+    #result+="$random_sequence"
+    result+="NNNNNN"
     
     # Add $barcode
     result+="$barcode"
@@ -79,14 +79,19 @@ while IFS=',' read -r line barcode; do
     # Add $gibsonthree
     result+="$gibsonthree"
     
+    result+=",$name"
+    
     echo "$result" >> "$output_file"
 done < "$full_path"
 
 
-#restriztion
+#restriction
 if [ -f "$restr_file" ]; then
+  echo "Restriction check"
   while IFS= read -r subsequence; do
-    sed -i "s/$subsequence/$(echo "$subsequence" | tr '[:upper:]' '[:lower:]')/gI" "$output_file"
+    grep $subsequence "$output_file" >> "$D/bad_clones.txt"
+    sed -i "s/$subsequence/$(echo "$subsequence" | tr '[:upper:]' '[:lower:]')/gI" "$D/bad_clones.txt"
+
   done < "$restr_file"
 fi
 

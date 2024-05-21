@@ -8,7 +8,9 @@ catcheR_step1QC(
   group = c("docker", "sudo"),
   folder,
   fastq.read1,
-  fastq.read2,
+  DIs = 100,
+  ratio = 10,
+  plot.threshold = 2000,
   clones = NULL
 )
 }
@@ -19,7 +21,11 @@ catcheR_step1QC(
 
 \item{fastq.read1, }{a character string indicating the filename of read 1 fastq or fastq.gz containing barcodes sequencing}
 
-\item{fastq.read2, }{a character string indicating the filename of read 2 fastq or fastq.gz containing barcodes sequencing}
+\item{DIs, }{integer of the minimum number of diversity indexes (DIs, pseudo-unique reads) of the most represented shRNA matching to a given UCI-BC; in combination with "ratio", it selects UCI-BCs for which it is possible to reliably assign an shRNA. Default is 100}
+
+\item{ratio, }{integer of the minimum ratio between the number of DIs of the most represented and second most represented shRNAs matching to a given UCI-BC. in combination with DI, it is employed to filter UCI-BCs for which it is possible to reliably assign an shRNA. Default is 10}
+
+\item{plot.threshold, }{integer of the minimum number of DIs per UCI-BC for output plot}
 
 \item{clones, }{a character string indicating the filename of txt file containing a newline separated list of clones of interest in the format of barcode_UCI}
 }

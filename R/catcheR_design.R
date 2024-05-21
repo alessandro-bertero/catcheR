@@ -24,7 +24,7 @@
 
 catcheR_design <- function(
   group=c("docker","sudo"),
-  folder, sequences, gibson.five = "AGTTCCCTATCAGTGATAGAGATCCC", gibson.three = "GTAGCTCGCTGATCAGC", fixed = "GTCGACATTTAAATGGCGCGCC", restriction.sites){
+  folder, sequences, gibson.five = "AGTTCCCTATCAGTGATAGAGATCCC", gibson.three = "GTAGCTCGCTGATCAGC", fixed = "GTCGACATTTAAATGGCGCGCC", restriction.sites = NULL){
   
   #running time 1
   ptm <- proc.time()

@@ -11,7 +11,7 @@ catcheR_design(
   gibson.five = "AGTTCCCTATCAGTGATAGAGATCCC",
   gibson.three = "GTAGCTCGCTGATCAGC",
   fixed = "GTCGACATTTAAATGGCGCGCC",
-  restriction.sites
+  restriction.sites = NULL
 )
 }
 \arguments{

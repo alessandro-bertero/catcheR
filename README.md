@@ -3,16 +3,17 @@ Pipelines and codes relative to the hPS2-seq screening platform
 Data analysis pipeline from HEDGe lab. 
 
 See preprint DOI: XXXXXX.
-See associated protocol and CatcheR protocol from preprint XXXXX.
+See associated protocol and catcheR protocol 4 from preprint XXXXX.
 
 Repository contains 2 sets of scripts: 
 
 - CatcheR barcode pipeline curated by Maria Luisa Ratto: first step of the analysis, to assign perturbation to single cells.
-  There are two different versions: one for 10X data and one for double indexing sci-RMNAseq. An overview of the workflow can be found in the DOCUMENTATION folder.
+  There are two different versions: one for 10X data (iPS2-10X-seq) and one for double indexing sci-RNAseq (iPS2-sci-seq). The DOCUMENTATION folder provides an overview of the workflow.
   
 - single cell analysis curated by Elisa Balmas: Evaluate the perturbation effect of a gene or shRNA at the clonal or population level.
   Clustering is done with Monocle 3 and customized statistical methods have been employed to assess:
   (1) Cluster enrichment variation due to a perturbation; (2) Changes in Pseudotime or Module gene expression associated with a perturbation.
+  Download the row data from array express (E-MTAB-14102, E-MTAB-14065, and E-MTAB-14066). The filtered and annotated data are available as RDS files on Zenodo DOI 10.5281/zenodo.11238212. To reproduce this pipeline fully, one can download the scratch folders (which also contain the count matrices output from catcheR pre-QC) and the associated files.
 
 # CatcheR installation
 Use the "install_github" function in the "devtools" package.
@@ -34,7 +35,7 @@ Starting from a single-cell gene expression matrix, the wrapper function catcheR
 Inputs:
 - read 1 fastq (or fastq.gz) containing the barcodes sequencing library (from cellranger mkfastq)
 - read 2 fastq (or fastq.gz) containing the barcodes sequencing library (from cellranger mkfastq)
-- gene expression matrix in csv format (transform the cellranger count matrix to a csv file with XXXXXXX)
+- gene expression matrix in csv format (transform the cellranger count matrix to a csv file with cellranger)
 - a file called rc_barcodes_gene.csv, containing the association between barcodes and shRNAs, comma separated. Use the reverse complement of the shRNA barcode. E.g.
   
       CTTCTTTC,CHD7.1
@@ -87,7 +88,7 @@ Wrapper function arguments:
 
 Example
 
-    folder = "/20tb/ratto/catcheR/test_02_7/"
+    folder = "/link/to/folder/"
     catcheR_10Xcatch(group = "docker", 
                  folder = folder, 
                  fastq.read1 = list.files(folder, pattern = "R1"), 

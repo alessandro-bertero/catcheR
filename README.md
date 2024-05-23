@@ -31,5 +31,6 @@ Alternatively, the repository can be download manually and loaded as follows:
 The following R functions require docker, since each of them opens a docker, computes the analysis inside of it to ensure reproducibility and then closes it. 
 
 # Pipeline overview
+For a detalied explaination of all the functions, see the protocol in DOCUMENTATION. 
 ![exploratory](DOCUMENTATION/1exploratoryanalysis.jpg)
 ![cellfiltering](DOCUMENTATION/cellfiltering.jpg)

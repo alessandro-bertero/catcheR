@@ -15,7 +15,11 @@ Repository contains 2 sets of scripts:
   (1) Cluster enrichment variation due to a perturbation; (2) Changes in Pseudotime or Module gene expression associated with a perturbation.
   Download the row data from array express (E-MTAB-14102, E-MTAB-14065, and E-MTAB-14066). The filtered and annotated data are available as RDS files on Zenodo DOI 10.5281/zenodo.11238212. To reproduce this pipeline fully, one can download the scratch folders (which also contain the count matrices output from catcheR pre-QC) and the associated files.
 
+## Prerequisites
+CatcheR requires Docker, since each of functions open a docker container, computes the analysis inside of it to ensure reproducibility and then closes it. To install docker, follow instructions at [https://docs.docker.com/engine/install/](https://docs.docker.com/engine/install/). 
+
 # CatcheR installation
+
 Use the "install_github" function in the "devtools" package.
 
     library(devtools) 
@@ -25,10 +29,8 @@ Use the "install_github" function in the "devtools" package.
 Alternatively, the repository can be download manually and loaded as follows: 
 
     library(devtools);
-    load_all("."); # Working directory should be in the package catcheR
+    load_all("."); # Working directory should be in the package catcheR folder
 
-## Prerequisites
-The following R functions require docker, since each of them opens a docker, computes the analysis inside of it to ensure reproducibility and then closes it. 
 
 # Pipeline overview
 For a detalied explaination of all the functions, see the protocol in DOCUMENTATION. 

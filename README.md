@@ -35,4 +35,4 @@ Alternatively, the repository can be download manually and loaded as follows:
 # Pipeline overview
 For a detalied explaination of all the functions, see the protocol in DOCUMENTATION. 
 ![exploratory](DOCUMENTATION/1exploratoryanalysis.jpg)
-![cellfiltering](DOCUMENTATION/cellfiltering.jpg)
+![cellfiltering](DOCUMENTATION/2cellfiltering.jpg)

@@ -16,7 +16,7 @@ Repository contains 2 sets of scripts:
   Download the row data from array express (E-MTAB-14102, E-MTAB-14065, and E-MTAB-14066). The filtered and annotated data are available as RDS files on Zenodo DOI 10.5281/zenodo.11238212. To reproduce this pipeline fully, one can download the scratch folders (which also contain the count matrices output from catcheR pre-QC) and the associated files.
 
 ## Prerequisites
-CatcheR requires Docker, since each of functions open a docker container, computes the analysis inside of it to ensure reproducibility and then closes it. To install docker, follow instructions at [https://docs.docker.com/engine/install/](https://docs.docker.com/engine/install/). 
+CatcheR requires Docker, since the functions open a docker container, compute the analysis inside of it to ensure reproducibility and then close it. To install docker, follow instructions at [https://docs.docker.com/engine/install/](https://docs.docker.com/engine/install/). 
 
 # CatcheR installation
 

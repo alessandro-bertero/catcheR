@@ -32,3 +32,4 @@ The following R functions require docker, since each of them opens a docker, com
 
 # Pipeline overview
 ![exploratory](DOCUMENTATION/1exploratoryanalysis.jpg)
+![cellfiltering](DOCUMENTATION/cellfiltering.jpg)

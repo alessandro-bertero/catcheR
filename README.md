@@ -2,8 +2,8 @@
 Pipelines and codes relative to the hPS2-seq screening platform
 Data analysis pipeline from HEDGe lab. 
 
-See preprint DOI: XXXXXX.
-See associated protocol and catcheR protocol 4 from preprint XXXXX.
+See preprint DOI: TBD.
+See associated protocol and catcheR protocol 4 attached in DOCUMENTATION ![PROTOCOL](/DOCUMENTATION/catcheR.pdf).
 
 Repository contains 2 sets of scripts: 
 

@@ -8,7 +8,9 @@ catcheR_10Xnocatch(
   group = c("docker", "sudo"),
   folder,
   expression.matrix,
-  threshold
+  threshold,
+  samples = 1,
+  reference = "TACGCGTTCATCTGGGGGAGCCG"
 )
 }
 \arguments{
@@ -19,6 +21,10 @@ catcheR_10Xnocatch(
 \item{expression.matrix, }{a character string indicating the filename of the gene expression matrix csv}
 
 \item{threshold, }{an integer indicating the minimum number of UMIs associated to the empty reference to consider a cell empty}
+
+\item{samples, }{integer indicating the number of different samples present in the sample (aggregated with cell ranger aggr)}
+
+\item{reference, }{the sequence indicating the empty plasmid}
 }
 \value{
 a gene expression matrix with empty cells

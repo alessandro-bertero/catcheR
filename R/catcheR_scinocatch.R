@@ -4,6 +4,7 @@
 #' @param folder, a character string indicating the path of the working folder containing the input files
 #' @param expression.matrix, a character string indicating the filename of the gene expression matrix csv
 #' @param threshold, an integer indicating the minimum number of UMIs associated to the empty reference to consider a cell empty
+#' @param reference, the sequence indicating the empty plasmid
 #' 
 #' @author Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 #'
@@ -20,7 +21,8 @@ catcheR_scinocatch <- function(
     group=c("docker","sudo"),
     folder, 
     expression.matrix,
-    threshold){
+    threshold,
+    reference = "TACGCGTTCATCTGGGGGAGCCG"){
   
   #running time 1
   ptm <- proc.time()
@@ -51,10 +53,23 @@ catcheR_scinocatch <- function(
   #   return(10)
   # }
   #if(logged){logged="TRUE"}else{logged="FALSE"}
-  
+  #executing the docker job
+  run_in_docker(
+    image_name = "docker.io/repbioinfo/catcher_barcode_pipeline_update",
+    volumes = list(
+      c(folder, "/data/scratch")
+    ),
+    additional_arguments = c(
+      "Rscript /home/sci_barcode_silencing_empty_selection.R",
+      "/data/scratch",
+      expression.matrix,
+      threshold,
+      reference
+    )
+  )
   #executing the docker job
   #docker run --platform linux/amd64 -v /20tb/ratto/catcheR/test_CM5/:/data/scratch repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_slicing.sh /data/scratch 1st2nd_hiPSC_CM_S5_R1_001.fastq 1st2nd_hiPSC_CM_S5_R2_001.fastq y12.csv GGCGCGTTCATCTGGGGGAGCCG 6 12
-  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline /home/sci_barcode_silencing_empty_selection.R /data/scratch ", expression.matrix, " ", threshold, sep="")
+  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline_update /home/sci_barcode_silencing_empty_selection.R /data/scratch ", expression.matrix, " ", threshold, " ", reference, sep="")
   #params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data -d docker.io/repbioinfo/desc.2018.01 Rscript /bin/top.R ", matrixName," ",format," ",separator, " ", logged, " ", threshold," ",type, sep="")
   resultRun <- runDocker(group=group, params=params)
   

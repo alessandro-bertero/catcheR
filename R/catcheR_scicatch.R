@@ -7,7 +7,10 @@
 #' @param UCI.legth, integer indicating the length of unique clonal identifier. Should be found after reference on read2
 #' @param threads, integer number of threads to be used for parallelization 
 #' @param percentage, integer threshold of percentage of UMIs supporting a UCI over total UMIs supporting UCIs in the same cell, to consider the UCI valid. Suggested default is 15.
+#' @param ratio, select valid cells = only 1 true UCI and top UCI UMIs / second top UCI UMIs > ratio
 #' @param mode, a character string. Two options: "bimodal" or "noise". To evaluate a threshold number of UMIs to consider a UCI valid there are 2 options: "bimodal" (default) which sets the threshold at the valley of the UMIxUCI distribution, or "noise", which sets the threshold at 1.35 * number of UCI supported by a single UMI.
+#' @param x, an integer indicating the x limit to zoom the UMIxUCI plot. Default is 100
+#' @param y, an integer indicating the y limit to zoom the UMIxUCI plot. Default is 400
 #' 
 #' @author Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 #'
@@ -20,14 +23,15 @@
 #' catcheR_scicatch(group = "docker", 
 #'                      folder = folder, 
 #'                      expression.matrix = "exp_mat.csv", 
-#'                      threads = 12, 
+#'                      threads = 12,
+#'                      ratio = 5, 
 #'                      mode = "noise")
 #'
 #' @export
 
 catcheR_scicatch <- function(
   group=c("docker","sudo"),
-  folder, expression.matrix, reference = "GGCGCGTTCATCTGGGGGAGCCG", UCI.length = 6, threads = 2, percentage = 15, mode = "bimodal"){
+  folder, expression.matrix, reference = "GGCGCGTTCATCTGGGGGAGCCG", UCI.length = 6, threads = 2, percentage = 15, ratio = 5, mode = "bimodal", x = 100, y = 400){
   
   #running time 1
   ptm <- proc.time()
@@ -47,7 +51,7 @@ catcheR_scicatch <- function(
   test <- dockerTest()
   if(!test){
     cat("\nERROR: Docker seems not to be installed in your system\n")
-    #system("echo 10 > ExitStatusFile")
+    print("echo 10 > ExitStatusFile")
     setwd(home)
     return(10)
   }
@@ -65,41 +69,50 @@ catcheR_scicatch <- function(
   # cat("\ncreating a folder in scratch folder\n")
   #dir.create(file.path(scrat_tmp.folder))
   #preprocess matrix and copying files
-  if (!file.exists(paste(folder,"/fastq",sep=""))){
-    cat(paste("\n It Seems that fastq folder file is not in ",folder,"\n"))
-    #system("echo 3 > ExitStatusFile 2>&1 &")
+  if (!dir.exists(paste(folder,"/fastq",sep=""))){
+    cat(paste("\n It Seems that fastaq read1 file is not in ",folder,"\n"))
+    print("echo 3 > ExitStatusFile 2>&1 &")
     setwd(folder)
     return(3)
   }
-  if (!file.exists(paste(folder,"/", expression.matrix, sep=""))){
-    cat(paste("\n It Seems that expression.matrix file is not in ",folder,"\n"))
-    #system("echo 3 > ExitStatusFile 2>&1 &")
-    setwd(folder)
-    return(3)
-  }
+  
   #executing the docker job
-  params <- paste("--cidfile ",folder,"/dockerID -v ",folder,":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline /home/sci_barcode_silencing_slicing.sh /data/scratch ", expression.matrix, " ", reference, " ", UCI.length, " ", threads, " ", percentage, " ", mode, " ", sep="")
-
-  resultRun <- runDocker(group=group, params=params)
+  run_in_docker(
+    image_name = "docker.io/repbioinfo/catcher_barcode_pipeline",
+    volumes = list(
+      c(folder, "/data/scratch/")
+    ),
+    additional_arguments = c(
+      "/home/sci_barcode_silencing_slicing.sh",
+      "/data/scratch/",
+      expression.matrix,
+      reference,
+      UCI.length,
+      threads,
+      percentage,
+      mode
+    )
+  )
   
   #waiting for the end of the container work
-  if(resultRun==0){
-    cat("\nData filtering is finished\n")
-  }
+  # if(resultRun==0){
+  #   cat("\nData filtering is finished\n")
+  # }
   
   #saving log and removing docker container
-  container.id <- readLines(paste(folder,"/dockerID", sep=""), warn = FALSE)
+  #container.id <- readLines(paste(folder,"/dockerID", sep=""), warn = FALSE)
   #system(paste("docker logs ", substr(container.id,1,12), " >& ",folder,"/", substr(container.id,1,12),".log", sep=""))
-  system(paste("docker logs ", substr(container.id,1,12), " > ",folder,"/", substr(container.id,1,12),".log 2>&1", sep=""))
-  system(paste("docker rm ", container.id, sep=""))
+  #system(paste("docker logs ", substr(container.id,1,12), " > ",folder,"/", substr(container.id,1,12),".log 2>&1", sep=""))
+  #system(paste("docker rm ", container.id, sep=""))
   
   
   #removing temporary folder
-  cat("\n\nRemoving the temporary file ....\n")
+  #cat("\n\nRemoving the temporary file ....\n")
   # system(paste("rm -R ",scrat_tmp.folder))
   #file.remove(paste0(folder,"out.info"))
-  file.remove(paste0(folder,"dockerID"))
+  #file.remove(paste0(folder,"dockerID"))
   #file.remove(paste0(folder,"tempFolderID"))
   #system(paste("cp ",paste(path.package(package="rCASC"),"containers/containers.txt",sep="/")," ",data.folder, sep=""))
   setwd(home)
 } 
+

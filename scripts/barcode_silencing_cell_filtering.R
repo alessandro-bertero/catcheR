@@ -11,17 +11,20 @@ args = commandArgs(trailingOnly=TRUE)
 #1 dir
 dir = args[1]
 #2 percentage
+percentage = as.numeric(args[2])
 #3 UMI count
+UMI_count = as.numeric(args[3])
 #4 gene exp matrix
 matrix = args[4]
+#5 sample
+sample = args[5]
+dir = paste0(dir, "/Results_", sample)
 
 #Load from files obtained from explorative analysis
-table = read.table(paste(dir,"/complete_table_fin.csv",sep=""), sep = ",", header = T)
+table = read.table(paste(dir,"/complete_table_fin_", sample, ".csv",sep=""), sep = ",", header = T)
 table[,1] = NULL
 
 #Define thresholds
-percentage = as.numeric(args[2])
-UMI_count = as.numeric(args[3])
 table = mutate(table, TorF = case_when(UMIpercentagexUCI > percentage & UMIxUCI > UMI_count ~ TRUE, UMIpercentagexUCI <= percentage | UMIxUCI <= UMI_count ~ F))
 
 
@@ -176,9 +179,10 @@ trans$Name.y = NULL
 rownames(trans) = trans$Name
 trans$Name = NULL
 trans = as.data.frame(t(trans))
-
+head(trans)
 #write file with new names
-write.csv(trans, paste(dir,"/silencing_matrix.csv",sep=""))
+print(paste(dir,"/silencing_matrix_", sample, ".csv",sep=""))
+write.csv(trans, paste(dir,"/silencing_matrix_", sample, ".csv",sep=""))
 
 fileConn<-file(paste(dir,"/log_part3.txt",sep=""))
 writeLines(c(paste("Cells with at least 1 true UCI:", length(unique(true_table$cellID)), sep = ""), 

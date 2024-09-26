@@ -68,28 +68,25 @@ catcheR_design <- function(
     setwd(folder)
     return(3)
   }
+  
   #executing the docker job
-  params <- paste("--cidfile ",folder,"/dockerID -v ",folder,":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline /home/oligo.sh /data/scratch ", sequences, " " ,gibson.five, " ", fixed, " ", gibson.three, " ", restriction.sites, " ", sep="")
-  
-  resultRun <- runDocker(group=group, params=params)
-  
-  #waiting for the end of the container work
-  if(resultRun==0){
-    cat("\nData filtering is finished\n")
-  }
-  
-  #saving log and removing docker container
-  container.id <- readLines(paste(folder,"/dockerID", sep=""), warn = FALSE)
-  #system(paste("docker logs ", substr(container.id,1,12), " >& ",folder,"/", substr(container.id,1,12),".log", sep=""))
-  system(paste("docker logs ", substr(container.id,1,12), " > ",folder,"/", substr(container.id,1,12),".log 2>&1", sep=""))
-  system(paste("docker rm ", container.id, sep=""))
-  
-  
-  #removing temporary folder
-  cat("\n\nRemoving the temporary file ....\n")
-  # system(paste("rm -R ",scrat_tmp.folder))
-  #file.remove(paste0(folder,"out.info"))
-  file.remove(paste0(folder,"dockerID"))
+  run_in_docker(
+    image_name = "docker.io/repbioinfo/catcher_barcode_pipeline_update",
+    volumes = list(
+      c(folder, "/data/scratch/")
+    ),
+    additional_arguments = c(
+      "/home/oligo.sh",
+      "/data/scratch/",
+      sequences,
+      gibson.five,
+      fixed,
+      gibson.three,
+      restriction.sites
+    )
+  )
+  #executing the docker job
+  #params <- paste("--cidfile ",folder,"/dockerID -v ",folder,":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline_update /home/oligo.sh /data/scratch ", sequences, " " ,gibson.five, " ", fixed, " ", gibson.three, " ", restriction.sites, " ", sep="")
   #file.remove(paste0(folder,"tempFolderID"))
   #system(paste("cp ",paste(path.package(package="rCASC"),"containers/containers.txt",sep="/")," ",data.folder, sep=""))
   setwd(home)

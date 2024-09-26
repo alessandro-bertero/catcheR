@@ -12,7 +12,10 @@ catcheR_scicatch(
   UCI.length = 6,
   threads = 2,
   percentage = 15,
-  mode = "bimodal"
+  ratio = 5,
+  mode = "bimodal",
+  x = 100,
+  y = 400
 )
 }
 \arguments{
@@ -28,7 +31,13 @@ catcheR_scicatch(
 
 \item{percentage, }{integer threshold of percentage of UMIs supporting a UCI over total UMIs supporting UCIs in the same cell, to consider the UCI valid. Suggested default is 15.}
 
+\item{ratio, }{select valid cells = only 1 true UCI and top UCI UMIs / second top UCI UMIs > ratio}
+
 \item{mode, }{a character string. Two options: "bimodal" or "noise". To evaluate a threshold number of UMIs to consider a UCI valid there are 2 options: "bimodal" (default) which sets the threshold at the valley of the UMIxUCI distribution, or "noise", which sets the threshold at 1.35 * number of UCI supported by a single UMI.}
+
+\item{x, }{an integer indicating the x limit to zoom the UMIxUCI plot. Default is 100}
+
+\item{y, }{an integer indicating the y limit to zoom the UMIxUCI plot. Default is 400}
 
 \item{UCI.legth, }{integer indicating the length of unique clonal identifier. Should be found after reference on read2}
 }

@@ -9,7 +9,9 @@ catcheR_scicatchQC(
   folder,
   expression.matrix,
   reference = "GGCGCGTTCATCTGGGGGAGCCG",
-  mode = "bimodal"
+  mode = "bimodal",
+  x = 100,
+  y = 400
 )
 }
 \arguments{
@@ -22,6 +24,10 @@ catcheR_scicatchQC(
 \item{reference, }{a character string indicating the sequence to identify reads containing barcodes. Should be found at at the beginning of read2. Use reverse complement!}
 
 \item{mode, }{a character string. Two options: "bimodal" or "noise". To evaluate a threshold number of UMIs to consider a UCI valid there are 2 options: "bimodal" (default) which sets the threshold at the valley of the UMIxUCI distribution, or "noise", which sets the threshold at 1.35 * number of UCI supported by a single UMI.}
+
+\item{x, }{an integer indicating the x limit to zoom the UMIxUCI plot. Default is 100}
+
+\item{y, }{an integer indicating the y limit to zoom the UMIxUCI plot. Default is 400}
 }
 \value{
 QC plots and intermediate data

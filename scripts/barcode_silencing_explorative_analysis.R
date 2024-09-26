@@ -8,6 +8,9 @@ ref = args[2]
 print(ref)
 #3 threshold mode
 mode = args[3]
+#4 sample
+sample = args[4]
+dir = paste0(dir, "/Results_", sample)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
@@ -19,12 +22,12 @@ sink(file = paste(dir,"/log2.txt",sep = ""), append = T, type = "output", split 
 
 
 #Load from files obtained with bash script
-with_cells_cellID = read.table(paste(dir, "/with_cells_cellID.txt", sep=""), sep = "\n")
-with_cells_UMI = read.table(paste(dir,"/with_cells_UMI.txt", sep=""), sep = "\n")
-with_cells_reference = read.table(paste(dir,"/with_cells_reference.txt", sep=""), sep = "\n")
-with_cells_UCI = read.table(paste(dir,"/with_cells_UCI.txt", sep=""), sep = "\n")
-with_cells_barcode = read.table(paste(dir,"/with_cells_barcode.txt", sep=""), sep = "\n")
-with_cells_reads_counts = read.table(paste(dir,"/with_cells_reads_counts.txt", sep=""), sep = "\n")
+with_cells_cellID = read.table(paste(dir, "/with_cells_cellID_", sample, ".txt", sep=""), sep = "\n")
+with_cells_UMI = read.table(paste(dir,"/with_cells_UMI_", sample, ".txt", sep=""), sep = "\n")
+with_cells_reference = read.table(paste(dir,"/with_cells_reference_", sample, ".txt", sep=""), sep = "\n")
+with_cells_UCI = read.table(paste(dir,"/with_cells_UCI_", sample, ".txt", sep=""), sep = "\n")
+with_cells_barcode = read.table(paste(dir,"/with_cells_barcode_", sample, ".txt", sep=""), sep = "\n")
+with_cells_reads_counts = read.table(paste(dir,"/with_cells_reads_counts_", sample, ".txt", sep=""), sep = "\n")
 
 #Create dataframe
 complete_table = data.frame(with_cells_cellID, with_cells_UMI, with_cells_barcode, with_cells_UCI, with_cells_reference, with_cells_reads_counts)
@@ -227,5 +230,5 @@ p
 dev.off()
 
 #Save complete table
-write.csv(tr_complete_table_fin, paste(dir,"/complete_table_fin.csv",sep=""))
+write.csv(tr_complete_table_fin, paste(dir,"/complete_table_fin_", sample, ".csv",sep=""))
 system("chmod 777 /data/scratch")

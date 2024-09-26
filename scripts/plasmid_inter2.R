@@ -43,7 +43,7 @@ names(barcodes_names) = c("barcode", "name")
 print(head(barcodes_names))
 
 #LOAD shRNA
-expected = read.table(paste(dir,"/expected_shRNA_names.txt", sep=""), sep = " ")
+expected = read.table(paste(dir,"/expected_shRNA_names.csv", sep=""), sep = ",")
 names(expected) = c("actual_name", "shRNA")
 print(head(expected))
 

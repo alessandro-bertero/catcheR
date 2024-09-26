@@ -9,7 +9,9 @@ catcheR_filtercatch(
   folder,
   expression.matrix,
   UMI.count,
-  percentage = 15
+  percentage = 15,
+  ratio = 5,
+  samples = 1
 )
 }
 \arguments{
@@ -22,6 +24,10 @@ catcheR_filtercatch(
 \item{UMI.count, }{integer threshold of percentage of UMIs supporting a UCI to consider the UCI valid. Manually set.}
 
 \item{percentage, }{integer threshold of percentage of UMIs supporting a UCI over total UMIs supporting UCIs in the same cell, to consider the UCI valid. Suggested default is 15.}
+
+\item{ratio, }{integer indicating the : the ratio between the number of UMIs supporting the most represent UCI and the number of UMIs supporting the second most represented UCI to consider accept the cell as a single integration cell.}
+
+\item{samples, }{integer indicating the number of different samples present in the sample (aggregated with cell ranger aggr)}
 }
 \value{
 a gene expression matrix where cell names contains annotations about the perturbation present in each cell + QC plots

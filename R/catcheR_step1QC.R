@@ -60,31 +60,24 @@ catcheR_step1QC <- function(
   #   return(10)
   # }
   #if(logged){logged="TRUE"}else{logged="FALSE"}
-  
+  #executing the docker job
+  run_in_docker(
+    image_name = "docker.io/repbioinfo/catcher_barcode_pipeline_update",
+    volumes = list(
+      c(folder, "/data/scratch")
+    ),
+    additional_arguments = c(
+      "/home/plasmid_inter.sh",
+      "/data/scratch",
+      fastq.read1,
+      plot.threshold,
+      DIs,
+      ratio,
+      clones
+    )
+  )
   #executing the docker job
   #docker run --platform linux/amd64 -v /20tb/ratto/catcheR/test_CM5/:/data/scratch repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_slicing.sh /data/scratch 1st2nd_hiPSC_CM_S5_R1_001.fastq 1st2nd_hiPSC_CM_S5_R2_001.fastq y12.csv GGCGCGTTCATCTGGGGGAGCCG 6 12
-  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline /home/plasmid_inter.sh /data/scratch ", fastq.read1, " ", plot.threshold, " ", DIs, " ", ratio, " ",clones,sep="")
-  #params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data -d docker.io/repbioinfo/desc.2018.01 Rscript /bin/top.R ", matrixName," ",format," ",separator, " ", logged, " ", threshold," ",type, sep="")
-  resultRun <- runDocker(group=group, params=params)
-  
-  #waiting for the end of the container work
-  if(resultRun==0){
-    cat("\nData filtering is finished\n")
-  }
-  
-  #saving log and removing docker container
-  container.id <- readLines(paste(folder,"/dockerID", sep=""), warn = FALSE)
-  #system(paste("docker logs ", substr(container.id,1,12), " >& ",folder,"/", substr(container.id,1,12),".log", sep=""))
-  system(paste("docker logs ", substr(container.id,1,12), " > ",folder,"/", substr(container.id,1,12),".log 2>&1", sep=""))
-  system(paste("docker rm ", container.id, sep=""))
-  
-  
-  #removing temporary folder
-  cat("\n\nRemoving the temporary file ....\n")
-  # system(paste("rm -R ",scrat_tmp.folder))
-  #file.remove(paste0(folder,"out.info"))
-  file.remove(paste0(folder,"dockerID"))
-  #file.remove(paste0(folder,"tempFolderID"))
-  #system(paste("cp ",paste(path.package(package="rCASC"),"containers/containers.txt",sep="/")," ",data.folder, sep=""))
+  #params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline_update /home/plasmid_inter.sh /data/scratch ", fastq.read1, " ", plot.threshold, " ", DIs, " ", ratio, " ",clones,sep="")
   setwd(home)
 } 

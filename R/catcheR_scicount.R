@@ -65,31 +65,32 @@ catcheR_scicount <- function(
     setwd(folder)
     return(3)
   }
-  
   #executing the docker job
-  params <- paste("--cidfile ",folder,"/dockerID -v ",folder,":/data/scratch -d docker.io/repbioinfo/sci_tomatrix /home/tomatrix.sh ", sample.name, " " ,UMI.cutoff, " ", sep="")
+  run_in_docker(
+    image_name = "docker.io/repbioinfo/sci_tomatrix",
+    volumes = list(
+      c(folder, "/data/scratch/")
+    ),
+    additional_arguments = c(
+      "/home/tomatrix.sh",
+      #"/data/scratch/",
+      sample.name,
+      UMI.cutoff
+    )
+  )
   
-  resultRun <- runDocker(group=group, params=params)
+  run_in_docker(
+    image_name = "docker.io/repbioinfo/monocle",
+    volumes = list(
+      c(folder, "/data/scratch/")
+    ),
+    additional_arguments = c(
+      "Rscript /home/endpipeline.R"
+    )
+  )
+  #executing the docker job
+  #params <- paste("--cidfile ",folder,"/dockerID -v ",folder,":/data/scratch -d docker.io/repbioinfo/sci_tomatrix /home/tomatrix.sh ", sample.name, " " ,UMI.cutoff, " ", sep="")
   
-  #waiting for the end of the container work
-  if(resultRun==0){
-    cat("\nData filtering is finished\n")
-  }
-  
-  #saving log and removing docker container
-  container.id <- readLines(paste(folder,"/dockerID", sep=""), warn = FALSE)
-  #system(paste("docker logs ", substr(container.id,1,12), " >& ",folder,"/", substr(container.id,1,12),".log", sep=""))
-  system(paste("docker logs ", substr(container.id,1,12), " > ",folder,"/", substr(container.id,1,12),".log 2>&1", sep=""))
-  system(paste("docker rm ", container.id, sep=""))
-  
-  
-  #removing temporary folder
-  cat("\n\nRemoving the temporary file ....\n")
-  # system(paste("rm -R ",scrat_tmp.folder))
-  #file.remove(paste0(folder,"out.info"))
-  file.remove(paste0(folder,"dockerID"))
-  #file.remove(paste0(folder,"tempFolderID"))
-  #system(paste("cp ",paste(path.package(package="rCASC"),"containers/containers.txt",sep="/")," ",data.folder, sep=""))
   setwd(home)
 } 
 

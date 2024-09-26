@@ -10,7 +10,11 @@
 #' @param threads, integer number of threads to be used for parallelization 
 #' @param percentage, integer threshold of percentage of UMIs supporting a UCI over total UMIs supporting UCIs in the same cell, to consider the UCI valid. Suggested default is 15.
 #' @param mode, a character string. Two options: "bimodal" or "noise". To evaluate a threshold number of UMIs to consider a UCI valid there are 2 options: "bimodal" (default) which sets the threshold at the valley of the UMIxUCI distribution, or "noise", which sets the threshold at 1.35 * number of UCI supported by a single UMI.
-#' 
+#' @param ratio, select valid cells = only 1 true UCI and top UCI UMIs / second top UCI UMIs > ratio
+#' @param samples, integer indicating the number of different samples present in the sample (aggregated with cell ranger aggr)
+#' @param x, an integer indicating the x limit to zoom the UMIxUCI plot. Default is 100
+#' @param y, an integer indicating the y limit to zoom the UMIxUCI plot. Default is 400
+#'   
 #' @author Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 #'
 #' @return a gene expression matrix where cell names contains annotations about the perturbation present in each cell + QC plots
@@ -28,13 +32,15 @@
 #'                 UCI.length = 6,
 #'                 threads = 12, 
 #'                 percentage = 15,
-#'                 mode = "noise")
+#'                 mode = "noise",
+#'                 ratio = 5,
+#'                 samples = 4)
 #'
 #' @export
 
 catcheR_10Xcatch <- function(
   group=c("docker","sudo"),
-  folder, fastq.read1, fastq.read2, expression.matrix, reference = "GGCGCGTTCATCTGGGGGAGCCG", UCI.length = 6, threads = 2, percentage = 15, mode = "bimodal"){
+  folder, fastq.read1, fastq.read2, expression.matrix, reference = "GGCGCGTTCATCTGGGGGAGCCG", UCI.length = 6, threads = 2, percentage = 15, mode = "bimodal", ratio = 5, samples = 1, x = 100, y = 400){
   
   #running time 1
   ptm <- proc.time()
@@ -82,14 +88,37 @@ catcheR_10Xcatch <- function(
     return(3)
   }
   #executing the docker job
-  params <- paste("--cidfile ",folder,"/dockerID -v ",folder,":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_slicing.sh /data/scratch ", fastq.read1, " " ,fastq.read2, " ", expression.matrix, " ", reference, " ", UCI.length, " ", threads, " ", percentage, " ", mode, sep="")
+  run_in_docker(
+    image_name = "docker.io/repbioinfo/catcher_barcode_pipeline_update",
+    volumes = list(
+      c(folder, "/data/scratch")
+    ),
+    additional_arguments = c(
+      "/home/barcode_silencing_slicing.sh",
+      "/data/scratch/",
+      fastq.read1, 
+      fastq.read2, 
+      expression.matrix,
+      reference,
+      UCI.length,
+      threads,
+      percentage,
+      mode,
+      samples,
+      ratio,
+      x,
+      y
+    )
+  )
+  
+  #params <- paste("--cidfile ",folder,"/dockerID -v ",folder,":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline_update /home/barcode_silencing_slicing.sh /data/scratch/ ", fastq.read1, " " ,fastq.read2, " ", expression.matrix, " ", reference, " ", UCI.length, " ", threads, " ", percentage, " ", mode, " ", samples, " ", ratio," ", x, " ", y, sep="")
 
-  resultRun <- runDocker(group=group, params=params)
+  #resultRun <- runDocker(group=group, params=params)
   
   #waiting for the end of the container work
-  if(resultRun==0){
-    cat("\nData filtering is finished\n")
-  }
+  #if(resultRun==0){
+    #cat("\nData filtering is finished\n")
+  #}
   
   #saving log and removing docker container
   container.id <- readLines(paste(folder,"/dockerID", sep=""), warn = FALSE)

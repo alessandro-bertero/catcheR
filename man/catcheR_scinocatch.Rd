@@ -8,7 +8,8 @@ catcheR_scinocatch(
   group = c("docker", "sudo"),
   folder,
   expression.matrix,
-  threshold
+  threshold,
+  reference = "TACGCGTTCATCTGGGGGAGCCG"
 )
 }
 \arguments{
@@ -19,6 +20,8 @@ catcheR_scinocatch(
 \item{expression.matrix, }{a character string indicating the filename of the gene expression matrix csv}
 
 \item{threshold, }{an integer indicating the minimum number of UMIs associated to the empty reference to consider a cell empty}
+
+\item{reference, }{the sequence indicating the empty plasmid}
 }
 \value{
 a gene expression matrix with empty cells

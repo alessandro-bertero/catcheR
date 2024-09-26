@@ -1,30 +1,24 @@
-#' @title catcheR_nocatch
-#' @description Empty selection step of the data analysis pipeline for the iPS2-seq methods from HEDGe lab.
+#' @title catcheR_modules
+#' @description Data loading step of the data analysis pipeline for the iPS2-seq methods from HEDGe lab.
 #' @param group, a character string. Two options: sudo or docker, depending to which group the user belongs
-#' @param folder, a character string indicating the path of the working folder containing the input files
-#' @param expression.matrix, a character string indicating the filename of the gene expression matrix csv
-#' @param threshold, an integer indicating the minimum number of UMIs associated to the empty reference to consider a cell empty
-#' @param samples, integer indicating the number of different samples present in the sample (aggregated with cell ranger aggr)
-#' @param ref, a character string. The sequence characterizing empty plasmids. 
+#' @param folder, a character string indicating the path of the working folder containing the input files and results of previous analysis
+#' @param cds, a character string indicating the filename of the annotated gene expression matrix csv resulting from catcher catch ("filtered_annotated_silencing_matrix_complete_all_samples.csv")
 #' 
 #' @author Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 #'
-#' @return a gene expression matrix with empty cells
+#' @return statistics on pseudotime
 #'
 #' @examples
 #'\dontrun{
 #'
-#' catcheR_nocatch(group = "docker", folder = folder, expression.matrix = "matrix.csv", threshold = 10)
+#' catcheR_pseudotime(group="docker",folder="/3tb/data/ratto/aggr/test/", cds = "processed_cds.Rdata",pseudotime = "pseudotime.csv")
 #'
 #' @export
 
-catcheR_nocatch <- function(
-    group=c("docker","sudo"),
-    folder, 
-    expression.matrix,
-    threshold,
-    samples = 1, 
-    ref = "TACGCGTTCATCTGGG"){
+catcheR_modules <- function(
+  group=c("docker","sudo"),
+  folder, 
+  cds){
   
   #running time 1
   ptm <- proc.time()
@@ -55,10 +49,21 @@ catcheR_nocatch <- function(
   #   return(10)
   # }
   #if(logged){logged="TRUE"}else{logged="FALSE"}
-  
+  #executing the docker job
+  run_in_docker(
+    image_name = "docker.io/repbioinfo/catcher_sc",
+    volumes = list(
+      c(folder, "/data/scratch")
+    ),
+    additional_arguments = c(
+      "Rscript /home/4_modules.R",
+      "/data/scratch",
+      cds
+    )
+  )
   #executing the docker job
   #docker run --platform linux/amd64 -v /20tb/ratto/catcheR/test_CM5/:/data/scratch repbioinfo/catcher_barcode_pipeline /home/barcode_silencing_slicing.sh /data/scratch 1st2nd_hiPSC_CM_S5_R1_001.fastq 1st2nd_hiPSC_CM_S5_R2_001.fastq y12.csv GGCGCGTTCATCTGGGGGAGCCG 6 12
-  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_barcode_pipeline_update /home/barcode_silencing_empty_selection.R /data/scratch ", expression.matrix, " ", threshold, " ", samples, " ", ref, " ", sep="")
+  params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data/scratch -d docker.io/repbioinfo/catcher_sc /home/4_modules.R /data/scratch ", cds, " ", sep="")
   #params <- paste("--cidfile ",folder,"/dockerID -v ",folder, ":/data -d docker.io/repbioinfo/desc.2018.01 Rscript /bin/top.R ", matrixName," ",format," ",separator, " ", logged, " ", threshold," ",type, sep="")
   resultRun <- runDocker(group=group, params=params)
   

@@ -26,11 +26,11 @@ catcheR_load <- function(
     folder, 
     expression.matrix,
     control_genes,
-    control_samples,
-    replicates,
-    sample_names = NULL,
+    control_samples = "NULL",
+    replicates = "NULL",
+    sample_names = "NULL",
     resolution = 5e-4,
-    genes = NULL){
+    genes = "NULL"){
   
   #running time 1
   ptm <- proc.time()

@@ -4,7 +4,7 @@
 #' @param folder, a character string indicating the path of the working folder containing the input files
 #' @param reference, a character string indicating the sequence to identify reads containing barcodes. Should be found at at the beginning of read2. Use reverse complement!
 #' @param mode, a character string. Two options: "bimodal" or "noise". To evaluate a threshold number of UMIs to consider a UCI valid there are 2 options: "bimodal" (default) which sets the threshold at the valley of the UMIxUCI distribution, or "noise", which sets the threshold at 1.35 * number of UCI supported by a single UMI.
-#' @param samples, integer indicating the number of different samples present in the sample (aggregated with cell ranger aggr)
+#' @param sample, integer indicating the sample to analyze (between those aggregated with cell ranger aggr)
 #' @param x, an integer indicating the x limit to zoom the UMIxUCI plot. Default is 100
 #' @param y, an integer indicating the y limit to zoom the UMIxUCI plot. Default is 400
 #' 
@@ -22,7 +22,7 @@
 
 catcheR_10XcatchQC <- function(
   group=c("docker","sudo"),
-  folder, reference = "GGCGCGTTCATCTGGGGGAGCCG", mode = "bimodal", samples = 1, x = 100, y = 400){ #noise or bimodal
+  folder, reference = "GGCGCGTTCATCTGGGGGAGCCG", mode = "bimodal", sample = 1, x = 100, y = 400){ #noise or bimodal
   
   #running time 1
   ptm <- proc.time()
@@ -75,7 +75,7 @@ catcheR_10XcatchQC <- function(
       "/data/scratch",
       reference,
       mode,
-      samples,
+      sample,
       x,
       y
     )

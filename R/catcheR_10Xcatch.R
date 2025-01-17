@@ -128,10 +128,10 @@ catcheR_10Xcatch <- function(
   
   
   #removing temporary folder
-  cat("\n\nRemoving the temporary file ....\n")
+  #cat("\n\nRemoving the temporary file ....\n")
   # system(paste("rm -R ",scrat_tmp.folder))
   #file.remove(paste0(folder,"out.info"))
-  file.remove(paste0(folder,"dockerID"))
+  #file.remove(paste0(folder,"dockerID"))
   #file.remove(paste0(folder,"tempFolderID"))
   #system(paste("cp ",paste(path.package(package="rCASC"),"containers/containers.txt",sep="/")," ",data.folder, sep=""))
   setwd(home)

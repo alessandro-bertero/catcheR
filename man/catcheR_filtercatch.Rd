@@ -11,7 +11,7 @@ catcheR_filtercatch(
   UMI.count,
   percentage = 15,
   ratio = 5,
-  samples = 1
+  sample = 1
 )
 }
 \arguments{
@@ -27,7 +27,7 @@ catcheR_filtercatch(
 
 \item{ratio, }{integer indicating the : the ratio between the number of UMIs supporting the most represent UCI and the number of UMIs supporting the second most represented UCI to consider accept the cell as a single integration cell.}
 
-\item{samples, }{integer indicating the number of different samples present in the sample (aggregated with cell ranger aggr)}
+\item{sample, }{integer indicating the sample to analyze (between those aggregated with cell ranger aggr)}
 }
 \value{
 a gene expression matrix where cell names contains annotations about the perturbation present in each cell + QC plots

@@ -4,7 +4,7 @@
 #' @param folder, a character string indicating the path of the working folder containing the input files
 #' @param expression.matrix, a character string indicating the filename of the gene expression matrix csv
 #' @param threshold, an integer indicating the minimum number of UMIs associated to the empty reference to consider a cell empty
-#' @param samples, integer indicating the number of different samples present in the sample (aggregated with cell ranger aggr)
+#' @param sample, integer indicating the sample to analyze (between those aggregated with cell ranger aggr)
 #' @param reference, the sequence indicating the empty plasmid
 #' 
 #' @author Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
@@ -14,7 +14,7 @@
 #' @examples
 #'\dontrun{
 #'
-#' catcheR_10Xnocatch(group = "docker", folder = folder, expression.matrix = "matrix.csv", threshold = 10)
+#' catcheR_10Xnocatch(group = "docker", folder = folder, expression.matrix = "matrix.csv", threshold = 10, sample = 1)
 #'
 #' @export
 
@@ -23,7 +23,7 @@ catcheR_10Xnocatch <- function(
     folder, 
     expression.matrix,
     threshold,
-    samples = 1,
+    sample = 1,
     reference = "TACGCGTTCATCTGGGGGAGCCG"){
   
   #running time 1
@@ -68,7 +68,7 @@ catcheR_10Xnocatch <- function(
       "/data/scratch",
       expression.matrix,
       threshold,
-      samples,
+      sample,
       reference
     )
   )

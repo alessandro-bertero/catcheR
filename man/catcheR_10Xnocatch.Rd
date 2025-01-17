@@ -9,7 +9,7 @@ catcheR_10Xnocatch(
   folder,
   expression.matrix,
   threshold,
-  samples = 1,
+  sample = 1,
   reference = "TACGCGTTCATCTGGGGGAGCCG"
 )
 }
@@ -22,7 +22,7 @@ catcheR_10Xnocatch(
 
 \item{threshold, }{an integer indicating the minimum number of UMIs associated to the empty reference to consider a cell empty}
 
-\item{samples, }{integer indicating the number of different samples present in the sample (aggregated with cell ranger aggr)}
+\item{sample, }{integer indicating the sample to analyze (between those aggregated with cell ranger aggr)}
 
 \item{reference, }{the sequence indicating the empty plasmid}
 }

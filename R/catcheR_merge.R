@@ -3,7 +3,7 @@
 #' @param group, a character string. Two options: sudo or docker, depending to which group the user belongs
 #' @param folder, a character string indicating the path of the working folder containing the input files
 #' @param samples, integer indicating the number of different samples present in the sample (aggregated with cell ranger aggr)
-#' @param empty, logical, are add empty cells to the matrix? nocatch must have been run. Default F
+#' @param empty, logical, are add empty cells to the matrix? nocatch must have been run. Default TRUE
 #' 
 #' @author Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 #'
@@ -19,7 +19,7 @@
 
 catcheR_merge <- function(
   group=c("docker","sudo"),
-  folder, samples = 2, empty = F){
+  folder, samples = 2, empty = T){
   
   #running time 1
   ptm <- proc.time()

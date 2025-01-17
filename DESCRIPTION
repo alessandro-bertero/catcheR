@@ -1,6 +1,6 @@
 Package: catcheR
 Type: Package
 Title: Data analysis pipeline for the iPS2-seq methods from HEDGe lab.
-Version: 0.0.3
+Version: 0.0.4
 RoxygenNote: 7.3.2
 Encoding: UTF-8

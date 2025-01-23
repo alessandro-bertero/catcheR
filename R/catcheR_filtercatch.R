@@ -6,7 +6,7 @@
 #' @param UMI.count, integer threshold of percentage of UMIs supporting a UCI to consider the UCI valid. Manually set.
 #' @param percentage, integer threshold of percentage of UMIs supporting a UCI over total UMIs supporting UCIs in the same cell, to consider the UCI valid. Suggested default is 15.
 #' @param ratio, integer indicating the : the ratio between the number of UMIs supporting the most represent UCI and the number of UMIs supporting the second most represented UCI to consider accept the cell as a single integration cell.
-#' @param samples, integer indicating the number of different samples present in the sample (aggregated with cell ranger aggr)
+#' @param sample, integer indicating the sample to analyze (between those aggregated with cell ranger aggr)
 #' 
 #' @author Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 #'
@@ -15,14 +15,14 @@
 #' @examples
 #'\dontrun{
 #'
-#' catcheR_filtercatch(group = "docker", folder = "/20tb/ratto/catcheR/test_CM5/", expression.matrix = "matrix.csv", UMI.count = 10, 15, samples = 1)
+#' catcheR_filtercatch(group = "docker", folder = "/20tb/ratto/catcheR/test_CM5/", expression.matrix = "matrix.csv", UMI.count = 10, 15, sample = 1)
 #'
 #' @export
 
 
 catcheR_filtercatch <- function(
   group=c("docker","sudo"),
-  folder, expression.matrix, UMI.count, percentage = 15, ratio = 5, samples = 1){
+  folder, expression.matrix, UMI.count, percentage = 15, ratio = 5, sample = 1){
   
   #running time 1
   ptm <- proc.time()
@@ -77,7 +77,7 @@ catcheR_filtercatch <- function(
       UMI.count,
       ratio,
       expression.matrix,
-      samples
+      sample
     )
   )
   #saving log and removing docker container

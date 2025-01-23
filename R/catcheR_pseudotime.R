@@ -4,6 +4,7 @@
 #' @param folder, a character string indicating the path of the working folder containing the input files and results of previous analysis
 #' @param cds, a character string indicating the filename of the annotated gene expression matrix csv resulting from catcher catch ("filtered_annotated_silencing_matrix_complete_all_samples.csv")
 #' @param pseudotime, a character string indicating the pseudotime csv file
+#' @param all, logical indicating if KS test needs to be run against each control gene and shRNA separately (instead on only against them together). Default = F
 #' 
 #' @author Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 #'
@@ -20,7 +21,8 @@ catcheR_pseudotime <- function(
   group=c("docker","sudo"),
   folder, 
   cds,
-  pseudotime){
+  pseudotime,
+  all = F){
   
   #running time 1
   ptm <- proc.time()
@@ -61,7 +63,8 @@ catcheR_pseudotime <- function(
       "Rscript /home/2_pseudotime.R",
       "/data/scratch",
       cds,
-      pseudotime
+      pseudotime,
+      all
     )
   )
   #executing the docker job

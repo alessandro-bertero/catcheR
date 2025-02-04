@@ -3,6 +3,7 @@
 #' @param group, a character string. Two options: sudo or docker, depending to which group the user belongs
 #' @param folder, a character string indicating the path of the working folder containing the input files and results of previous analysis
 #' @param cds, a character string indicating the filename of the annotated gene expression matrix csv resulting from catcher catch ("filtered_annotated_silencing_matrix_complete_all_samples.csv")
+#' @param resolution, a number indicating the desired resolution for monocle function find_gene_modules. Default is 1e-2
 #' 
 #' @author Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 #'
@@ -18,7 +19,8 @@
 catcheR_modules <- function(
   group=c("docker","sudo"),
   folder, 
-  cds){
+  cds,
+  resolution=1e-2){
   
   #running time 1
   ptm <- proc.time()
@@ -58,7 +60,8 @@ catcheR_modules <- function(
     additional_arguments = c(
       "Rscript /home/4_modules.R",
       "/data/scratch",
-      cds
+      cds,
+      resolution
     )
   )
   #executing the docker job

@@ -121,10 +121,10 @@ catcheR_10Xcatch <- function(
   #}
   
   #saving log and removing docker container
-  container.id <- readLines(paste(folder,"/dockerID", sep=""), warn = FALSE)
+  #container.id <- readLines(paste(folder,"/dockerID", sep=""), warn = FALSE)
   #system(paste("docker logs ", substr(container.id,1,12), " >& ",folder,"/", substr(container.id,1,12),".log", sep=""))
-  system(paste("docker logs ", substr(container.id,1,12), " > ",folder,"/", substr(container.id,1,12),".log 2>&1", sep=""))
-  system(paste("docker rm ", container.id, sep=""))
+  #system(paste("docker logs ", substr(container.id,1,12), " > ",folder,"/", substr(container.id,1,12),".log 2>&1", sep=""))
+  #system(paste("docker rm ", container.id, sep=""))
   
   
   #removing temporary folder

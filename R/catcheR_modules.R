@@ -55,7 +55,7 @@ catcheR_modules <- function(
   run_in_docker(
     image_name = "docker.io/repbioinfo/catcher_sc",
     volumes = list(
-      c(folder, "/data/scratch")
+      c(folder, "/data/scratch/")
     ),
     additional_arguments = c(
       "Rscript /home/4_modules.R",

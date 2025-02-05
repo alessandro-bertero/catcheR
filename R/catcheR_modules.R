@@ -37,12 +37,12 @@ catcheR_modules <- function(
   #system("echo 0 > ExitStatusFile")
   
   #testing if docker is running
-  test <- dockerTest()
-  if(!test){
-    cat("\nERROR: Docker seems not to be installed in your system\n")
-    #system("echo 10 > ExitStatusFile")
-    setwd(home)
-    return(10)
+  # test <- dockerTest()
+  # if(!test){
+  #   cat("\nERROR: Docker seems not to be installed in your system\n")
+  #   #system("echo 10 > ExitStatusFile")
+  #   setwd(home)
+  #   return(10)
   }
   # if(!test){
   #   cat("\nERROR: Docker seems not to be installed in your system\n")
@@ -59,7 +59,7 @@ catcheR_modules <- function(
     ),
     additional_arguments = c(
       "Rscript /home/4_modules.R",
-      "/data/scratch",
+      "/data/scratch/",
       cds,
       resolution
     )

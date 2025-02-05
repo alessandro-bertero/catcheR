@@ -43,7 +43,7 @@ catcheR_modules <- function(
   #   #system("echo 10 > ExitStatusFile")
   #   setwd(home)
   #   return(10)
-  }
+  #}
   # if(!test){
   #   cat("\nERROR: Docker seems not to be installed in your system\n")
   #   system("echo 10 >& ExitStatusFile")

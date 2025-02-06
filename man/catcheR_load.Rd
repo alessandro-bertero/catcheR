@@ -9,11 +9,11 @@ catcheR_load(
   folder,
   expression.matrix,
   control_genes,
-  control_samples = "NULL",
-  replicates = "NULL",
-  sample_names = "NULL",
+  control_samples = "NotSpecified",
+  replicates = "NotSpecified",
+  sample_names,
   resolution = 5e-04,
-  genes = "NULL"
+  genes = "NotSpecified"
 )
 }
 \arguments{

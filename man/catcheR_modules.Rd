@@ -4,7 +4,7 @@
 \alias{catcheR_modules}
 \title{catcheR_modules}
 \usage{
-catcheR_modules(group = c("docker", "sudo"), folder, cds)
+catcheR_modules(group = c("docker", "sudo"), folder, cds, resolution = 0.01)
 }
 \arguments{
 \item{group, }{a character string. Two options: sudo or docker, depending to which group the user belongs}
@@ -12,6 +12,8 @@ catcheR_modules(group = c("docker", "sudo"), folder, cds)
 \item{folder, }{a character string indicating the path of the working folder containing the input files and results of previous analysis}
 
 \item{cds, }{a character string indicating the filename of the annotated gene expression matrix csv resulting from catcher catch ("filtered_annotated_silencing_matrix_complete_all_samples.csv")}
+
+\item{resolution, }{a number indicating the desired resolution for monocle function find_gene_modules. Default is 1e-2}
 }
 \value{
 statistics on pseudotime

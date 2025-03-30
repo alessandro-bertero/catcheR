@@ -17,7 +17,7 @@
 #'
 #' @export
 
-catcheR_load <- function(
+catcheR_enrichment <- function(
     group=c("docker","sudo"),
     folder, 
     file,

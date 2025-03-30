@@ -32,6 +32,11 @@ a gene expression matrix with empty cells
 \description{
 Empty selection step of the data analysis pipeline for the iPS2-seq methods from HEDGe lab.
 }
+\examples{
+
+catcheR_10Xnocatch(group = "docker", folder = folder, expression.matrix = "matrix.csv", threshold = 10, sample = 1)
+
+}
 \author{
 Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 }

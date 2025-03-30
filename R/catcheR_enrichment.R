@@ -12,7 +12,6 @@
 #' @return plots and pvalues
 #'
 #' @examples
-#'\dontrun{
 #'
 #' catcheR_enrichment(group = "docker", folder = folder, file = "processed_cds.RData", meta = "cell_metadata.csv", timepoint = "PSC", control_gene = "SCR")
 #'

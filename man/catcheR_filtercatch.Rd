@@ -35,6 +35,11 @@ a gene expression matrix where cell names contains annotations about the perturb
 \description{
 Cell filtering step of the data analysis pipeline for the iPS2-seq methods from HEDGe lab.
 }
+\examples{
+
+catcheR_filtercatch(group = "docker", folder = "/20tb/ratto/catcheR/test_CM5/", expression.matrix = "matrix.csv", UMI.count = 10, 15, sample = 1)
+
+}
 \author{
 Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 }

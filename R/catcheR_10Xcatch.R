@@ -20,7 +20,6 @@
 #' @return a gene expression matrix where cell names contains annotations about the perturbation present in each cell + QC plots
 #'
 #' @examples
-#'\dontrun{
 #'
 #' folder = "/20tb/ratto/catcheR/test_02_7/"
 #' catcheR_10Xcatch(group = "docker", 

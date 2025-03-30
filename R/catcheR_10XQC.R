@@ -13,7 +13,6 @@
 #' @return QC plots and intermediate data
 #'
 #' @examples
-#'\dontrun{
 #'
 #' catcheR_10XcatchQC(group = "docker", folder = "/20tb/ratto/catcheR/test_CM5/", reference = "GGCGCGTTCATCTGGGGGAGCCG", mode = "noise")
 #'

@@ -10,7 +10,6 @@
 #' @return a gene expression matrix where cell names contains annotations about the perturbation present in each cell
 #'
 #' @examples
-#'\dontrun{
 #'
 #' catcheR_merge(group = "docker", folder = "/20tb/ratto/catcheR/test_CM5/", samples = 2)
 #'

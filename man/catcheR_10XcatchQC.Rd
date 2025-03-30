@@ -35,6 +35,11 @@ QC plots and intermediate data
 \description{
 Explorative step of the data analysis pipeline for the iPS2-seq methods from HEDGe lab.
 }
+\examples{
+
+catcheR_10XcatchQC(group = "docker", folder = "/20tb/ratto/catcheR/test_CM5/", reference = "GGCGCGTTCATCTGGGGGAGCCG", mode = "noise")
+
+}
 \author{
 Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 }

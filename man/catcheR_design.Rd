@@ -35,6 +35,14 @@ a file called "output.txt" containing the sequences of the constructs. Restricti
 \description{
 Fucntion to design oligos for iPS2-seq methods from HEDGe lab.
 }
+\examples{
+
+catcheR_design(group = "docker", 
+folder = "/20tb/ratto/catcheR/oligo/", 
+sequences = "shRNAs.csv", 
+restriction.sites = "restr.txt")
+
+}
 \author{
 Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 }

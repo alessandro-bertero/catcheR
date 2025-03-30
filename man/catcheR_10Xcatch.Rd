@@ -56,6 +56,23 @@ a gene expression matrix where cell names contains annotations about the perturb
 \description{
 Data analysis pipeline for the iPS2-seq methods from HEDGe lab.
 }
+\examples{
+
+folder = "/20tb/ratto/catcheR/test_02_7/"
+catcheR_10Xcatch(group = "docker", 
+                folder = folder, 
+                fastq.read1 = list.files(folder, pattern = "R1"), 
+                fastq.read2 = list.files(folder, pattern = "R2"), 
+                expression.matrix = "matrix.csv", 
+                reference = "GGCGCGTTCATCTGGGGGAGCCG",
+                UCI.length = 6,
+                threads = 12, 
+                percentage = 15,
+                mode = "noise",
+                ratio = 5,
+                samples = 4)
+
+}
 \author{
 Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 }

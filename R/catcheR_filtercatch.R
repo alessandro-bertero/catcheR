@@ -13,7 +13,6 @@
 #' @return a gene expression matrix where cell names contains annotations about the perturbation present in each cell + QC plots
 #'
 #' @examples
-#'\dontrun{
 #'
 #' catcheR_filtercatch(group = "docker", folder = "/20tb/ratto/catcheR/test_CM5/", expression.matrix = "matrix.csv", UMI.count = 10, 15, sample = 1)
 #'

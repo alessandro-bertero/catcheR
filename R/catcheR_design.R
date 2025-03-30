@@ -13,7 +13,6 @@
 #' @return a file called "output.txt" containing the sequences of the constructs. Restriction sites are in lower case. 
 #'
 #' @examples
-#'\dontrun{
 #'
 #' catcheR_design(group = "docker", 
 #' folder = "/20tb/ratto/catcheR/oligo/", 

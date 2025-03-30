@@ -15,7 +15,6 @@
 #' @return a gene expression matrix with empty cells
 #'
 #' @examples
-#'\dontrun{
 #'
 #' catcheR_10Xnocatch(group = "docker", folder = folder, expression.matrix = "matrix.csv", threshold = 10)
 #'

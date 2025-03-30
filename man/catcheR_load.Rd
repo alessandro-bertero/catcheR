@@ -65,6 +65,14 @@ Data loading step of the data analysis pipeline for the iPS2-seq methods from HE
 
 Data loading step of the data analysis pipeline for the iPS2-seq methods from HEDGe lab.
 }
+\examples{
+
+catcheR_enrichment(group = "docker", folder = folder, file = "processed_cds.RData", meta = "cell_metadata.csv", timepoint = "PSC", control_gene = "SCR")
+
+
+catcheR_10Xnocatch(group = "docker", folder = folder, expression.matrix = "matrix.csv", threshold = 10)
+
+}
 \author{
 Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 }

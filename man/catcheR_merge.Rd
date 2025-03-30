@@ -21,6 +21,11 @@ a gene expression matrix where cell names contains annotations about the perturb
 \description{
 Merge annotated matrices in a single one, after tuning catcheR parameters.
 }
+\examples{
+
+catcheR_merge(group = "docker", folder = "/20tb/ratto/catcheR/test_CM5/", samples = 2)
+
+}
 \author{
 Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 }

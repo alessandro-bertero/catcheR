@@ -62,7 +62,7 @@ catcheR_enrichment <- function(
     ),
     additional_arguments = c(
       "Rscript /home/3_enrichment_depletion.R",
-      "/data/scratch",
+      "/data/scratch/",
       file,
       meta,
       timepoint,

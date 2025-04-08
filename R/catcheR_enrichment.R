@@ -24,8 +24,8 @@ catcheR_enrichment <- function(
     folder, 
     file,
     meta,
-    timepoint = "NULL",
-    control_gene = "NULL",
+    timepoint = "PSC",
+    control_gene = "SCR",
     min_cells_cluster = 70,
     min_cells_shRNA = 40){
   

@@ -6,6 +6,8 @@
 #' @param meta, string indicating the file name of the metadata file resulting from catcheR_load
 #' @param timepoint, string indicating the starting timepoint to compare other timepoints to (e.g. day 0) (optional)
 #' @param control_gene, string indicating the control gene to calculate statistics against in case internal control (no TET) is not present (e.g. "SCR") (optional)
+#' @param min_cells_cluster, integer indicating the threshold for minimum number of cells per cluster to keep the cluster (optional) default: 70
+#' @param min_cells_shRNA, integer indicating the threshold for minimum number of cells per shRNA to keep the cluster (optional) default: 40
 #' 
 #' @author Maria Luisa Ratto, marialuisa.ratto [at] unito [dot] it, UNITO
 #'
@@ -23,7 +25,9 @@ catcheR_enrichment <- function(
     file,
     meta,
     timepoint = NULL,
-    control_gene = NULL){
+    control_gene = NULL,
+    min_cells_cluster = 70,
+    min_cells_shRNA = 40){
   
   #running time 1
   ptm <- proc.time()
@@ -66,7 +70,9 @@ catcheR_enrichment <- function(
       file,
       meta,
       timepoint,
-      control_gene
+      control_gene,
+      min_cells_cluster,
+      min_cells_shRNA
     )
   )
   #executing the docker job

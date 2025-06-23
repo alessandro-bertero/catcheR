@@ -12,7 +12,7 @@ catcheR_load(
   control_samples = "NotSpecified",
   replicates = "NotSpecified",
   sample_names,
-  resolution = 5e-04,
+  resolution = 8e-04,
   genes = "NotSpecified"
 )
 }
@@ -43,7 +43,7 @@ Data loading step of the data analysis pipeline for the iPS2-seq methods from HE
 }
 \examples{
 
-catcheR_10Xnocatch(group = "docker", folder = folder, expression.matrix = "matrix.csv", threshold = 10)
+catcheR_load(group="docker",folder="/3tb/data/ratto/aggr/test/", expression.matrix = "annotated_silencing_matrix_complete_all_samples.csv",control_genes =  "controls.txt",control_samples = "noTET.txt",replicates = "replicates.txt",sample_names = "samples.csv",resolution = 8e-4,genes = "genelist.txt")
 
 }
 \author{

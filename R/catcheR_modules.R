@@ -12,7 +12,7 @@
 #' @examples
 #'\dontrun{
 #'
-#' catcheR_pseudotime(group="docker",folder="/3tb/data/ratto/aggr/test/", cds = "processed_cds.Rdata",pseudotime = "pseudotime.csv")
+#' catcheR_modules(group="docker",folder="/30tb/3tb/data/ratto/testing/", cds = "processed_cds.RData",resolution=1e-2)
 #'
 #' @export
 

@@ -1,0 +1,912 @@
+---
+title: "#A3 EB003E1 neural organoids E/D"
+author: "Elisa Balmas PhD"
+date: "2024-02-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set up environment
+
+```{r}
+library(monocle3)
+library(tidyr)
+library(stringr)
+library(grid)
+library(viridis)
+library(viridisLite)
+library(ggthemes)
+library(dplyr)
+library(tidyverse)
+library(ggsignif)
+library(umap)
+library(heatmap3)
+library(plyr)
+library(edgeR)
+library(compareGroups)
+library(dbscan)
+library(MAST)
+library(geosphere)
+library(RColorBrewer)
+library(Seurat)
+library(htmlwidgets)
+library(Matrix)
+library(tidyseurat)
+library(SeuratWrappers)
+library(scMAGeCK)
+library(readxl)
+library(rCASC)
+library(deepToolsUtils)
+library(R.utils)
+
+
+library(ggplot2); library(reshape2); theme_set(theme_bw(26) + theme(panel.grid.major = element_blank(), 
+                                                                    panel.grid.minor = element_blank()) +
+                                                 theme(legend.key = element_blank()))
+update_geom_defaults("point", aes(size = 4))
+
+#setwd("/home/ebalmas/scpHUB/projects/H001AS7_iKDseq_10X_4tp_monocle/analysis_EB")
+
+# Session options
+options(stringsAsFactors = FALSE)
+set.seed(12345)
+
+# Set up the ggplot default params
+theme_set(theme_bw(12) + 
+          theme(panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(),
+                plot.title = element_text(size=15, face="bold", margin = margin(10,0,10,0)),
+                axis.text.x = element_text(angle=45, hjust = 1)))
+
+
+# Set up filename prefixes and output folders with the data
+dir.create("Output")
+#dir.create(file.path("Output","scratch"))
+
+dir.create(file.path("Output","E_D"))#create forders E_D (enrichment and depletion)
+dir.create(file.path("Output","E_D","specific_clones"))
+dir.create(file.path("Output","E_D","specific_clones",format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","E_D","specific_clones", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","E_D", "specific_clones",format(Sys.Date(), "%y%m%d"), "dotplots"))
+dir.create(file.path("Output","E_D", "specific_clones",format(Sys.Date(), "%y%m%d"), "dotplots","single"))
+dir.create(file.path("Output","E_D", "specific_clones",format(Sys.Date(), "%y%m%d"), "stat"))
+dir.create(file.path("Output","E_D", "specific_clones",format(Sys.Date(), "%y%m%d"), "csv"))
+dir.create(file.path("Output","E_D", "specific_clones",format(Sys.Date(), "%y%m%d"), "UMAP"))
+dir.create(file.path("Output","E_D", "specific_clones",format(Sys.Date(), "%y%m%d"), "mosaic"))
+dir.create(file.path("Output","E_D", "specific_clones",format(Sys.Date(), "%y%m%d"), "heatmap"))
+
+fname_prefix_scratch="/scratch"
+#set up forder path E_D
+fname_prefix_R <- file.path("Output","E_D", "specific_clones",format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot <- file.path("Output","E_D", "specific_clones",format(Sys.Date(), "%y%m%d"), "dotplots", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot_single <- file.path("Output","E_D", "specific_clones",format(Sys.Date(), "%y%m%d"), "dotplots", "single", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_csv<-file.path("Output","E_D", "specific_clones",format(Sys.Date(), "%y%m%d"), "csv", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_stat<-file.path("Output","E_D", "specific_clones",format(Sys.Date(), "%y%m%d"), "stat", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_UMAP<-file.path("Output","E_D", "specific_clones",format(Sys.Date(), "%y%m%d"), "UMAP", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_mosaic<-file.path("Output","E_D", "specific_clones",format(Sys.Date(), "%y%m%d"), "mosaic", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_heatmap<-file.path("Output","E_D", "specific_clones",format(Sys.Date(), "%y%m%d"), "heatmap", 
+                               format(Sys.Date(), "%y%m%d"))
+
+
+okabe_tab=read_excel("scratch/color_scale.xlsx")
+okabe_pal=okabe_tab$hex
+
+okabe_pal=c("#E69F00","#56B4E9","#009E73","#f0E442","#0072B2","#D55E00","#CC79A7","#000000")
+
+pal <- c("#000000","#004949","#009292","#ff6db6","#ffb6db",
+         "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+         "#920000","#924900","#db6d00","#24ff24","#ffff6d")
+```
+
+########load data
+
+```{r}
+
+load("scratch/241210_monocle_seurat_cds_clustered_FINAL.RData")#libID_EB003E1_E2
+load("scratch/241211_clone_order.RData")
+#shRNA_IDs <- read_excel("scratch/shRNA_IDs.xlsx")
+ID_key=read_excel("scratch/shRNA_IDs.xlsx")
+#get clones info
+clones=read.csv(paste0(getwd(),"/scratch/all_clones.csv"), header = TRUE, sep = ";")
+rownames(clones)=clones$clone
+clones=clones%>%select(clone,has_10_counts,shRNA_gene,cell_BC,shRNA_ID_unified,cl_ID,order.shRNA,order.genes)
+
+```
+
+####### fisher test enrichment depletion EB003E1 only
+###ER between neural organoids with and without TET
+
+```{r}
+#####total Fisher test
+sides=c("Side1", "Side2") # Sides to test
+genes_to_test <- c(" CHD7", "SMAD2", "KMT2D","B2M","SCR") # Genes to test
+cell_metadata_selection=cell_metadata%>%dplyr::filter(shRNA_gene%in%genes_to_test)
+cell_metadata_selection=cell_metadata_selection%>%dplyr::filter(side%in%sides)
+m_cl=cell_metadata_selection%>%dplyr::select(clone,KD)
+clone_list=unique(m_cl$clone)#52
+
+
+for (clone in clone_list) {
+  # Create a new column named after the clone and assign boolean values
+  m_cl[[clone]] <- m_cl$clone == clone
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  # Perform Fisher's test
+  fisher_result <- fisher.test(m_cl[[clone_list[i]]], m_cl$KD, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+result_ED_TOTAL <- data.frame(clone = clone_names, P_value_TOTAL = p_values)
+result_ED_TOTAL$qval=p.adjust(result_ED_TOTAL$P_value_TOTAL)
+
+```
+
+####
+
+```{r}
+sig_level <- 0.05
+#Set a fold-change cutoff
+fc_level <- log2(2)
+fc_level2 <- (log2(2))*-1
+
+result_ED_TOTAL$sig=result_ED_TOTAL$qval<=sig_level
+
+counts=cell_metadata_selection %>%
+  dplyr::group_by(clone,KD) %>%
+  dplyr::summarise(count = n())###tot clones
+counts=spread(counts, key = KD, value = count)
+counts <- counts %>% replace(is.na(.), 0)
+
+totals=cell_metadata_selection%>%
+  dplyr::group_by(KD)%>%
+  dplyr::summarise(total = n())
+totals=as.data.frame(totals)
+
+counts$tot_CTR=totals[1,2]
+counts$tot_KD=totals[2,2]
+counts$TOT=counts$tot_CTR+counts$tot_KD
+counts$TOT_clone=counts$CTR+counts$KD
+
+counts$tot_other_CTR=counts$tot_CTR-counts$CTR
+counts$tot_other_KD=counts$tot_KD-counts$KD
+counts=counts%>%mutate(FC=(KD/tot_KD)/(CTR/tot_CTR),
+                       percent_CTR=CTR/tot_CTR*100,
+                       percent_KD=KD/tot_KD*100,
+                       percent_cl=TOT_clone/TOT*100)
+side=cell_metadata_selection %>%
+     dplyr::group_by(clone,side)%>%
+     dplyr::summarise(count_clone = n())
+
+
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(counts,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(clones,by=c("clone"))
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(side,by="clone")
+
+result_ED_TOTAL=result_ED_TOTAL %>% 
+  filter_all(all_vars(!is.infinite(.)))
+result_ED_TOTAL=subset(result_ED_TOTAL,result_ED_TOTAL$FC>0)
+
+write.csv(result_ED_TOTAL, file= paste0(fname_prefix_csv, "_", "result_ED_AB03_all.csv"), row.names=FALSE)
+ED_EB003E1_all_results=result_ED_TOTAL
+
+ED_EB003E1_all_results=subset(ED_EB003E1_all_results,ED_EB003E1_all_results$clone!="empty_NA_empty")
+ED_EB003E1_all_results$clone_short=paste0(ED_EB003E1_all_results$shRNA_ID_unified," ",ED_EB003E1_all_results$cl_ID)
+
+cl=levels(c(clone_order))
+filtered_ED_EB003E1=ED_EB003E1_all_results[ED_EB003E1_all_results$clone %in% cl, ]
+```
+###mosaic plot
+
+```{r}
+library(see)
+###selected and ordered only the one seen in the 2D exp
+ggplot(filtered_ED_EB003E1, aes(x = factor(clone,levels = clone_order), y = log2(FC), fill=shRNA_gene,colour=side))+ geom_bar(stat = "identity")+scale_color_manual(values=c("black", "#490092", "#db6d00"))+
+  scale_fill_okabeito()+
+  geom_hline(yintercept = fc_level, linetype="dotted")+
+  geom_hline(yintercept = fc_level2, linetype="dotted")+
+  labs(
+    x = "",
+    y = "Log2 of clone fraction in TET vs CTR",
+    color = "side",
+    color = "shRNA",
+    title= "Enrichment Depletion vs TET")
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "enrichment_depletion_vs_TET.pdf"),
+     width = 12, height = 8)
+
+
+```
+
+
+####volcano plot
+
+```{r}
+ggplot(data=ED_EB003E1_all_results, aes(x=log2(FC), y=(log2(percent_cl)))) +
+  geom_point(aes(colour = log10(qval)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(ED_EB003E1_all_results,ED_EB003E1_all_results$qval<=0.05&log2(ED_EB003E1_all_results$FC)>fc_level|ED_EB003E1_all_results$qval<=0.05&log2(ED_EB003E1_all_results$FC)<fc_level2),
+    aes(label = clone_short),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  #ylim(-5,1.5)+
+  #xlim(-6,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion KD compared to CTR")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in KD vs CTR",
+    y = "Log2 of clone fraction",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_EB003E1_clone_enrichment_depletion.pdf"),
+       width = 8, height = 5)
+
+ggplot(data=ED_EB003E1_all_results, aes(x=log2(FC), y=(log2(percent_cl)))) +
+  geom_point(aes(colour = side, size=1.5)) +
+  scale_colour_manual(values = okabe_pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(ED_EB003E1_all_results,ED_EB003E1_all_results$qval<=0.05&log2(ED_EB003E1_all_results$FC)>fc_level|ED_EB003E1_all_results$qval<=0.05&log2(ED_EB003E1_all_results$FC)<fc_level2),
+    aes(label = clone_short),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  #ylim(-5,1.5)+
+  #xlim(-6,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion KD compared to CTR brain organoids")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in KD vs CTR",
+    y = "Log2 of clone fraction",
+    color = "side"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_EB003E1_clone_enrichment_depletion_CTR_TET.pdf"),
+       width = 8, height = 5)
+```
+
+####### fisher test enrichment depletion EB003E1 only in SIDE 2 only
+###ER between Neural organoids with and without TET
+
+```{r}
+cell_metadata_s2=subset(cell_metadata_selection,cell_metadata_selection$side=="Side2")
+
+#####total Fisher test
+m_cl=cell_metadata_s2%>%dplyr::select(clone,KD)
+clone_list=unique(m_cl$clone)#52
+
+
+for (clone in clone_list) {
+  # Create a new column named after the clone and assign boolean values
+  m_cl[[clone]] <- m_cl$clone == clone
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  # Perform Fisher's test
+  fisher_result <- fisher.test(m_cl[[clone_list[i]]], m_cl$KD, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+result_ED_TOTAL <- data.frame(clone = clone_names, P_value_TOTAL = p_values)
+result_ED_TOTAL$qval=p.adjust(result_ED_TOTAL$P_value_TOTAL)
+
+```
+
+####
+
+```{r}
+sig_level <- 0.05
+#Set a fold-change cutoff
+fc_level <- log2(2)
+fc_level2 <- (log2(2))*-1
+
+result_ED_TOTAL$sig=result_ED_TOTAL$qval<=sig_level
+
+counts=cell_metadata_s2 %>%
+  dplyr::group_by(clone,KD) %>%
+  dplyr::summarise(count = n())###tot clones
+counts=spread(counts, key = KD, value = count)
+counts <- counts %>% replace(is.na(.), 0)
+
+totals=cell_metadata_s2%>%
+  dplyr::group_by(KD)%>%
+  dplyr::summarise(total = n())
+totals=as.data.frame(totals)
+
+counts$tot_CTR=totals[1,2]
+counts$tot_KD=totals[2,2]
+counts$TOT=counts$tot_CTR+counts$tot_KD
+counts$TOT_clone=counts$CTR+counts$KD
+
+counts$tot_other_CTR=counts$tot_CTR-counts$CTR
+counts$tot_other_KD=counts$tot_KD-counts$KD
+counts=counts%>%mutate(FC=(KD/tot_KD)/(CTR/tot_CTR),
+                       percent_CTR=CTR/tot_CTR*100,
+                       percent_KD=KD/tot_KD*100,
+                       percent_cl=TOT_clone/TOT*100)
+side=cell_metadata_s2 %>%
+     dplyr::group_by(clone,side)%>%
+     dplyr::summarise(count_clone = n())
+
+
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(counts,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(clones,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(side,by="clone")
+
+result_ED_TOTAL=result_ED_TOTAL %>% 
+  filter_all(all_vars(!is.infinite(.)))
+result_ED_TOTAL=subset(result_ED_TOTAL,result_ED_TOTAL$FC>0)
+
+write.csv(result_ED_TOTAL, file= paste0(fname_prefix_csv, "_", "result_ED_EB003E1_s2.csv"), row.names=FALSE)
+ED_EB003E1_s2_results=result_ED_TOTAL
+ED_EB003E1_s2_results=subset(ED_EB003E1_s2_results,ED_EB003E1_s2_results$clone!="empty_NA_empty")
+ED_EB003E1_s2_results$clone_short=paste0(ED_EB003E1_s2_results$shRNA_ID_unified," ",ED_EB003E1_s2_results$cl_ID)
+
+cl=levels(c(clone_order))
+filtered_ED_EB003E1_s2=ED_EB003E1_s2_results[ED_EB003E1_s2_results$clone %in% cl, ]
+
+```
+
+###mosaic plot
+
+```{r}
+###selected and ordered only the one seen in the 2D exp
+ggplot(filtered_ED_EB003E1_s2, aes(x = factor(clone,levels = clone_order), y = log2(FC), fill=shRNA_gene))+ geom_bar(stat = "identity")+
+  scale_fill_okabeito()+
+  geom_hline(yintercept = fc_level, linetype="dotted")+
+  geom_hline(yintercept = fc_level2, linetype="dotted")+
+  labs(
+    x = "",
+    y = "Log2 of clone fraction in TET vs CTR",
+    color = "shRNA",
+    title= "Enrichment Depletion vs TET in Side 2")
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "enrichment_depletion_vs_TET_s2.pdf"),
+     width = 12, height = 8)
+
+
+```
+
+####volcano plot
+
+```{r}
+ggplot(data=ED_EB003E1_s2_results, aes(x=log2(FC), y=(log2(percent_cl)))) +
+  geom_point(aes(colour = log10(qval)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(ED_EB003E1_s2_results,ED_EB003E1_s2_results$qval<=0.05&log2(ED_EB003E1_s2_results$FC)>fc_level|ED_EB003E1_s2_results$qval<=0.05&log2(ED_EB003E1_s2_results$FC)<fc_level2),
+    aes(label = clone_short),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  #ylim(-5,1.5)+
+  #xlim(-6,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion KD compared to CTR in side 2")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in KD vs CTR",
+    y = "Log2 of clone fraction",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_EB003E1_clone_enrichment_depletion_SIDE2.pdf"),
+       width = 8, height = 5)
+
+
+```
+
+####### fisher test enrichment depletion EB03E1 and hPSC all side
+###ER between organoids with/without TET and hPSC (controls)
+
+```{r}
+
+libID_EB003E1_E2$set_ED=ifelse(libID_EB003E1_E2$diff=="hPSC"&libID_EB003E1_E2$KD=="CTR","hiPSC",
+                                          ifelse(libID_EB003E1_E2$diff=="neurons"&libID_EB003E1_E2$KD=="CTR","neuron_CT",
+                                        ifelse(libID_EB003E1_E2$diff=="neurons"&libID_EB003E1_E2$KD=="KD","neuron","other")))
+meta_CT=subset(libID_EB003E1_E2,libID_EB003E1_E2$KD=="CTR")
+#####total Fisher test
+m_cl=meta_CT%>%dplyr::select(clone,set_ED)
+clone_list=unique(m_cl$clone)#50
+
+
+for (clone in clone_list) {
+  # Create a new column named after the clone and assign boolean values
+  m_cl[[clone]] <- m_cl$clone == clone
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  # Perform Fisher's test
+  fisher_result <- fisher.test(m_cl[[clone_list[i]]], m_cl$set_ED, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+result_ED_TOTAL <- data.frame(clone = clone_names, P_value_TOTAL = p_values)
+result_ED_TOTAL$qval=p.adjust(result_ED_TOTAL$P_value_TOTAL)
+
+```
+
+####
+
+```{r}
+sig_level <- 0.05
+#Set a fold-change cutoff
+fc_level <- log2(2)
+fc_level2 <- (log2(2))*-1
+
+result_ED_TOTAL$sig=result_ED_TOTAL$qval<=sig_level
+
+counts=meta_CT %>%
+  dplyr::group_by(clone,set_ED) %>%
+  dplyr::summarise(count = n())###tot clones
+counts=spread(counts, key = set_ED, value = count)
+counts <- counts %>% replace(is.na(.), 0)
+
+totals=meta_CT%>%
+  dplyr::group_by(set_ED)%>%
+  dplyr::summarise(total = n())
+totals=as.data.frame(totals)
+
+counts$tot_hiPSC=totals[1,2]
+counts$tot_neuron=totals[2,2]
+counts$tot_neuron_CT=totals[3,2]
+counts$TOT_neuron=counts$tot_neuron+counts$tot_neuron_CT
+
+#counts$hiPSC=counts$hiPSC+1
+#counts$tot_hiPSC=counts$tot_hiPSC+1
+
+counts$TOT=counts$tot_hiPSC+counts$TOT_neuron
+counts$TOT_clone_CT=counts$hiPSC+counts$neuron_CT#tot clone without perturbation
+
+counts$tot_other_CTR=counts$tot_hiPSC-counts$hiPSC
+#counts$tot_other_neuron=counts$tot_neuron-counts$neuron_CT
+counts=counts%>%mutate(FC_CT=(neuron_CT/tot_neuron_CT)/(hiPSC/tot_hiPSC),
+                       FC_neuron=(neuron/tot_neuron)/(neuron_CT/tot_neuron_CT),
+                       FC=(neuron/tot_neuron)/(hiPSC/tot_hiPSC),
+                       percent_hiPSC=hiPSC/tot_hiPSC*100,
+                       percent_neuron_CT=neuron_CT/tot_neuron_CT*100,
+                       percent_neuron=neuron/tot_neuron*100,
+                       percent_cl=TOT_clone_CT/TOT*100)
+side=meta_CT %>%
+     dplyr::group_by(clone,side)%>%
+     dplyr::summarise(count_clone = n())
+
+
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(counts,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(clones,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(side,by="clone")
+
+result_ED_TOTAL=result_ED_TOTAL %>% 
+  filter_all(all_vars(!is.infinite(.)))
+result_ED_TOTAL=subset(result_ED_TOTAL,result_ED_TOTAL$FC>0)
+
+write.csv(result_ED_TOTAL, file= paste0(fname_prefix_csv, "_", "result_ED_CT_all.csv"), row.names=FALSE)
+ED_EB003E1_E2_results=result_ED_TOTAL
+ED_EB003E1_E2_results=subset(ED_EB003E1_E2_results,ED_EB003E1_E2_results$clone!="empty_NA_empty")
+ED_EB003E1_E2_results$clone_short=paste0(ED_EB003E1_E2_results$shRNA_ID_unified," ",ED_EB003E1_E2_results$cl_ID)
+
+
+cl=levels(c(clone_order))
+filtered_ED_EB003E1_E2=ED_EB003E1_E2_results[ED_EB003E1_E2_results$clone %in% cl, ]
+
+
+```
+
+###mosaic plot
+
+```{r}
+###selected and ordered only the one seen in the 2D exp
+ggplot(filtered_ED_EB003E1_E2, aes(x = factor(clone,levels = clone_order), y = log2(FC_CT), fill=shRNA_gene,colour=side))+ geom_bar(stat = "identity")+scale_color_manual(values=c("black", "#490092", "#db6d00"))+
+  scale_fill_okabeito()+
+  geom_hline(yintercept = fc_level, linetype="dotted")+
+  geom_hline(yintercept = fc_level2, linetype="dotted")+
+  labs(
+    x = "",
+    y = "Log2 of clone fraction in neuron CTR vs hPSC",
+    color = "side",
+    color = "shRNA",
+    title= "Enrichment Depletion neuron CTR vs hPSC")
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "enrichment_depletion_CONTROLS_vs_hPSC.pdf"),
+     width = 12, height = 8)
+
+
+ggplot(filtered_ED_EB003E1_E2, aes(x = factor(clone,levels = clone_order), y = log2(FC_neuron), fill=shRNA_gene,colour=side))+ geom_bar(stat = "identity")+scale_color_manual(values=c("black", "#490092", "#db6d00"))+
+  scale_fill_okabeito()+
+  geom_hline(yintercept = fc_level, linetype="dotted")+
+  geom_hline(yintercept = fc_level2, linetype="dotted")+
+  labs(
+    x = "",
+    y = "Log2 of clone fraction in TET vs CTR neuron",
+    color = "side",
+    color = "shRNA",
+    title= "Enrichment Depletion vs TET in neuron")
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "enrichment_depletion_vs_neuron_TETvsCT.pdf"),
+     width = 12, height = 8)
+
+ggplot(filtered_ED_EB003E1_E2, aes(x = factor(clone,levels = clone_order), y = log2(FC), fill=shRNA_gene,colour=side))+ geom_bar(stat = "identity")+scale_color_manual(values=c("black", "#490092", "#db6d00"))+
+  scale_fill_okabeito()+
+  geom_hline(yintercept = fc_level, linetype="dotted")+
+  geom_hline(yintercept = fc_level2, linetype="dotted")+
+  labs(
+    x = "",
+    y = "Log2 of clone fraction in neuron TET vs hPSC",
+    color = "side",
+    color = "shRNA",
+    title= "Enrichment Depletion in neuron TET vs hPSC")
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "enrichment_depletion_vs_hPSC.pdf"),
+     width = 12, height = 8)
+
+```
+
+####volcano plot
+
+```{r}
+ggplot(data=ED_EB003E1_E2_results, aes(x=log2(FC_CT), y=(log2(percent_cl)))) +
+  geom_point(aes(colour = log10(qval)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(ED_EB003E1_E2_results,ED_EB003E1_E2_results$qval<=0.05&log2(ED_EB003E1_E2_results$FC_CT)>fc_level|ED_EB003E1_E2_results$qval<=0.05&log2(ED_EB003E1_E2_results$FC_CT)<fc_level2),
+    aes(label = clone_short),
+    max.overlaps=50,
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  #ylim(-5,1.5)+
+  #xlim(-6,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion Neurons CT compared to hiPSC")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in Neurons CTR vs hiPSC",
+    y = "Log2 of clone fraction",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_CT_clone_enrichment_depletion_hPSC.pdf"),
+       width = 8, height = 5)
+
+ggplot(data=ED_EB003E1_E2_results, aes(x=log2(FC), y=(log2(percent_cl)))) +
+  geom_point(aes(colour = log10(qval)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(ED_EB003E1_E2_results,ED_EB003E1_E2_results$qval<=0.05&log2(ED_EB003E1_E2_results$FC)>fc_level|ED_EB003E1_E2_results$qval<=0.05&log2(ED_EB003E1_E2_results$FC)<fc_level2),
+    aes(label = clone_short),
+    max.overlaps=50,
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  #ylim(-5,1.5)+
+  #xlim(-6,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion Neurons TET compared to hiPSC")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in Neurons TET vs hiPSC",
+    y = "Log2 of clone fraction",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_clone_enrichment_depletion_neuronsTET_hPSC.pdf"),
+       width = 8, height = 5)
+
+ggplot(data=ED_EB003E1_E2_results, aes(x=log2(FC_CT), y=(log2(percent_cl)))) +
+  geom_point(aes(colour = side, size=1.5)) +
+  scale_colour_manual(values = okabe_pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(ED_EB003E1_E2_results,ED_EB003E1_E2_results$qval<=0.05&log2(ED_EB003E1_E2_results$FC_CT)>fc_level|ED_EB003E1_E2_results$qval<=0.05&log2(ED_EB003E1_E2_results$FC_CT)<fc_level2),
+    aes(label = clone_short),
+    max.overlaps=50,
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  #ylim(-5,1.5)+
+  #xlim(-6,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion Neurons CTR compared to hiPSC")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in Neurons CTR vs hiPSC",
+    y = "Log2 of clone fraction",
+    color = "side"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_CT_clone_enrichment_depletion_side_hPSC.pdf"),
+       width = 8, height = 5)
+```
+
+####### fisher test enrichment depletion EB03E1 and hPSC in side 2
+###ER between organoids with/without TET and hPSC (controls)
+
+```{r}
+
+meta_CT_s2=subset(meta_CT,meta_CT$side=="Side2")
+
+#####total Fisher test
+m_cl=meta_CT_s2%>%dplyr::select(clone,set_ED)
+clone_list=unique(m_cl$clone)#22
+
+
+for (clone in clone_list) {
+  # Create a new column named after the clone and assign boolean values
+  m_cl[[clone]] <- m_cl$clone == clone
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  # Perform Fisher's test
+  fisher_result <- fisher.test(m_cl[[clone_list[i]]], m_cl$set_ED, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+result_ED_TOTAL <- data.frame(clone = clone_names, P_value_TOTAL = p_values)
+result_ED_TOTAL$qval=p.adjust(result_ED_TOTAL$P_value_TOTAL)
+
+```
+
+####
+
+```{r}
+sig_level <- 0.05
+#Set a fold-change cutoff
+fc_level <- log2(2)
+fc_level2 <- (log2(2))*-1
+
+result_ED_TOTAL$sig=result_ED_TOTAL$qval<=sig_level
+
+counts=meta_CT %>%
+  dplyr::group_by(clone,set_ED) %>%
+  dplyr::summarise(count = n())###tot clones
+counts=spread(counts, key = set_ED, value = count)
+counts <- counts %>% replace(is.na(.), 0)
+
+totals=meta_CT%>%
+  dplyr::group_by(set_ED)%>%
+  dplyr::summarise(total = n())
+totals=as.data.frame(totals)
+
+counts$tot_hiPSC=totals[1,2]
+counts$tot_neuron=totals[2,2]
+counts$tot_neuron_CT=totals[3,2]
+counts$TOT_neuron=counts$tot_neuron+counts$tot_neuron_CT
+
+#counts$hiPSC=counts$hiPSC+1
+#counts$tot_hiPSC=counts$tot_hiPSC+1
+
+counts$TOT=counts$tot_hiPSC+counts$TOT_neuron
+counts$TOT_clone_CT=counts$hiPSC+counts$neuron_CT#tot clone without perturbation
+
+counts$tot_other_CTR=counts$tot_hiPSC-counts$hiPSC
+#counts$tot_other_neuron=counts$tot_neuron-counts$neuron_CT
+counts=counts%>%mutate(FC_CT=(neuron_CT/tot_neuron_CT)/(hiPSC/tot_hiPSC),
+                       FC_neuron=(neuron/tot_neuron)/(neuron_CT/tot_neuron_CT),
+                       FC=(neuron/tot_neuron)/(hiPSC/tot_hiPSC),
+                       percent_hiPSC=hiPSC/tot_hiPSC*100,
+                       percent_neuron_CT=neuron_CT/tot_neuron_CT*100,
+                       percent_neuron=neuron/tot_neuron*100,
+                       percent_cl=TOT_clone_CT/TOT*100)
+side=meta_CT %>%
+     dplyr::group_by(clone,side)%>%
+     dplyr::summarise(count_clone = n())
+
+
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(counts,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(clones,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(side,by="clone")
+
+result_ED_TOTAL=result_ED_TOTAL %>% 
+  filter_all(all_vars(!is.infinite(.)))
+result_ED_TOTAL=subset(result_ED_TOTAL,result_ED_TOTAL$FC>0)
+
+write.csv(result_ED_TOTAL, file= paste0(fname_prefix_csv, "_", "result_ED_CT_side2.csv"), row.names=FALSE)
+ED_EB003E1_E2_s2_results=result_ED_TOTAL
+ED_EB003E1_E2_s2_results=subset(ED_EB003E1_E2_s2_results,ED_EB003E1_E2_s2_results$clone!="empty_NA_empty")
+
+ED_EB003E1_E2_s2_results$clone_short=paste0(ED_EB003E1_E2_s2_results$shRNA_ID_unified," ",ED_EB003E1_E2_s2_results$cl_ID)
+
+
+cl=levels(c(clone_order))
+filtered_ED_EB003E1_E2_s2=ED_EB003E1_E2_s2_results[ED_EB003E1_E2_s2_results$clone %in% cl, ]
+
+
+```
+
+###mosaic plot
+
+```{r}
+###selected and ordered only the one seen in the 2D exp
+ggplot(filtered_ED_EB003E1_E2_s2, aes(x = factor(clone,levels = clone_order), y = log2(FC_CT), fill=shRNA_gene))+ geom_bar(stat = "identity")+
+  scale_fill_okabeito()+
+  geom_hline(yintercept = fc_level, linetype="dotted")+
+  geom_hline(yintercept = fc_level2, linetype="dotted")+
+  labs(
+    x = "",
+    y = "Log2 of clone fraction in neuron CTR vs hPSC",
+    color = "side",
+    color = "shRNA",
+    title= "Enrichment Depletion neuron CTR vs hPSC in side 2")
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "enrichment_depletion_CONTROLS_vs_hPSC_s2.pdf"),
+     width = 12, height = 8)
+
+
+ggplot(filtered_ED_EB003E1_E2_s2, aes(x = factor(clone,levels = clone_order), y = log2(FC_neuron), fill=shRNA_gene))+ geom_bar(stat = "identity")+
+  scale_fill_okabeito()+
+  geom_hline(yintercept = fc_level, linetype="dotted")+
+  geom_hline(yintercept = fc_level2, linetype="dotted")+
+  labs(
+    x = "",
+    y = "Log2 of clone fraction in TET vs CTR neuron",
+    color = "side",
+    color = "shRNA",
+    title= "Enrichment Depletion vs TET in neuron in side 2")
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "enrichment_depletion_vs_neuron_TETvsCT_s2.pdf"),
+     width = 12, height = 8)
+
+ggplot(filtered_ED_EB003E1_E2_s2, aes(x = factor(clone,levels = clone_order), y = log2(FC), fill=shRNA_gene))+ geom_bar(stat = "identity")+
+  scale_fill_okabeito()+
+  geom_hline(yintercept = fc_level, linetype="dotted")+
+  geom_hline(yintercept = fc_level2, linetype="dotted")+
+  labs(
+    x = "",
+    y = "Log2 of clone fraction in neuron TET vs hPSC",
+    color = "side",
+    color = "shRNA",
+    title= "Enrichment Depletion in neuron TET vs hPSC in side 2")
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "enrichment_depletion_vs_hPSC_s2.pdf"),
+     width = 12, height = 8)
+
+```
+
+####volcano plot
+
+```{r}
+ggplot(data=ED_EB003E1_E2_s2_results, aes(x=log2(FC_CT), y=(log2(percent_cl)))) +
+  geom_point(aes(colour = log10(qval)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(ED_EB003E1_E2_s2_results,ED_EB003E1_E2_s2_results$qval<=0.05&log2(ED_EB003E1_E2_s2_results$FC_CT)>fc_level|ED_EB003E1_E2_s2_results$qval<=0.05&log2(ED_EB003E1_E2_s2_results$FC_CT)<fc_level2),
+    aes(label = clone_short),
+    max.overlaps=50,
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  #ylim(-5,1.5)+
+  #xlim(-6,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion in Side 2 Neurons CT compared to hiPSC")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in Neurons CTR vs hiPSC",
+    y = "Log2 of clone fraction",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_CT_clone_enrichment_depletion_hPSC_s2.pdf"),
+       width = 8, height = 5)
+
+ggplot(data=ED_EB003E1_E2_s2_results, aes(x=log2(FC), y=(log2(percent_cl)))) +
+  geom_point(aes(colour = log10(qval)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(ED_EB003E1_E2_s2_results,ED_EB003E1_E2_s2_results$qval<=0.05&log2(ED_EB003E1_E2_s2_results$FC)>fc_level|ED_EB003E1_E2_s2_results$qval<=0.05&log2(ED_EB003E1_E2_s2_results$FC)<fc_level2),
+    aes(label = clone_short),
+    max.overlaps=50,
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  #ylim(-5,1.5)+
+  #xlim(-6,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion Side 2 Neurons TET compared to hiPSC")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in Neurons TET vs hiPSC",
+    y = "Log2 of clone fraction",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_clone_enrichment_depletion_neuronsTET_hPSC_s2.pdf"),
+       width = 8, height = 5)
+
+
+```
+
+

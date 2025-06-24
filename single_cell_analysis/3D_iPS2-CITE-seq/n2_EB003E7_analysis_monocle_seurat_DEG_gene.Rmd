@@ -1,0 +1,2114 @@
+---
+title: "n2 EB003E7 analysis monocle seurat DEG gene"
+author: "Elisa Balmas PhD"
+date: "2024-02-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set up environment
+
+```{r}
+library(monocle3)
+library(tidyr)
+library(stringr)
+library(grid)
+library(viridis)
+library(viridisLite)
+library(ggthemes)
+library(dplyr)
+library(tidyverse)
+library(ggsignif)
+library(umap)
+library(heatmap3)
+library(plyr)
+library(edgeR)
+library(compareGroups)
+library(dbscan)
+library(MAST)
+library(geosphere)
+library(RColorBrewer)
+library(Seurat)
+library(htmlwidgets)
+library(Matrix)
+library(tidyseurat)
+library(SeuratWrappers)
+library(readxl)
+library(rCASC)
+library(deepToolsUtils)
+library(R.utils)
+library(SparseArray)
+
+
+library(ggplot2); library(reshape2); theme_set(theme_bw(26) + theme(panel.grid.major = element_blank(), 
+                                                                    panel.grid.minor = element_blank()) +
+                                                 theme(legend.key = element_blank()))
+update_geom_defaults("point", aes(size = 4))
+
+#setwd("/home/ebalmas/scpHUB/projects/H001AS7_iKDseq_10X_4tp_monocle/analysis_EB")
+
+# Session options
+options(stringsAsFactors = FALSE)
+set.seed(12345)
+
+# Set up the ggplot default params
+theme_set(theme_bw(12) + 
+          theme(panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(),
+                plot.title = element_text(size=15, face="bold", margin = margin(10,0,10,0)),
+                axis.text.x = element_text(angle=45, hjust = 1)))
+
+
+# Set up filename prefixes and output folders with the data
+
+dir.create(file.path("Output","monocle"))#create forders MONOCLE
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots","single"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "stat"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "csv"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "UMAP"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "mosaic"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "heatmap"))
+dir.create(file.path("Output", format(Sys.Date(), "%y%m%d"), "DEG"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "CITE_seq"))
+
+
+
+#set up forder path MONOCLE
+fname_prefix_R <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot_single <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots", "single", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_csv<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "csv", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_stat<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "stat", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_UMAP<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "UMAP", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_mosaic<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "mosaic", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_heatmap<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "heatmap", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_heatmap<-file.path("Output", format(Sys.Date(), "%y%m%d"), "DEG", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_CITE_seq<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "CITE_seq", 
+                               format(Sys.Date(), "%y%m%d"))
+
+fname_prefix_scratch="scratch/"
+
+okabe_tab <- read_excel("scratch/color_scale.xlsx")
+okabe_pal=okabe_tab$hex
+
+okabe_pal=c("#E69F00","#56B4E9","#009E73","#f0E442","#0072B2","#D55E00","#CC79A7","#000000")
+
+
+pal <- c("#000000","#004949","#009292","#ff6db6","#ffb6db",
+         "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+         "#920000","#924900","#db6d00","#24ff24","#ffff6d")
+```
+
+########load data
+
+```{r}
+load(paste0(getwd(),"/scratch/250513_monocle_seurat_cds_clustered_RENAMED.RData"))
+
+#shRNA_IDs <- read_excel("scratch/shRNA_IDs.xlsx")
+
+```
+
+##Identify if clusters are too small to be analyzed (mode than 100 cells in at least 1 condition)
+
+```{r}
+
+colData(cds)$gene_polish=colData(cds)$shRNA_gene
+colData(cds)$knockdown=colData(cds)$KD
+colData(cds)$gene_polish=dplyr::recode(colData(cds)$gene_polish,"B2M"="control")
+colData(cds)$gene_KD=paste0(cds$gene_polish,"_",cds$KD)
+colData(cds)$g_KD=paste0(cds$shRNA_gene,"_",cds$KD)
+
+#$shRNA_gene is a list of genes of the screening "B2M" and "SMAD2" in this case, or "B2M","SMAD2", "GATA4","KMT2D", ecc in another screening
+#$KD is a list of "KD" and "CTR" in this case, or "TET" and "no_TET"
+
+meta=as.data.frame(cds@colData@listData)###11275
+
+##################
+############ calculate % per cluster of each gene CTR and KD 
+################
+meta_to_use=meta
+
+tot=table(meta_to_use$g_KD) #total of the cluster
+df=table(meta_to_use$g_KD,meta_to_use$monocle_clusters,meta_to_use$shRNA_gene,meta_to_use$KD)
+df = as.data.frame(df)
+colnames(df)=c("gene_KD","monocle_clusters","gene","KD","freq")
+
+#mdf2 = melt(df)
+mdf2=df#11664 rows
+total=as.data.frame(tot)
+colnames(total)=c("gene_KD","tot")
+mdf2=mdf2%>%left_join(total, by="gene_KD")
+mdf2$tot = as.numeric(mdf2$tot)
+mdf2$frxn = (mdf2$freq/mdf2$tot)*100
+m=subset(mdf2,mdf2$freq!=0)
+#m <- m %>%
+ # mutate(samp = ifelse(grepl("n3_", sampleID), "n3", "n4"))
+by_gene_KD=m
+
+by_gene_KD$monocle_cluster=as.integer(as.character(by_gene_KD$monocle_clusters))
+
+########calculate KD and CTR separate
+selection=by_gene_KD%>%select(monocle_clusters,gene_KD,freq)
+selection=by_gene_KD%>%select(monocle_cluster,gene_KD,freq)
+selection=spread(selection,key=gene_KD,value=freq)
+selection <- replace(selection, is.na(selection), 0)
+#selection$has_100_counts <- apply(selection[, -1] >= 100, 1, any)
+selection$has_30_counts <- apply(selection[, -1] >= 30, 1, any)
+
+
+stat_filename = paste0(fname_prefix_stat, "_Freq_cells_by_gene_and_KD.csv")
+write.csv(selection, stat_filename, quote = F, row.names = T, sep=",")
+
+clust_sel=selection%>%select(monocle_cluster,has_30_counts)
+clust_sel=clust_sel%>%dplyr::rename(monocle_clusters=monocle_cluster)
+clust_sel$monocle_clusters=as.character(clust_sel$monocle_clusters)
+###add selection filter
+
+meta=meta%>%left_join(clust_sel,by="monocle_clusters")
+cds@colData$has_30_counts=meta$has_30_counts
+meta$clust_EB003E6_keep=ifelse(meta$assigned_cell_type_EB003E6==14,F,
+                                      ifelse(meta$assigned_cell_type_EB003E6==15,F,T))
+cds@colData$clust_EB003E6_keep=meta$clust_EB003E6_keep
+
+meta_cl=subset(meta,meta$has_30_counts==T)#from 6268 to 6247 
+meta_cl=subset(meta_cl,meta_cl$clust_EB003E6_keep==T)#from 6247 to 6228 
+
+cds= cds[,cds@colData@listData[["has_30_counts"]]==T]#from 6268 to 6247
+cds= cds[,cds@colData@listData[["clust_EB003E6_keep"]]==T]
+seurat <- AddMetaData(object = seurat, metadata = meta)
+seurat <- subset(seurat, subset = has_30_counts==T)
+seurat <- subset(seurat, subset = clust_EB003E6_keep==T)
+
+```
+
+####run DEG
+
+```{r}
+Idents(seurat) <- "monocle_clusters"
+DEG_all_clusters <- FindAllMarkers(seurat,only.pos = FALSE)
+DEG_all_clusters$genes=rownames(DEG_all_clusters)
+
+##cardiac progenitors?
+DEG_cl1=FindMarkers(seurat, ident.1 = "1", ident.2 = NULL)
+DEG_cl1$genes=rownames(DEG_cl1)
+
+DEG_cl2=FindMarkers(seurat, ident.1 = "2", ident.2 = NULL)
+DEG_cl2$genes=rownames(DEG_cl2)
+
+DEG_cl1vs2=FindMarkers(seurat, ident.1 = "1", ident.2 = "2")
+DEG_cl1vs2$genes=rownames(DEG_cl1vs2)
+
+DEG_cl11vs1_2=FindMarkers(seurat, ident.1 = "11", ident.2 = c("1","2"))
+DEG_cl11vs1_2$genes=rownames(DEG_cl11vs1_2)
+
+DEG_cl11=FindMarkers(seurat, ident.1 = "11", ident.2 = NULL)
+DEG_cl11$genes=rownames(DEG_cl11)
+
+DEG_cl11vs4_7=FindMarkers(seurat, ident.1 = "11", ident.2 = c("4","7"))
+DEG_cl11vs4_7$genes=rownames(DEG_cl11vs4_7)
+
+#DEG_cl14=FindMarkers(seurat, ident.1 = "14", ident.2 = NULL)
+#DEG_cl14$genes=rownames(DEG_cl14)
+
+DEG_cl3=FindMarkers(seurat, ident.1 = "3", ident.2 = NULL)
+DEG_cl3$genes=rownames(DEG_cl3)
+
+DEG_cl13=FindMarkers(seurat, ident.1 = "13", ident.2 = NULL)
+DEG_cl13$genes=rownames(DEG_cl13)
+
+DEG_cl13vs3vs7=FindMarkers(seurat, ident.1 = "13", ident.2 = c("3","7"))
+DEG_cl13vs3vs7$genes=rownames(DEG_cl13vs3vs7)
+
+DEG_cl3vscl7=FindMarkers(seurat, ident.1 = "3", ident.2 = "7")
+DEG_cl3vscl7$genes=rownames(DEG_cl3vscl7)
+
+DEG_cl8=FindMarkers(seurat, ident.1 = "8", ident.2 = NULL)
+DEG_cl8$genes=rownames(DEG_cl8)
+
+DEG_cl8vs10=FindMarkers(seurat, ident.1 = "8", ident.2 = "10")
+DEG_cl8vs10$genes=rownames(DEG_cl8vs10)
+
+DEG_cl3vs9=FindMarkers(seurat, ident.1 = "3", ident.2 = "9")
+DEG_cl3vs9$genes=rownames(DEG_cl3vs9)
+
+DEG_cl6vs10=FindMarkers(seurat, ident.1 = "6", ident.2 = "10")
+DEG_cl6vs10$genes=rownames(DEG_cl6vs10)
+
+DEG_cl3_9vs6_10=FindMarkers(seurat, ident.1 = c("3","9"), ident.2 = c("6","10"))
+DEG_cl3_9vs6_10$genes=rownames(DEG_cl3_9vs6_10)
+
+n=c("DEG_all_clusters","DEG_cl1","DEG_cl2","DEG_cl1vs2","DEG_cl3","DEG_cl13","DEG_cl11","DEG_cl11vs1_2","DEG_cl13vs3vs7","DEG_cl3vscl7","DEG_cl8vs10","DEG_cl8","DEG_cl3vs9","DEG_cl6vs10","DEG_cl3_9vs6_10","DEG_cl11vs4_7")
+
+#for (name in n) {
+#stat_filename = paste0(fname_prefix_csv, "_",name,".csv")
+#write.csv(get(name), stat_filename, quote = F, row.names = T, sep=",")
+#}
+
+if (!require(openxlsx)) install.packages("openxlsx")
+library(openxlsx)
+
+for (name in n) {
+stat_filename = paste0(fname_prefix_csv, "_",name,".xlsx")
+write.xlsx(get(name), file=stat_filename, quote = F, rowNames = T)
+}
+```
+
+###setup clusters names variables based on EB003E7
+
+```{r}
+
+Idents(seurat) <- "sample_id"
+seurat_downsample=subset(seurat, downsample = 1268)
+m=seurat_downsample[[]]
+libID_downsample=m$libID#use libID after downsampling to subset cds file just for plotting an equal nb of cells
+
+###make orders EB003E6
+###prepare color/time order vectors
+cell_order=c("Cardiac progenitors","Early cardiomyocytes","Late cardiomyocytes","Proliferating cardiomyocytes","Cardiac fibroblasts","Endothelial cells","Epicardium")
+cell_order_short=c("CP","E-CM","L-CM","P-CM","CF","EC","Epi")
+
+gene_order=c("B2M","SMAD2")
+gene_order_polished=c("control","SMAD2")
+
+####prepare table with cluster assignment
+
+monocle_long=data.frame(cell_order=c("Cardiac fibroblasts","Cardiac progenitors","Early cardiomyocytes","Endothelial cells","Epicardium","Late cardiomyocytes","Proliferating cardiomyocytes"),order_LONG=c(1:7))
+
+monocle_short=data.frame(cell_order_short=c("CF","CP","E-CM","EC","Epi","L-CM","P-CM"),order_SHORT=c(1:7))
+
+cl_col=c("#000000","#b6dbff","#009292" ,"#ffb6db","#ff6db6","#924900","#db6d00")
+#cl_col=c("#000000","grey","#CC79A7","#D55E00","#0072B2","#f0E442","#009E73","#56B4E9","#E69F00") #AB003
+
+color_df=data.frame(cell_order_short=cell_order_short,cell_order=cell_order,cl_col)
+color_df=color_df%>%left_join(monocle_short,by="cell_order_short")%>%left_join(monocle_long,by="cell_order")
+
+c=meta_cl%>%dplyr::group_by(assigned_cell_type,assigned_cell_type_short,monocle_clusters)%>%dplyr::summarise(n=n())
+colnames(c)=c("cell_types","cell_types_abbreviations","monocle_cluster","tot")
+
+color_df=color_df%>%left_join(c,by=c("cell_order_short"="cell_types_abbreviations"))
+color_df$cell_types_abbreviations=color_df$cell_order_short
+
+color_df_l=color_df[order(color_df$order_LONG),]
+color_df_s=color_df[order(color_df$order_SHORT),]
+
+cds_subset=cds[,cds$libID%in%libID_downsample]
+
+color_df_EB003E7=color_df
+color_df_l_EB003E7=color_df_l
+color_df_s_EB003E7=color_df_s
+
+plot_cells(cds_subset, color_cells_by="assigned_cell_type", group_cells_by="assigned_cell_type",label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_manual(name="cell types",values=color_df_l_EB003E7$cl_col)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clustering")
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_clusters.pdf"),
+     width = 8, height = 5)
+
+plot_cells(cds_subset, color_cells_by="assigned_cell_type_short", group_cells_by="assigned_cell_type_short",label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_manual(name="cell types",values=color_df_s_EB003E7$cl_col)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clustering")
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_clusters_sh.pdf"),
+     width = 8, height = 5)
+
+plot_cells(cds_subset, color_cells_by="assigned_cell_type_short", group_cells_by="assigned_cell_type_short",show_trajectory_graph =F,label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_manual(name="cell types",values=color_df_s_EB003E7$cl_col)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clustering")+
+  facet_wrap(~sample_id,nrow=2,ncol=2)
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_clusters_sh_samp.pdf"),
+     width = 8, height = 6)
+
+
+#by_gene_KD=by_gene_KD%>%dplyr::left_join(color_df, by="monocle_cluster")
+
+```
+
+###setup clusters names variables EB003E6
+
+```{r}
+Idents(seurat) <- "sample_id"
+seurat_downsample=subset(seurat, downsample = 1268)
+m=seurat_downsample[[]]
+libID_downsample=m$libID#use libID after downsampling to subset cds file just for plotting an equal nb of cells
+
+###make orders EB003E6
+###prepare color/time order vectors
+cell_order=c("Cardiac Progenitors-1","Cardiac Progenitors-2","Proliferative Cardiomyocites","Early Cardiomyocytes-1","Early Cardiomyocytes-2","Late Cardiomyocytes 1","Late Cardiomyocytes 2","Conductive Cardiomyocites","Epicardial-EMT","Epicarium","Fibroblasts-1","Fibroblasts-2","Endotelial cells")
+cell_order_short=c("CP-1","CP-2","P-CM","E-CM-1","E-CM-2","L-CM-1","L-CM-2","C-CM","Epi-EMT","Epi","CF-1","CF-2","EC")
+gene_order=c("B2M","SMAD2")
+gene_order_polished=c("control","SMAD2")
+
+####prepare table with cluster assignment
+
+ct=c("Cardiac Progenitors-1","Cardiac Progenitors-2","Late Cardiomyocytes 1","Fibroblasts-1","Proliferative Cardiomyocites","Early Cardiomyocytes-2","Fibroblasts-2","Conductive Cardiomyocites","Late Cardiomyocytes 2","Early Cardiomyocytes-1","Epicardial-EMT","Endotelial cells","Epicarium")
+
+ct_sh=c("CP-1","CP-2","L-CM-1","CF-1","P-CM","E-CM-2","CF-2","C-CM","L-CM-2","E-CM-1","Epi-EMT","EC","Epi")
+
+clust_df=data.frame(monocle_cluster=c(1:13),cell_types=ct,cell_types_abbreviations=ct_sh)
+
+#clust_df$colors=c("#000000","grey","#CC79A7","#f0E442","#920000" ,"#0072B2","#b66dff","#D55E00","#56B4E9","#009E73","#490092","#ffb6db")
+clust_df$colors=pal=c("#000000","#004949" ,"#009292" ,"#ff6db6", "#ffb6db", "#490092", "#006ddb", "#b66dff",  "#24ff24", "#b6dbff", "#920000", "#924900", "#db6d00")
+
+
+###prepare color/time order vectors
+
+monocle_long=data.frame(cell_order=c("Cardiac Progenitors-1","Cardiac Progenitors-2","Conductive Cardiomyocites","Early Cardiomyocytes-1","Early Cardiomyocytes-2","Endotelial cells","Epicardial-EMT","Epicarium","Fibroblasts-1","Fibroblasts-2","Late Cardiomyocytes 1","Late Cardiomyocytes 2","Proliferative Cardiomyocites"),order_LONG=c(1:13))
+
+monocle_short=data.frame(cell_order_short=c("C-CM","CF-1","CF-2","CP-1","CP-2","E-CM-1","E-CM-2","EC","Epi","Epi-EMT","L-CM-1","L-CM-2","P-CM"),order_SHORT=c(1:13))
+
+color_df=data.frame(cell_order_short=cell_order_short,cell_order=cell_order)
+color_df$cell_types=color_df$cell_order
+color_df$cell_types_abbreviations=color_df$cell_order_short
+color_df=color_df%>%left_join(clust_df,by=c("cell_types","cell_types_abbreviations"))
+
+color_df=color_df%>%left_join(monocle_short,by="cell_order_short")%>%left_join(monocle_long,by="cell_order")
+
+color_df$cl_col=color_df$colors
+color_df$order=rownames(color_df)
+
+color_df_l=color_df[order(color_df$order_LONG),]
+color_df_s=color_df[order(color_df$order_SHORT),]
+
+cds_subset=cds[,cds$libID%in%libID_downsample]
+
+color_df_EB003E6=color_df
+color_df_l_EB003E6=color_df_l
+color_df_s_EB003E6=color_df_s
+
+plot_cells(cds_subset, color_cells_by="assigned_cell_type_EB003E6", group_cells_by="assigned_cell_type_EB003E6",label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_manual(name="cell types",values=color_df_l_EB003E6$cl_col)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clustering")
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_clusters_EB003E6.pdf"),
+     width = 8, height = 5)
+
+plot_cells(cds_subset, color_cells_by="assigned_cell_type_short_EB003E6", group_cells_by="assigned_cell_type_short_EB003E6",label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_manual(name="cell types",values=color_df_s_EB003E6$cl_col)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clustering")
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_clusters_sh_EB003E6.pdf"),
+     width = 8, height = 5)
+
+plot_cells(cds_subset, color_cells_by="assigned_cell_type_short_EB003E6", group_cells_by="assigned_cell_type_short_EB003E6",show_trajectory_graph =F,label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_manual(name="cell types",values=color_df_s_EB003E6$cl_col)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clustering")+
+  facet_wrap(~sample_id,nrow=2,ncol=2)
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_clusters_sh_samp_EB003E6.pdf"),
+     width = 8, height = 6)
+
+plot_cells(cds_subset, color_cells_by="assigned_cell_type_EB003E6", group_cells_by="assigned_cell_type_EB003E6",show_trajectory_graph =F,label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_manual(name="cell types",values=color_df_l_EB003E6$cl_col)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clustering")+
+  facet_wrap(~sample_id,nrow=2,ncol=2)
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_clusters_samp_EB003E6.pdf"),
+     width = 9, height = 6)
+
+
+plot_cells(cds_subset[,cds_subset$shRNA_gene=="SMAD2"], color_cells_by="assigned_cell_type_short_EB003E6", group_cells_by="assigned_cell_type_short_EB003E6",show_trajectory_graph =F,label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_manual(name="cell types",values=color_df_s_EB003E6$cl_col)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clustering")+
+  facet_grid(~sample_id)
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_clusters_sh_samp_EB003E6_SMAD2.pdf"),
+     width = 8, height = 5)
+
+
+plot_cells(cds_subset[,cds_subset$shRNA_gene=="SMAD2"], color_cells_by="assigned_cell_type_EB003E6", group_cells_by="assigned_cell_type_EB003E6",show_trajectory_graph =F,label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_manual(name="cell types",values=color_df_l_EB003E6$cl_col)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clustering")+
+  facet_grid(~sample_id)
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_clusters_samp_EB003E6_SMAD2.pdf"),
+     width = 8, height = 5)
+
+#meta_to_use=meta_cl
+#Cl_E6=meta_to_use%>%dplyr::group_by(predicted_EB003E6,assigned_cell_type_EB003E6,assigned_cell_type_short_EB003E6)%>%
+ # dplyr::summarise(count = n())
+
+```
+####get clonality info and cluster info
+
+```{r}
+meta_cl$clone=paste0(meta_cl$shRNA_BC,"_",meta_cl$shRNA_gene,"_",meta_cl$cell_BC)
+meta_to_use=meta_cl
+tot_clones=meta_to_use%>%dplyr::group_by(clone,shRNA_gene,KD,monocle_clusters,assigned_cell_type,assigned_cell_type_short)%>%
+  dplyr::summarise(count = n())
+tot_clones=meta_to_use%>%dplyr::group_by(clone,monocle_clusters)
+
+```
+
+
+###calculate % cells of one gene in each cluster compared to its control
+
+```{r}
+
+meta_to_use=meta_cl
+
+tot=table(meta_to_use$g_KD) #total of the cluster
+#df=table(meta_to_use$g_KD,meta_to_use$monocle_clusters,meta_to_use$shRNA_gene,meta_to_use$KD)
+df=table(meta_to_use$monocle_clusters,meta_to_use$shRNA_gene,meta_to_use$KD)
+df = as.data.frame(df)
+#colnames(df)=c("gene_KD","monocle_cluster","gene","KD","freq")
+colnames(df)=c("monocle_cluster","gene","KD","freq")
+df$gene_KD = paste0(df$gene,"_",df$KD)
+df$freq = df$freq+1
+#add 1 to all frequencies to avoid 0 values
+#df <- replace(df, df==0, 0.01)
+
+a=df%>%dplyr::filter(gene_KD=="B2M_CTR")
+b=df%>%filter(gene_KD=="B2M_KD")
+c=df%>%filter(gene_KD=="SMAD2_CTR")
+d=df%>%filter(gene_KD=="SMAD2_KD")
+
+total=data.frame(gene_KD=c("B2M_CTR","B2M_KD","SMAD2_CTR","SMAD2_KD"),tot=c(sum(a$freq),sum(b$freq),sum(c$freq),sum(d$freq)))
+
+#mdf2 = melt(df)
+mdf2=df#11664 rows
+#total=as.data.frame(tot)
+#colnames(total)=c("gene_KD","tot")
+mdf2=mdf2%>%left_join(total, by="gene_KD")
+mdf2$tot = as.numeric(mdf2$tot)
+mdf2$frxn = (mdf2$freq/mdf2$tot)*100
+
+m=subset(mdf2,mdf2$freq!=0)
+#m <- m %>%
+ # mutate(samp = ifelse(grepl("n3_", sampleID), "n3", "n4"))
+
+by_gene_KD=m
+
+color_df_EB003E7=color_df_EB003E7%>%dplyr::select(-tot)
+by_gene_KD$monocle_cluster=as.character(as.character(by_gene_KD$monocle_cluster))
+color_df_EB003E7$monocle_cluster=as.character(color_df_EB003E7$monocle_cluster)
+
+by_gene_KD=by_gene_KD%>%dplyr::left_join(color_df_EB003E7, by="monocle_cluster")
+by_gene_KD$monocle_cluster=as.character(by_gene_KD$monocle_cluster)
+
+by_gene_KD$sample_ID=paste0(by_gene_KD$KD,"_",by_gene_KD$gene)
+
+#clust_df$monocle_cluster=as.character(clust_df$monocle_cluster)
+
+#by_gene_KD=by_gene_KD%>%dplyr::left_join(clust_df,by="monocle_cluster")
+
+#####graph overview
+
+ggplot(by_gene_KD, aes(x = factor(cell_types_abbreviations,levels=color_df_EB003E7$cell_order_short), y = frxn, fill=cell_types_abbreviations)) + geom_bar(stat = "identity") +theme(legend.position='none')+
+  scale_fill_manual(values =color_df_s_EB003E7$cl_col)+
+  facet_grid(~KD~factor(gene, levels = gene_order))
+  
+ylab = "% gene by treatment"
+xlab = "cluster"
+
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "percent_cells_by_gene_clust_polished.pdf"),
+     width = 16, height = 15)
+
+####graph by gene
+
+ggplot(by_gene_KD, aes(x = sample_ID, y = frxn, fill=cell_types_abbreviations)) + geom_bar(stat = "identity") +
+  scale_fill_manual(name="cell type",values =color_df_s_EB003E7$cl_col)
+  
+ylab = "% gene by treatment"
+xlab = "treatment"
+last_plot() + labs(x = xlab, y = ylab)
+output_file <- paste0(fname_prefix_mosaic, "_", "percent_by_gene_by treatment_100_percent_cell_type_bis_polished.pdf")
+ggsave(filename = output_file, width = 5, height = 5)
+
+
+######calculate ratio KD vs CTR
+CTR=subset(by_gene_KD,by_gene_KD$KD=="CTR")%>%select(-KD,-sample_ID)
+CTR_B2M=subset(CTR,CTR$gene=="B2M")%>%dplyr::rename(n_cells_gene_CTR_B2M=freq,tot_gene_CTR_B2M=tot,percent_gene_CTR_B2M=frxn)%>%select(-gene,-gene_KD)
+CTR_SMAD2=subset(CTR,CTR$gene=="SMAD2")%>%dplyr::rename(n_cells_gene_CTR=freq,tot_gene_CTR=tot,percent_gene_CTR=frxn)%>%select(-gene,-gene_KD)
+
+CTR=CTR%>%dplyr::rename(n_cells_gene_CTR=freq,tot_gene_CTR=tot,percent_gene_CTR=frxn)%>%select(-gene_KD)
+
+KD=subset(by_gene_KD,by_gene_KD$KD=="KD")%>%dplyr::rename(n_cells_gene_KD=freq,tot_gene_KD=tot,percent_gene_KD=frxn)%>%select(-KD,-sample_ID,-gene_KD)### NB. one cluster missing
+
+#by_gene_KD_ratio=CTR_SMAD2%>%dplyr::left_join(KD,by=c(colnames(color_df_EB003E7)))
+#by_gene_KD_ratio=CTR_SMAD2%>%dplyr::right_join(KD,by=c(colnames(color_df_EB003E7)))
+by_gene_KD_ratio=CTR%>%dplyr::right_join(KD,by=c(colnames(color_df_EB003E7),"gene"))
+by_gene_KD_ratio=CTR_B2M%>%dplyr::right_join(by_gene_KD_ratio,by=c(colnames(color_df_EB003E7)))
+by_gene_KD_ratio <- replace(by_gene_KD_ratio, is.na(by_gene_KD_ratio), 0.01)
+
+by_gene_KD_ratio=by_gene_KD_ratio%>%mutate(FC=percent_gene_KD/percent_gene_CTR,
+                                           FC_B2M=percent_gene_KD/percent_gene_CTR_B2M)
+
+by_gene_KD_ratio$monocle_cluster=as.integer(as.character(by_gene_KD_ratio$monocle_cluster))
+
+gene_order=c("B2M","SMAD2")
+#####graph overview FC
+ggplot(by_gene_KD_ratio, aes(x = factor(cell_types_abbreviations,levels=color_df_EB003E7$cell_order_short), y = log2(FC), fill=cell_types_abbreviations)) + geom_bar(stat = "identity") +theme(legend.position='none')+
+  geom_hline(yintercept=1, linetype="dashed", color = "red")+
+  geom_hline(yintercept=-1, linetype="dashed", color = "red")+
+  scale_fill_manual(values =color_df_s_EB003E7$cl_col)+
+  facet_grid(~factor(gene, levels = gene_order))
+  
+ylab = "log2 (% gene KD vs CTR)"
+xlab = ""
+
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "FC_cells_by_gene_clust_polished_vsSMAD2CT.pdf"),
+     width = 5, height = 4)
+
+ggplot(by_gene_KD_ratio, aes(x = factor(cell_types_abbreviations,levels=color_df_EB003E7$cell_order_short), y = log2(FC_B2M), fill=cell_types_abbreviations)) + geom_bar(stat = "identity") +theme(legend.position='none')+
+  geom_hline(yintercept=1, linetype="dashed", color = "red")+
+  geom_hline(yintercept=-1, linetype="dashed", color = "red")+
+  scale_fill_manual(values =color_df_s_EB003E7$cl_col)+
+  facet_grid(~factor(gene, levels = gene_order))
+  
+ylab = "log2 (% gene KD vs CTR B2M)"
+xlab = ""
+
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "FC_cells_by_gene_clust_polished_vsB2MCT.pdf"),
+     width = 5, height = 4)
+
+
+###save data
+stat_filename = paste0(fname_prefix_stat, "_nb_percent_by_gene_in_each_cluster_polished.csv")
+write.csv(by_gene_KD, stat_filename, quote = F, row.names = T, sep=",")
+stat_filename = paste0(fname_prefix_stat, "_nb_percent_by_gene_in_each_cluster_FC_polished.csv")
+write.csv(by_gene_KD_ratio, stat_filename, quote = F, row.names = T, sep=",")
+
+Rdata_filename = paste0(fname_prefix_R, "_calculations_nb_percent_polished.RData")
+save(by_gene_KD,by_gene_KD_ratio,file = Rdata_filename)
+
+```
+
+###calculate % cells of one gene in each cluster compared to its control EB003E6 clustering
+
+```{r}
+
+meta_to_use=meta_cl
+
+tot=table(meta_to_use$g_KD) #total of the cluster
+#df_EB003E6=table(meta_to_use$g_KD,meta_to_use$predicted_EB003E6,meta_to_use$shRNA_gene,meta_to_use$KD)
+df_EB003E6=table(meta_to_use$predicted_EB003E6,meta_to_use$shRNA_gene,meta_to_use$KD)
+df_EB003E6 = as.data.frame(df_EB003E6)
+#colnames(df_EB003E6)=c("gene_KD","monocle_cluster","gene","KD","freq")
+colnames(df_EB003E6)=c("monocle_cluster","gene","KD","freq")
+df_EB003E6$gene_KD = paste0(df_EB003E6$gene,"_",df_EB003E6$KD)
+df_EB003E6$freq = df_EB003E6$freq+1
+#add 1 to all frequencies to avoid 0 values
+#df_EB003E6 <- replace(df_EB003E6, df_EB003E6==0, 0.01)
+
+a=df%>%dplyr::filter(gene_KD=="B2M_CTR")
+b=df%>%filter(gene_KD=="B2M_KD")
+c=df%>%filter(gene_KD=="SMAD2_CTR")
+d=df%>%filter(gene_KD=="SMAD2_KD")
+
+total=data.frame(gene_KD=c("B2M_CTR","B2M_KD","SMAD2_CTR","SMAD2_KD"),tot=c(sum(a$freq),sum(b$freq),sum(c$freq),sum(d$freq)))
+
+
+#mdf2 = melt(df)
+mdf2=df_EB003E6#11664 rows
+#total=as.data.frame(tot)
+#colnames(total)=c("gene_KD","tot")
+mdf2=mdf2%>%left_join(total, by="gene_KD")
+mdf2$tot = as.numeric(mdf2$tot)
+mdf2$frxn = (mdf2$freq/mdf2$tot)*100
+m_EB003E6=subset(mdf2,mdf2$freq!=0)
+#m <- m %>%
+ # mutate(samp = ifelse(grepl("n3_", sampleID), "n3", "n4"))
+by_gene_KD_EB003E6=m_EB003E6
+
+by_gene_KD_EB003E6$monocle_cluster=as.character(as.character(by_gene_KD_EB003E6$monocle_cluster))
+color_df_EB003E6$monocle_cluster=as.character(color_df_EB003E6$monocle_cluster)
+
+by_gene_KD_EB003E6=by_gene_KD_EB003E6%>%dplyr::left_join(color_df_EB003E6, by="monocle_cluster")
+by_gene_KD_EB003E6$monocle_cluster=as.character(by_gene_KD_EB003E6$monocle_cluster)
+
+by_gene_KD_EB003E6$sample_ID=paste0(by_gene_KD_EB003E6$KD,"_",by_gene_KD_EB003E6$gene)
+
+#clust_df$monocle_cluster=as.character(clust_df$monocle_cluster)
+
+#by_gene_KD=by_gene_KD%>%dplyr::left_join(clust_df,by="monocle_cluster")
+
+#####graph overview
+
+ggplot(by_gene_KD_EB003E6, aes(x = factor(cell_types_abbreviations,levels=color_df_EB003E6$cell_order_short), y = frxn, fill=cell_types_abbreviations)) + geom_bar(stat = "identity") +theme(legend.position='none')+
+  scale_fill_manual(values =color_df_s_EB003E6$cl_col)+
+  facet_grid(~KD~factor(gene, levels = gene_order))
+  
+ylab = "% gene by treatment"
+xlab = "cluster"
+
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "percent_cells_by_gene_clust_polished_EB003E6.pdf"),
+     width = 16, height = 15)
+
+####graph by gene
+
+ggplot(by_gene_KD_EB003E6, aes(x = sample_ID, y = frxn, fill=cell_types_abbreviations)) + geom_bar(stat = "identity") +
+  scale_fill_manual(name="cell type",values =color_df_s_EB003E6$cl_col)
+  
+ylab = "% gene by treatment"
+xlab = "treatment"
+last_plot() + labs(x = xlab, y = ylab)
+output_file <- paste0(fname_prefix_mosaic, "_", "percent_by_gene_by treatment_100_percent_cell_type_bis_polished_EB003E6.pdf")
+ggsave(filename = output_file, width = 5, height = 5)
+
+
+####just SMAD2
+ggplot(data=subset(by_gene_KD_EB003E6,by_gene_KD_EB003E6$gene=="SMAD2"), aes(x = sample_ID, y = frxn, fill=cell_types_abbreviations)) + geom_bar(stat = "identity") +
+  scale_fill_manual(name="cell type",values =color_df_s_EB003E6$cl_col)
+  
+ylab = "% gene by treatment"
+xlab = "treatment"
+last_plot() + labs(x = xlab, y = ylab)
+output_file <- paste0(fname_prefix_mosaic, "_", "percent_by_gene_by treatment_100_percent_cell_type_bis_polished_EB003E6_SMAD2.pdf")
+ggsave(filename = output_file, width = 3, height = 5)
+
+####just B2M
+ggplot(data=subset(by_gene_KD_EB003E6,by_gene_KD_EB003E6$gene=="B2M"), aes(x = sample_ID, y = frxn, fill=cell_types_abbreviations)) + geom_bar(stat = "identity") +
+  scale_fill_manual(name="cell type",values =color_df_s_EB003E6$cl_col)
+  
+ylab = "% gene by treatment"
+xlab = "treatment"
+last_plot() + labs(x = xlab, y = ylab)
+output_file <- paste0(fname_prefix_mosaic, "_", "percent_by_gene_by treatment_100_percent_cell_type_bis_polished_EB003E6_B2M.pdf")
+ggsave(filename = output_file, width = 3, height = 5)
+
+
+######calculate ratio KD vs CTR
+CTR_EB003E6=subset(by_gene_KD_EB003E6,by_gene_KD_EB003E6$KD=="CTR")%>%select(-KD,-sample_ID)
+CTR_B2M_EB003E6=subset(CTR_EB003E6,CTR_EB003E6$gene=="B2M")%>%dplyr::rename(n_cells_gene_CTR_B2M=freq,tot_gene_CTR_B2M=tot,percent_gene_CTR_B2M=frxn)%>%select(-gene,-gene_KD)
+CTR_SMAD2_EB003E6=subset(CTR_EB003E6,CTR_EB003E6$gene=="SMAD2")%>%dplyr::rename(n_cells_gene_CTR=freq,tot_gene_CTR=tot,percent_gene_CTR=frxn)%>%select(-gene,-gene_KD)
+CTR_EB003E6=CTR_EB003E6%>%select(-gene_KD)%>%dplyr::rename(n_cells_gene_CTR=freq,tot_gene_CTR=tot,percent_gene_CTR=frxn)
+
+KD_EB003E6=subset(by_gene_KD_EB003E6,by_gene_KD_EB003E6$KD=="KD")%>%dplyr::rename(n_cells_gene_KD=freq,tot_gene_KD=tot,percent_gene_KD=frxn)%>%select(-KD,-sample_ID,-gene_KD)### NB. one cluster missing
+
+by_gene_KD_ratio_EB003E6=CTR_EB003E6%>%dplyr::left_join(KD_EB003E6,by=c(colnames(color_df_EB003E6),"gene"))
+
+by_gene_KD_ratio_EB003E6_SMAD2=CTR_SMAD2_EB003E6%>%dplyr::left_join(subset(KD_EB003E6,KD_EB003E6$gene=="SMAD2"),by=c(colnames(color_df_EB003E6)))
+by_gene_KD_ratio_EB003E6_SMAD2=CTR_B2M_EB003E6%>%dplyr::right_join(by_gene_KD_ratio_EB003E6_SMAD2,by=c(colnames(color_df_EB003E6)))
+by_gene_KD_ratio_EB003E6_SMAD2 <- replace(by_gene_KD_ratio_EB003E6_SMAD2, is.na(by_gene_KD_ratio_EB003E6_SMAD2), 0.01)
+
+by_gene_KD_ratio_EB003E6=by_gene_KD_ratio_EB003E6%>%mutate(FC=percent_gene_KD/percent_gene_CTR)
+
+by_gene_KD_ratio_EB003E6_SMAD2=by_gene_KD_ratio_EB003E6_SMAD2%>%mutate(FC=percent_gene_KD/percent_gene_CTR,
+                                           FC_B2M=percent_gene_KD/percent_gene_CTR_B2M)
+
+by_gene_KD_ratio_EB003E6$monocle_cluster=as.integer(as.character(by_gene_KD_ratio_EB003E6$monocle_cluster))
+
+
+#####graph overview FC
+ggplot(by_gene_KD_ratio_EB003E6_SMAD2, aes(x = factor(cell_types_abbreviations,levels=color_df_EB003E6$cell_order_short), y = log2(FC), fill=cell_types_abbreviations)) + geom_bar(stat = "identity") +theme(legend.position='none')+
+  geom_hline(yintercept=1, linetype="dashed", color = "red")+
+  geom_hline(yintercept=-1, linetype="dashed", color = "red")+
+  scale_fill_manual(values =color_df_s_EB003E6$cl_col)#+
+  #facet_grid(~factor(gene, levels = gene_order))
+  
+ylab = "log2 (% gene KD vs CTR)"
+xlab = ""
+
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "FC_cells_by_gene_clust_polished_vsSMAD2CT_EB003E6.pdf"),
+     width = 5, height = 4)
+
+gene_order=c("B2M","SMAD2")
+
+#####graph overview FC
+ggplot(by_gene_KD_ratio_EB003E6, aes(x = factor(cell_types_abbreviations,levels=color_df_EB003E6$cell_order_short), y = log2(FC), fill=cell_types_abbreviations)) + geom_bar(stat = "identity") +theme(legend.position='none')+
+  geom_hline(yintercept=1, linetype="dashed", color = "red")+
+  geom_hline(yintercept=-1, linetype="dashed", color = "red")+
+  scale_fill_manual(values =color_df_s_EB003E6$cl_col)+
+  facet_grid(~factor(gene, levels = gene_order))
+  
+ylab = "log2 (% gene KD vs CTR)"
+xlab = ""
+
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "FC_cells_by_gene_EB003E6.pdf"),
+     width = 8, height = 4)
+
+ggplot(by_gene_KD_ratio_EB003E6_SMAD2, aes(x = factor(cell_types_abbreviations,levels=color_df_EB003E6$cell_order_short), y = log2(FC_B2M), fill=cell_types_abbreviations)) + geom_bar(stat = "identity") +theme(legend.position='none')+
+  geom_hline(yintercept=1, linetype="dashed", color = "red")+
+  geom_hline(yintercept=-1, linetype="dashed", color = "red")+
+  scale_fill_manual(values =color_df_s_EB003E6$cl_col)#+
+  #facet_grid(~factor(gene, levels = gene_order))
+  
+ylab = "log2 (% gene KD vs CTR B2M)"
+xlab = ""
+
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "FC_cells_by_gene_clust_polished_vsB2MCT_EB003E6.pdf"),
+     width = 5, height = 4)
+
+
+###save data
+stat_filename = paste0(fname_prefix_stat, "_nb_percent_by_gene_in_each_cluster_polished_EB003E6.csv")
+write.csv(by_gene_KD_EB003E6, stat_filename, quote = F, row.names = T, sep=",")
+stat_filename = paste0(fname_prefix_stat, "_nb_percent_by_gene_in_each_cluster_FC_polished_EB003E6.csv")
+write.csv(by_gene_KD_ratio_EB003E6, stat_filename, quote = F, row.names = T, sep=",")
+
+Rdata_filename = paste0(fname_prefix_R, "_calculations_nb_percent_polished_EB003E6.RData")
+save(by_gene_KD_EB003E6,by_gene_KD_ratio_EB003E6,by_gene_KD_ratio_EB003E6_SMAD2,file = Rdata_filename)
+
+```
+
+
+
+#####calculate fisher stats EB003E6
+
+```{r}
+#make true false annotations per cluster to make the contingency tables
+
+for (i in 1:13) {
+  col_name <- paste0("clust", i, "_EB003E6")
+  colData(cds)[[col_name]] <- cds$predicted_EB003E6 == as.character(i)
+}
+
+meta=as.data.frame(cds@colData@listData)
+meta <- replace(meta, is.na(meta), "empty")
+meta$KD <- dplyr::recode(meta$KD,"CTR"="CTR","TET"="KD")#already like this but run it in case the pattern is different
+
+#####clusters to consider are 1 to 6
+#make a loop to create the statistics
+################## start without subsetting for cell populations
+
+# Step 3: Define which clusters to use
+clusters_to_consider <- 1:13  # Can change to 1:6 if needed
+clust_cols <- paste0("clust", clusters_to_consider, "_EB003E6")
+
+# Step 4: Extract only needed columns
+meta_sh <- meta %>% select(shRNA_gene, KD, all_of(clust_cols))
+sh_list <- unique(meta_sh$shRNA_gene)
+
+# Step 5: Helper function to generate meta_fisher_* blocks
+make_meta_fisher_block <- function(kd_val, tf_val) {
+  data.frame(shRNA_gene = sh_list,
+             KD = kd_val,
+             as.data.frame(matrix(tf_val, nrow = length(sh_list), ncol = length(clust_cols),
+                                  dimnames = list(NULL, clust_cols))))
+}
+
+# Step 6: Generate and bind Fisher control rows
+meta_fisher_CTR_T <- make_meta_fisher_block("CTR", TRUE)
+meta_fisher_KD_T  <- make_meta_fisher_block("KD", TRUE)
+meta_fisher_CTR_F <- make_meta_fisher_block("CTR", FALSE)
+meta_fisher_KD_F  <- make_meta_fisher_block("KD", FALSE)
+
+meta_sh <- bind_rows(meta_sh,
+                     meta_fisher_CTR_T,
+                     meta_fisher_KD_T,
+                     meta_fisher_CTR_F,
+                     meta_fisher_KD_F)
+
+# Step 7: Add group identifier and subset
+meta_sh$gKD <- paste0(meta_sh$shRNA_gene, "_", meta_sh$KD)
+#meta_sh <- subset(meta_sh, gKD != "B2M_KD")#do not take out B2M_KD if you want to analyze B2M effect on itself
+
+# Step 8: Gene-specific subsetting
+meta_sh_SMAD2 <- subset(meta_sh,gKD != "B2M_KD" & gKD %in% c("SMAD2_CTR", "SMAD2_KD"))
+meta_sh_B2M   <- subset(meta_sh,gKD != "B2M_KD" & gKD %in% c("B2M_CTR", "SMAD2_KD"))
+
+#gene_list <- c("SMAD2","B2M")
+gene_list <- c("SMAD2","B2M")
+result_list <- list()
+
+for (cluster in paste0("clust", 1:13,"_EB003E6")) {
+  p_values <- numeric()
+
+  for (gene in gene_list) {
+    subset_data <- meta_sh[meta_sh$shRNA_gene == gene, c("KD", cluster)]
+    
+    if (nrow(subset_data) > 0) {
+      # Perform chi-squared test
+      fisher_result <- fisher.test(subset_data$KD, subset_data[[cluster]], simulate.p.value = FALSE)
+      
+      # Extract p-value
+      p_value <- fisher_result[["p.value"]]
+      
+      p_values <- c(p_values, p_value)
+    } else {
+      # If no data for the gene in the current cluster, set p-value to NA
+      p_values <- c(p_values, NA)
+    }
+  }
+
+  result_df <- data.frame(gene = gene_list, cluster = cluster, p_value = p_values, stringsAsFactors = FALSE)
+  
+  # Add a q-value column using p.adjust
+  result_df$q_value <- p.adjust(result_df$p_value, method = "fdr")
+  
+  # Add a column indicating significance at a 5% level
+  result_df$sig <- result_df$q_value <= 0.05
+
+  result_list[[cluster]] <- result_df
+}
+
+combined_result_df <- do.call(rbind, result_list)
+
+combined_result_df_EB003E6=combined_result_df
+by_gene_KD_ratio_EB003E6$cluster=paste0("clust",by_gene_KD_ratio_EB003E6$monocle_cluster,"_EB003E6")
+FC=by_gene_KD_ratio_EB003E6
+#combined_result_df_EB003E6=combined_result_df_EB003E6%>%select(-gene)
+#combined_result_df_EB003E6=combined_result_df_EB003E6%>%dplyr::rename(p_value_SMAD2=p_value,sig_SMAD2=sig,q_value_SMAD2=q_value)
+
+combined_result_df_EB003E6=combined_result_df_EB003E6%>%left_join(FC, by=c("cluster","gene"))
+combined_result_df_EB003E6 <- replace(combined_result_df_EB003E6, is.na(combined_result_df_EB003E6), 0.01)
+
+combined_result_df_EB003E6_SMAD2=subset(combined_result_df_EB003E6,combined_result_df_EB003E6$gene=="SMAD2")%>%dplyr::select(-gene)%>%dplyr::rename(p_value_SMAD2=p_value,sig_SMAD2=sig,q_value_SMAD2=q_value)
+
+stat_filename = paste0(fname_prefix_stat, "_fisher_stat_clusters_EB003E6.csv")
+write.csv(combined_result_df_EB003E6, stat_filename, quote = F, row.names = T, sep=",")
+
+stat_filename = paste0(fname_prefix_stat, "_fisher_stat_SMAD2_clusters_EB003E6.csv")
+write.csv(combined_result_df_EB003E6_SMAD2, stat_filename, quote = F, row.names = T, sep=",")
+
+
+for (cluster in paste0("clust", 1:13,"_EB003E6")) {
+  p_values <- numeric()
+
+    subset_data <- meta_sh_B2M[, c("KD", cluster)]
+    
+    if (nrow(subset_data) > 0) {
+      # Perform chi-squared test
+      fisher_result <- fisher.test(subset_data$KD, subset_data[[cluster]], simulate.p.value = FALSE)
+      
+      # Extract p-value
+      p_value <- fisher_result[["p.value"]]
+      
+      p_values <- c(p_values, p_value)
+    } else {
+      # If no data for the gene in the current cluster, set p-value to NA
+      p_values <- c(p_values, NA)
+    }
+
+  result_df <- data.frame(cluster = cluster, p_value = p_values, stringsAsFactors = FALSE)
+  
+  # Add a q-value column using p.adjust
+  result_df$q_value <- p.adjust(result_df$p_value, method = "fdr")
+  
+  # Add a column indicating significance at a 5% level
+  result_df$sig <- result_df$q_value <= 0.05
+
+  result_list[[cluster]] <- result_df
+}
+
+
+combined_result_df_B2M_EB003E6 <- do.call(rbind, result_list)
+#by_gene_KD_ratio_EB003E6$cluster=paste0("clust",by_gene_KD_ratio$monocle_cluster,"_EB003E6")
+combined_result_df_B2M_EB003E6=combined_result_df_B2M_EB003E6%>%dplyr::rename(p_value_B2M=p_value,sig_B2M=sig,q_value_B2M=q_value)
+
+combined_result_df_EB003E6_SMAD2=combined_result_df_EB003E6_SMAD2%>%left_join(combined_result_df_B2M_EB003E6, by=c("cluster"))
+
+stat_filename = paste0(fname_prefix_stat, "_fisher_stat_SMAD2_clusters_EB003E6.csv")
+write.csv(combined_result_df_EB003E6_SMAD2, stat_filename, quote = F, row.names = T, sep=",")
+
+stat_filename = paste0(fname_prefix_stat, "_fisher_stat_clusters_EB003E6.csv")
+write.csv(combined_result_df_EB003E6, stat_filename, quote = F, row.names = T, sep=",")
+
+#sub=subset(clust_sel,clust_sel$has_70_counts==T)
+#color_df_select=color_df%>%filter(cell_order_short%in%sub$assigned_cell_type_short)
+
+ggplot(data=combined_result_df_EB003E6_SMAD2, aes(x=log2(as.numeric(FC)), y=log10(q_value_SMAD2)*-1)) +
+  geom_point(aes(colour = factor(cell_types_abbreviations,levels=color_df_s_EB003E6$cell_order_short)), size=1.5) +scale_colour_manual(values=color_df_s_EB003E6$colors)+
+  ggrepel::geom_text_repel(
+    data = subset(combined_result_df_EB003E6_SMAD2,combined_result_df_EB003E6_SMAD2$sig_SMAD2==T&FC>2|combined_result_df_EB003E6_SMAD2$sig_SMAD2==T&FC<0.5),
+    aes(label = cell_types_abbreviations),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #geom_vline(xintercept = log2(1.5),linetype="dotted")+
+  #geom_vline(xintercept = -log2(1.5),linetype="dotted")+
+  geom_hline(yintercept = -log10(0.05),linetype="dotted")+
+  ggtitle("fisher test statistics in each cluster EB003E6 compared to SMAD2 CT")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2FC compared to CTR",
+    y = "-Log10 adj p-value",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_fisher_stats_SMAD2_EB003E6.pdf"),
+       width = 5, height = 4)
+
+d=subset(combined_result_df_EB003E6,combined_result_df_EB003E6$gene=="B2M")%>%filter(cluster!="clust4_EB003E6")
+
+ggplot(data=d, aes(x=log2(as.numeric(FC)), y=log10(q_value)*-1)) +
+  geom_point(aes(colour = factor(cell_order_short,levels=d$cell_order_short)), size=1.5) +scale_colour_manual(values=d$colors)+
+  ggrepel::geom_text_repel(
+    data = subset(d,sig==T&FC>2|sig==T&FC<0.5),
+    aes(label = cell_types_abbreviations),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #geom_vline(xintercept = log2(1.5),linetype="dotted")+
+  #geom_vline(xintercept = -log2(1.5),linetype="dotted")+
+  geom_hline(yintercept = -log10(0.05),linetype="dotted")+
+  ggtitle("fisher test statistics in each cluster EB003E6 compared to B2M CT")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2FC B2M compared to B2M CTR",
+    y = "-Log10 adj p-value",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_fisher_stats_B2M_EB003E6.pdf"),
+       width = 5, height = 4)
+
+
+#cds_subset=cds[,cds$has_70_counts==T]
+
+#plot_cells(cds, color_cells_by="assigned_cell_type", group_cells_by="assigned_cell_type",label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8, show_trajectory_graph =F)+
+ # scale_color_manual(name="monocle_cluster",values=color_df_l_EB003E7$cl_col)+
+  #labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clustering")
+#ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_clusters_long.pdf"),
+ #    width = 8, height = 5)
+
+#plot_cells(cds, color_cells_by="assigned_cell_type_short", group_cells_by="assigned_cell_type_short",label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8, show_trajectory_graph =F)+
+ # scale_color_manual(name="cell types",values=color_df_s_EB003E7$cl_col)+
+  #labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clustering")
+#ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_clusters_short.pdf"),
+ #    width = 8, height = 5)
+
+```
+
+#####calculate fisher stats EB003E7
+
+```{r}
+#make true false annotations per cluster to make the contingency tables
+
+colData(cds)$clust1 = cds$monocle_clusters=="1"
+colData(cds)$clust2 = cds$monocle_clusters=="2"
+colData(cds)$clust3 = cds$monocle_clusters=="3"
+colData(cds)$clust4 = cds$monocle_clusters=="4"
+colData(cds)$clust5 = cds$monocle_clusters=="5"
+colData(cds)$clust6 = cds$monocle_clusters=="6"
+colData(cds)$clust7 = cds$monocle_clusters=="7"
+
+#colData(cds)$clust14 = cds$monocle_clusters=="14"
+
+meta=as.data.frame(cds@colData@listData)
+#meta <- replace(meta, is.na(meta), "empty")
+meta$KD <- dplyr::recode(meta$KD,"CTR"="CTR","TET"="KD")
+
+#meta=subset(meta,meta$has_70_counts==T)
+
+#####clusters to consider are 1 to 6
+#make a loop to create the statistics
+################## start without subsetting for cell populations
+
+# Step 3: Define which clusters to use
+clusters_to_consider <- 1:7  # Can change to 1:6 if needed
+clust_cols <- paste0("clust", clusters_to_consider)
+
+# Step 4: Extract only needed columns
+meta_sh <- meta %>% select(shRNA_gene, KD, all_of(clust_cols))
+sh_list <- unique(meta_sh$shRNA_gene)
+
+# Step 5: Helper function to generate meta_fisher_* blocks
+make_meta_fisher_block <- function(kd_val, tf_val) {
+  data.frame(shRNA_gene = sh_list,
+             KD = kd_val,
+             as.data.frame(matrix(tf_val, nrow = length(sh_list), ncol = length(clust_cols),
+                                  dimnames = list(NULL, clust_cols))))
+}
+
+# Step 6: Generate and bind Fisher control rows
+meta_fisher_CTR_T <- make_meta_fisher_block("CTR", TRUE)
+meta_fisher_KD_T  <- make_meta_fisher_block("KD", TRUE)
+meta_fisher_CTR_F <- make_meta_fisher_block("CTR", FALSE)
+meta_fisher_KD_F  <- make_meta_fisher_block("KD", FALSE)
+
+meta_sh <- bind_rows(meta_sh,
+                     meta_fisher_CTR_T,
+                     meta_fisher_KD_T,
+                     meta_fisher_CTR_F,
+                     meta_fisher_KD_F)
+
+# Step 7: Add group identifier and subset
+meta_sh$gKD <- paste0(meta_sh$shRNA_gene, "_", meta_sh$KD)
+#meta_sh <- subset(meta_sh, gKD != "B2M_KD")#do not take out B2M_KD if you want to analyze B2M effect on itself
+
+# Step 8: Gene-specific subsetting
+meta_sh_SMAD2 <- subset(meta_sh,gKD != "B2M_KD" & gKD %in% c("SMAD2_CTR", "SMAD2_KD"))
+meta_sh_B2M   <- subset(meta_sh,gKD != "B2M_KD" & gKD %in% c("B2M_CTR", "SMAD2_KD"))
+
+#gene_list <- c("SMAD2","B2M")
+gene_list <- c("SMAD2","B2M")
+result_list <- list()
+
+for (cluster in paste0("clust", 1:7)) {
+  p_values <- numeric()
+
+  for (gene in gene_list) {
+    subset_data <- meta_sh[meta_sh$shRNA_gene == gene, c("KD", cluster)]
+    
+    if (nrow(subset_data) > 0) {
+      # Perform chi-squared test
+      fisher_result <- fisher.test(subset_data$KD, subset_data[[cluster]], simulate.p.value = FALSE)
+      
+      # Extract p-value
+      p_value <- fisher_result[["p.value"]]
+      
+      p_values <- c(p_values, p_value)
+    } else {
+      # If no data for the gene in the current cluster, set p-value to NA
+      p_values <- c(p_values, NA)
+    }
+  }
+
+  result_df <- data.frame(gene = gene_list, cluster = cluster, p_value = p_values, stringsAsFactors = FALSE)
+  
+  # Add a q-value column using p.adjust
+  result_df$q_value <- p.adjust(result_df$p_value, method = "fdr")
+  
+  # Add a column indicating significance at a 5% level
+  result_df$sig <- result_df$q_value <= 0.05
+
+  result_list[[cluster]] <- result_df
+}
+
+combined_result_df <- do.call(rbind, result_list)
+
+
+
+by_gene_KD_ratio$cluster=paste0("clust",by_gene_KD_ratio$monocle_cluster)###no cl7 there is something wrong with by_gene_KD_ratio
+FC=by_gene_KD_ratio
+combined_result_df=combined_result_df%>%left_join(FC, by=c("cluster","gene"))
+
+
+combined_result_df_SMAD2=combined_result_df%>%filter(gene=="SMAD2")%>%select(-gene)
+combined_result_df_SMAD2=combined_result_df_SMAD2%>%dplyr::rename(p_value_SMAD2=p_value,sig_SMAD2=sig,q_value_SMAD2=q_value)
+
+
+stat_filename = paste0(fname_prefix_stat, "_fisher_stat_EB003E7_clusters.csv")
+write.csv(combined_result_df, stat_filename, quote = F, row.names = T, sep=",")
+
+
+for (cluster in paste0("clust", 1:7)) {
+  p_values <- numeric()
+
+    subset_data <- meta_sh_B2M[, c("KD", cluster)]
+    
+    if (nrow(subset_data) > 0) {
+      # Perform chi-squared test
+      fisher_result <- fisher.test(subset_data$KD, subset_data[[cluster]], simulate.p.value = FALSE)
+      
+      # Extract p-value
+      p_value <- fisher_result[["p.value"]]
+      
+      p_values <- c(p_values, p_value)
+    } else {
+      # If no data for the gene in the current cluster, set p-value to NA
+      p_values <- c(p_values, NA)
+    }
+
+  result_df <- data.frame(cluster = cluster, p_value = p_values, stringsAsFactors = FALSE)
+  
+  # Add a q-value column using p.adjust
+  result_df$q_value <- p.adjust(result_df$p_value, method = "fdr")
+  
+  # Add a column indicating significance at a 5% level
+  result_df$sig <- result_df$q_value <= 0.05
+
+  result_list[[cluster]] <- result_df
+}
+
+
+combined_result_df_B2M <- do.call(rbind, result_list)
+
+by_gene_KD_ratio$cluster=paste0("clust",by_gene_KD_ratio$monocle_cluster)
+combined_result_df_B2M=combined_result_df_B2M%>%dplyr::rename(p_value_B2M=p_value,sig_B2M=sig,q_value_B2M=q_value)
+
+combined_result_df_SMAD2=combined_result_df_SMAD2%>%left_join(combined_result_df_B2M, by=c("cluster"))
+
+stat_filename = paste0(fname_prefix_stat, "_fisher_stat_B2M_SMAD2_clusters_EB003E7.csv")
+write.csv(combined_result_df_SMAD2, stat_filename, quote = F, row.names = T, sep=",")
+
+#sub=subset(clust_sel,clust_sel$has_70_counts==T)
+#color_df_select=color_df%>%filter(cell_order_short%in%sub$assigned_cell_type_short)
+
+ggplot(data=combined_result_df_SMAD2, aes(x=log2(as.numeric(FC)), y=log10(q_value_SMAD2)*-1)) +
+  geom_point(aes(colour = factor(cell_types_abbreviations,levels=color_df_s_EB003E7$cell_order_short)), size=1.5) +scale_colour_manual(values=color_df_s_EB003E7$cl_col)+
+  ggrepel::geom_text_repel(
+    data = subset(combined_result_df_SMAD2,sig_SMAD2==T&FC>1.9|sig_SMAD2==T&FC<0.5),
+    aes(label = cell_types_abbreviations),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #geom_vline(xintercept = log2(2),linetype="dotted")+
+  #geom_vline(xintercept = -log2(2),linetype="dotted")+
+  geom_hline(yintercept = -log10(0.05),linetype="dotted")+
+  ggtitle("fisher test statistics in each cluster compared to SMAD2 CT")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2FC compared to CTR",
+    y = "-Log10 adj p-value",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_fisher_stats_STAT2_EB003E7.pdf"),
+       width = 5, height = 4)
+
+ggplot(data=combined_result_df_SMAD2, aes(x=log2(as.numeric(FC_B2M)), y=log10(q_value_B2M)*-1)) +
+  geom_point(aes(colour = factor(cell_types_abbreviations,levels=color_df_s_EB003E7$cell_order_short)), size=1.5) +scale_colour_manual(values=color_df_s_EB003E7$cl_col)+
+  ggrepel::geom_text_repel(
+    data = subset(combined_result_df_SMAD2,sig_B2M==T&FC>1.9|sig_B2M==T&FC<0.5),
+    aes(label = cell_types_abbreviations),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #geom_vline(xintercept = log2(1.5),linetype="dotted")+
+  #geom_vline(xintercept = -log2(1.5),linetype="dotted")+
+  geom_hline(yintercept = -log10(0.05),linetype="dotted")+
+  ggtitle("fisher test statistics in each cluster compared to B2M CT")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2FC compared to B2M CTR",
+    y = "-Log10 adj p-value",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_fisher_stats_B2M_EB003E7.pdf"),
+       width = 5, height = 4)
+
+```
+
+######fisher stats by clone on EB003E6 clusters
+
+```{r}
+library(see)
+meta=as.data.frame(cds@colData@listData)
+meta <- replace(meta, is.na(meta), "empty")
+
+meta$clone=paste0(meta$shRNA_BC,"_", meta$shRNA_gene, "_", meta$cell_BC)
+
+#####count clone to select the most meaninful ones (>40)
+
+clone_count=meta%>%
+  dplyr::group_by(clone,KD) %>%
+  dplyr::summarise(count = n())###tot clones 305
+clone_count=spread(clone_count, key = KD, value = count)%>%dplyr::rename(freq_KD=KD,freq_CTR=CTR)
+clone_count <- replace(clone_count, is.na(clone_count), 0)
+clone_count$clone_20_counts <- apply(clone_count[, -1] >= 20, 1, any)
+sub=clone_count%>%dplyr::select(clone,clone_20_counts)
+clone_selected=clone_count%>%filter(clone_20_counts==T)
+
+clone_count$name=c("SMAD2_A", "SMAD2_B","SMAD2_C", "SMAD2_D", "B2M_A", "B2M_B", "B2M_C", "B2M_D")
+colnames(clone_count)=c("clone", "tot_cl_CTR", "tot_cl_KD","clone_20_counts","clone_name")
+
+meta=meta%>%left_join(clone_count, by="clone")
+meta <- replace(meta, is.na(meta), FALSE)
+
+stat_filename = paste0(fname_prefix_stat, "_clone_count.csv")
+write.csv(clone_count, stat_filename, quote = F, row.names = T, sep=",")
+
+#####add info to meta and then on cds
+colData(cds)$clone=meta$clone
+colData(cds)$clone_name=meta$clone_name
+colData(cds)$clone_20_counts_clone=meta$clone_20_counts
+
+colData(cds)$clone_KD=paste0(cds$clone,"_",cds$KD)
+meta=as.data.frame(cds@colData@listData)
+meta <- replace(meta, is.na(meta), "empty")
+
+####calculate % composition of each shRNA in clusters
+tot=table(meta$clone_KD) #total of the cluster
+#df=table(meta$clone_KD,meta$predicted_EB003E6, meta$clone ,meta$shRNA_gene,meta$KD)
+df=table(meta$predicted_EB003E6, meta$clone ,meta$KD)
+df = as.data.frame(df)
+#colnames(df)=c("clone_KD","predicted_EB003E6","clone","gene","KD","freq")
+colnames(df)=c("predicted_EB003E6","clone","KD","freq")
+df <- df %>%mutate(gene = str_split_fixed(df$clone, "_", 3)[,2])
+df$clone_KD = paste0(df$clone,"_",df$KD)
+df$freq=df$freq+1
+#df <- replace(df, df==0, 0.01)
+
+
+mdf2=df#11664 rows
+total=as.data.frame(tot)
+colnames(total)=c("clone_KD","tot")
+mdf2=mdf2%>%left_join(total, by="clone_KD")
+mdf2$tot = as.numeric(mdf2$tot)
+mdf2$tot=mdf2$tot+13
+mdf2$frxn = (mdf2$freq/mdf2$tot)*100
+m=subset(mdf2,mdf2$freq!=0)
+
+by_clone_KD=m
+#add cluster info
+#by_clone_KD=by_clone_KD%>%left_join(clust_df, by="monocle_cluster")
+
+# Get unique genes
+genes <- unique(by_clone_KD$gene)
+
+# Loop through each gene
+for (g in genes) {
+  # Create a plot for the current gene
+  p <- ggplot(subset(by_clone_KD, by_clone_KD$gene == g), 
+              aes(x = KD, y = frxn, fill = predicted_EB003E6)) + 
+    geom_bar(stat = "identity") +
+    scale_fill_manual(values=c(color_df_l_EB003E6$colors)) +
+    labs(fill = "Cell type") +
+    facet_wrap(~clone, ncol = 4) +
+    labs(x = "treatment", y = "% clone by treatment")
+
+  # Save the plot
+  output_file <- paste0(fname_prefix_mosaic, "_", "percent_by_clone_", g, "_100_percent_cell_type.pdf")
+  ggsave(filename = output_file, plot = p, width = 8, height = 4)
+}
+
+#######polished graphs for clones
+
+polished=by_clone_KD%>%filter(clone%in%clone_selected$clone)
+
+# Get unique genes
+genes <- unique(polished$gene)
+
+# Loop through each gene
+for (g in genes) {
+  # Create a plot for the current gene
+  p <- ggplot(subset(polished, polished$gene == g), 
+              aes(x = KD, y = frxn, fill = predicted_EB003E6)) + 
+    geom_bar(stat = "identity") +
+    scale_fill_manual(values=c(color_df_l_EB003E6$colors)) +
+    labs(fill = "Cell type") +
+    facet_wrap(~clone, ncol = 4) +
+    labs(x = "treatment", y = "% clone by treatment")
+
+  # Save the plot
+  output_file <- paste0(fname_prefix_mosaic, "_", "percent_by_clone_polished_", g, "_100_percent_cell_type.pdf")
+  ggsave(filename = output_file, plot = p, width = 8, height = 4)
+}
+
+
+########select clusters with more than 70 cells and shRNA with more than 40 cells and clones with more than 20 cells
+#meta=subset(meta,meta$clone_20_counts_clone==T)
+
+####calculate fisher test
+#####make a meta to use for the fisher test
+
+# Define the cluster columns dynamically
+clust_cols <- paste0("clust", 1:13, "_EB003E6")
+
+# Select only the relevant columns: clone, KD, and clust_*_EB003E6
+meta_cl <- meta %>%
+  select(clone, KD, all_of(clust_cols))
+
+# Get the list of unique clones
+cl_list <- unique(meta_cl$clone)
+
+# Function to create the "meta_fisher" data frames
+create_meta_fisher <- function(kd_status, value) {
+  data.frame(
+    clone = cl_list,
+    KD = kd_status,
+    setNames(as.list(rep(value, length(clust_cols))), clust_cols),
+    stringsAsFactors = FALSE
+  )
+}
+
+# Create all four meta_fisher data frames
+meta_fisher <- bind_rows(
+  create_meta_fisher("CTR", TRUE),
+  create_meta_fisher("KD", TRUE),
+  create_meta_fisher("CTR", FALSE),
+  create_meta_fisher("KD", FALSE)
+)
+
+# Combine everything
+meta_cl <- bind_rows(meta_cl, meta_fisher)
+
+#start fisher test
+
+result_list <- list()
+
+for (cluster in clust_cols) {
+  p_values <- numeric()
+
+  for (clone in cl_list) {
+    subset_data <- meta_cl[meta_cl$clone == clone, c("KD", cluster)]
+    
+    if (nrow(subset_data) > 0) {
+      # Perform Fisher's Exact Test
+      fisher_result <- fisher.test(subset_data$KD, subset_data[[cluster]], simulate.p.value = FALSE)
+      
+      # Extract p-value
+      p_value <- fisher_result$p.value
+      
+      p_values <- c(p_values, p_value)
+    } else {
+      # If no data for the clone in the current cluster, set p-value to NA
+      p_values <- c(p_values, NA)
+    }
+  }
+
+  result_df <- data.frame(clone = cl_list, cluster = cluster, p_value = p_values, stringsAsFactors = FALSE)
+  
+  # Add a q-value column using p.adjust
+  result_df$q_value <- p.adjust(result_df$p_value, method = "BH")
+  
+  # Add a column indicating significance at a 5% level
+  result_df$sig <- result_df$q_value <= 0.05
+
+  result_list[[cluster]] <- result_df
+}
+
+combined_result_cl_df <- do.call(rbind, result_list)#104
+
+c=combined_result_cl_df
+
+m=by_clone_KD
+m$cluster=paste0("clust",m$predicted_EB003E6,"_EB003E6")
+CTR=subset(m,m$KD=="CTR")%>%dplyr::rename(n_cells_cl_CTR=freq,tot_cl_CTR=tot,percent_cl_CTR=frxn)%>%select(-KD,-clone_KD)
+KD=subset(m,m$KD=="KD")%>%dplyr::rename(n_cells_cl_KD=freq,tot_cl_KD=tot,percent_cl_KD=frxn)%>%select(-KD,-clone_KD)
+
+FC=CTR%>%dplyr::left_join(KD,by=c("gene","clone","predicted_EB003E6","cluster"))
+FC <- replace(FC, is.na(FC), 0.3)
+
+combined_result_cl_df=combined_result_cl_df%>%left_join(FC, by=c("clone","cluster"))
+
+combined_result_cl_df <- replace(combined_result_cl_df, is.na(combined_result_cl_df), 0.3)
+
+combined_result_cl_df=combined_result_cl_df%>%mutate(FC=percent_cl_KD/percent_cl_CTR)#273
+
+#info=meta%>%select(shRNA_gene,clone,predicted_EB003E6)%>%distinct(shRNA_gene,clone,predicted_EB003E6)%>%mutate(cluster=paste0("clust",predicted_EB003E6,"_EB003E6"))
+
+#combined_result_cl_df=combined_result_cl_df%>%dplyr::select(-gene,-predicted_EB003E6)
+#combined_result_cl_df <- replace(combined_result_cl_df, is.na(combined_result_cl_df), 0)
+
+combined_result_cl_df$predicted_EB003E6=as.character(combined_result_cl_df$predicted_EB003E6)
+
+#combined_result_cl_df=combined_result_cl_df %>%left_join(info,by=c("clone","cluster","gene"="shRNA_gene","predicted_EB003E6"))
+
+cl=clone_count%>%dplyr::select(clone,clone_name)
+combined_result_cl_df=combined_result_cl_df%>%left_join(cl,by="clone")
+
+
+cell_ty=color_df_EB003E6%>%dplyr::select(cell_types,cell_types_abbreviations,monocle_cluster)
+colnames(cell_ty)=c("cell_types","cell_types_abbreviations","predicted_EB003E6")
+combined_result_cl_df=combined_result_cl_df%>%left_join(cell_ty,by="predicted_EB003E6")
+
+Rdata_filename = paste0(fname_prefix_stat, "_fisher_stats_clone.RData")
+save(combined_result_cl_df,combined_result_df,meta,meta_cl,cds,
+     file = Rdata_filename)
+
+
+ggplot(data=subset(combined_result_cl_df,combined_result_cl_df$gene=="SMAD2"), aes(x=log2(as.numeric(FC)), y=log10(q_value)*-1)) +
+  geom_point(aes(colour = cell_types), size=1.5) +scale_colour_manual(values=color_df_l_EB003E6$colors)+
+  ggrepel::geom_text_repel(
+    data = subset(combined_result_cl_df,combined_result_cl_df$gene=="SMAD2"&sig==T&FC<=1.5|combined_result_cl_df$gene=="SMAD2"&sig==T&FC>=1.5*-1),
+    aes(label = clone_name),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  geom_hline(yintercept = -log10(0.05),linetype="dotted")+
+  geom_vline(xintercept = log2(2),linetype="dotted")+
+  geom_vline(xintercept = -log2(2),linetype="dotted")+
+  ggtitle("fisher test statistics per clone in each cluster")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2FC compared to CTR",
+    y = "-Log10 adj p-value",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_fisher_stats_clone_SMAD2.pdf"),
+       width = 6, height = 4)
+
+ggplot(data=subset(combined_result_cl_df,combined_result_cl_df$gene=="B2M"), aes(x=log2(as.numeric(FC)), y=log10(q_value)*-1)) +
+  geom_point(aes(colour = cell_types), size=1.5) +scale_colour_manual(values=color_df_l_EB003E6$colors)+
+  ggrepel::geom_text_repel(
+    data = subset(combined_result_cl_df,combined_result_cl_df$gene=="B2M"&sig==T&FC<=1.5|combined_result_cl_df$gene=="B2M"&sig==T&FC>=1.5*-1),
+    aes(label = clone_name),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  geom_hline(yintercept = -log10(0.05),linetype="dotted")+
+  geom_vline(xintercept = log2(2),linetype="dotted")+
+  geom_vline(xintercept = -log2(2),linetype="dotted")+
+  ggtitle("fisher test statistics per clone in each cluster")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2FC compared to CTR",
+    y = "-Log10 adj p-value",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_fisher_stats_clone_B2M.pdf"),
+       width = 6, height = 4)
+
+ggplot(data=combined_result_cl_df, aes(x=log2(as.numeric(FC)), y=log10(q_value)*-1)) +
+  geom_point(aes(colour = cell_types), size=1.5) +scale_colour_manual(values=color_df_l_EB003E6$colors)+
+  ggrepel::geom_text_repel(
+    data = subset(combined_result_cl_df,combined_result_cl_df$sig==T&FC<=2|combined_result_cl_df$sig==T&FC>=2*-1),
+    aes(label = clone_name),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines"),
+    max.overlaps = 20
+  )+
+  geom_hline(yintercept = -log10(0.05),linetype="dotted")+
+  geom_vline(xintercept = log2(2),linetype="dotted")+
+  geom_vline(xintercept = -log2(2),linetype="dotted")+
+  ggtitle("fisher test statistics per clone in each cluster")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2FC compared to CTR",
+    y = "-Log10 adj p-value",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_fisher_stats_clone_SMAD2_B2M.pdf"),
+       width = 6, height = 4)
+
+stat_filename = paste0(fname_prefix_stat, "_fisher_stat_clones_clusters.csv")
+write.csv(combined_result_cl_df, stat_filename, quote = F, row.names = T, sep=",")
+
+
+```
+
+
+######fisher stats by clone on EB003E7 clusters
+
+```{r}
+library(see)
+
+meta=as.data.frame(cds@colData@listData)
+meta <- replace(meta, is.na(meta), "empty")
+
+####calculate % composition of each shRNA in clusters
+tot=table(meta$clone_KD) #total of the cluster
+#df=table(meta$clone_KD,meta$predicted_EB003E6, meta$clone ,meta$shRNA_gene,meta$KD)
+df=table(meta$monocle_clusters, meta$clone ,meta$KD)
+df = as.data.frame(df)
+#colnames(df)=c("clone_KD","predicted_EB003E6","clone","gene","KD","freq")
+colnames(df)=c("monocle_clusters","clone","KD","freq")
+df <- df %>%mutate(gene = str_split_fixed(df$clone, "_", 3)[,2])
+df$clone_KD = paste0(df$clone,"_",df$KD)
+df$freq=df$freq+1
+#df <- replace(df, df==0, 0.01)
+
+
+mdf2=df#11664 rows
+total=as.data.frame(tot)
+colnames(total)=c("clone_KD","tot")
+mdf2=mdf2%>%left_join(total, by="clone_KD")
+mdf2$tot = as.numeric(mdf2$tot)
+mdf2$tot=mdf2$tot+7
+mdf2$frxn = (mdf2$freq/mdf2$tot)*100
+m=subset(mdf2,mdf2$freq!=0)
+
+by_clone_KD=m
+#add cluster info
+#by_clone_KD=by_clone_KD%>%left_join(clust_df, by="monocle_cluster")
+
+# Get unique genes
+genes <- unique(by_clone_KD$gene)
+
+# Loop through each gene
+for (g in genes) {
+  # Create a plot for the current gene
+  p <- ggplot(subset(by_clone_KD, by_clone_KD$gene == g), 
+              aes(x = KD, y = frxn, fill = monocle_clusters)) + 
+    geom_bar(stat = "identity") +
+    scale_fill_manual(values=c(color_df_l_EB003E7$cl_col)) +
+    labs(fill = "Cell type") +
+    facet_wrap(~clone, ncol = 4) +
+    labs(x = "treatment", y = "% clone by treatment")
+
+  # Save the plot
+  output_file <- paste0(fname_prefix_mosaic, "_", "percent_by_clone_", g, "_100_percent_cell_type.pdf")
+  ggsave(filename = output_file, plot = p, width = 8, height = 4)
+}
+
+#######polished graphs for clones
+
+polished=by_clone_KD%>%filter(clone%in%clone_selected$clone)
+
+# Get unique genes
+genes <- unique(polished$gene)
+
+# Loop through each gene
+for (g in genes) {
+  # Create a plot for the current gene
+  p <- ggplot(subset(polished, polished$gene == g), 
+              aes(x = KD, y = frxn, fill = monocle_clusters)) + 
+    geom_bar(stat = "identity") +
+    scale_fill_manual(values=c(color_df_l_EB003E7$cl_col)) +
+    labs(fill = "Cell type") +
+    facet_wrap(~clone, ncol = 4) +
+    labs(x = "treatment", y = "% clone by treatment")
+
+  # Save the plot
+  output_file <- paste0(fname_prefix_mosaic, "_", "percent_by_clone_polished_", g, "_100_percent_cell_type.pdf")
+  ggsave(filename = output_file, plot = p, width = 8, height = 4)
+}
+
+
+########select clusters with more than 70 cells and shRNA with more than 40 cells and clones with more than 20 cells
+#meta=subset(meta,meta$clone_20_counts_clone==T)
+
+####calculate fisher test
+#####make a meta to use for the fisher test
+
+# Define the cluster columns dynamically
+clust_cols <- paste0("clust", 1:7)
+
+# Select only the relevant columns: clone, KD, and clust_*_EB003E6
+meta_cl <- meta %>%
+  dplyr::select(clone, KD, all_of(clust_cols))
+
+# Get the list of unique clones
+cl_list <- unique(meta_cl$clone)
+
+# Function to create the "meta_fisher" data frames
+create_meta_fisher <- function(kd_status, value) {
+  data.frame(
+    clone = cl_list,
+    KD = kd_status,
+    setNames(as.list(rep(value, length(clust_cols))), clust_cols),
+    stringsAsFactors = FALSE
+  )
+}
+
+# Create all four meta_fisher data frames
+meta_fisher <- bind_rows(
+  create_meta_fisher("CTR", TRUE),
+  create_meta_fisher("KD", TRUE),
+  create_meta_fisher("CTR", FALSE),
+  create_meta_fisher("KD", FALSE)
+)
+
+# Combine everything
+meta_cl <- bind_rows(meta_cl, meta_fisher)
+
+#start fisher test
+
+result_list <- list()
+
+for (cluster in clust_cols) {
+  p_values <- numeric()
+
+  for (clone in cl_list) {
+    subset_data <- meta_cl[meta_cl$clone == clone, c("KD", cluster)]
+    
+    if (nrow(subset_data) > 0) {
+      # Perform Fisher's Exact Test
+      fisher_result <- fisher.test(subset_data$KD, subset_data[[cluster]], simulate.p.value = FALSE)
+      
+      # Extract p-value
+      p_value <- fisher_result$p.value
+      
+      p_values <- c(p_values, p_value)
+    } else {
+      # If no data for the clone in the current cluster, set p-value to NA
+      p_values <- c(p_values, NA)
+    }
+  }
+
+  result_df <- data.frame(clone = cl_list, cluster = cluster, p_value = p_values, stringsAsFactors = FALSE)
+  
+  # Add a q-value column using p.adjust
+  result_df$q_value <- p.adjust(result_df$p_value, method = "BH")
+  
+  # Add a column indicating significance at a 5% level
+  result_df$sig <- result_df$q_value <= 0.05
+
+  result_list[[cluster]] <- result_df
+}
+
+combined_result_cl_df <- do.call(rbind, result_list)#104
+
+c=combined_result_cl_df
+
+m=by_clone_KD
+m$cluster=paste0("clust",m$monocle_clusters)
+CTR=subset(m,m$KD=="CTR")%>%dplyr::rename(n_cells_cl_CTR=freq,tot_cl_CTR=tot,percent_cl_CTR=frxn)%>%select(-KD,-clone_KD)
+KD=subset(m,m$KD=="KD")%>%dplyr::rename(n_cells_cl_KD=freq,tot_cl_KD=tot,percent_cl_KD=frxn)%>%select(-KD,-clone_KD)
+
+FC=CTR%>%dplyr::left_join(KD,by=c("gene","clone","monocle_clusters","cluster"))
+FC <- replace(FC, is.na(FC), 0.3)
+
+combined_result_cl_df=combined_result_cl_df%>%left_join(FC, by=c("clone","cluster"))
+
+combined_result_cl_df <- replace(combined_result_cl_df, is.na(combined_result_cl_df), 0.3)
+
+combined_result_cl_df=combined_result_cl_df%>%mutate(FC=percent_cl_KD/percent_cl_CTR)#273
+
+#info=meta%>%select(shRNA_gene,clone,predicted_EB003E6)%>%distinct(shRNA_gene,clone,predicted_EB003E6)%>%mutate(cluster=paste0("clust",predicted_EB003E6,"_EB003E6"))
+
+#combined_result_cl_df=combined_result_cl_df%>%dplyr::select(-gene,-predicted_EB003E6)
+#combined_result_cl_df <- replace(combined_result_cl_df, is.na(combined_result_cl_df), 0)
+
+#combined_result_cl_df$monocle_clusters=as.character(combined_result_cl_df$monocle_clusters)
+
+#combined_result_cl_df=combined_result_cl_df %>%left_join(info,by=c("clone","cluster","gene"="shRNA_gene","predicted_EB003E6"))
+
+cl=clone_count%>%dplyr::select(clone,clone_name)
+combined_result_cl_df=combined_result_cl_df%>%left_join(cl,by="clone")
+
+
+cell_ty=color_df_EB003E7%>%dplyr::select(cell_types,cell_types_abbreviations,monocle_cluster)
+colnames(cell_ty)=c("cell_types","cell_types_abbreviations","monocle_clusters")
+combined_result_cl_df=combined_result_cl_df%>%left_join(cell_ty,by=c("monocle_clusters"))
+
+Rdata_filename = paste0(fname_prefix_stat, "_fisher_stats_clone_EB003E7.RData")
+save(combined_result_cl_df,combined_result_df,meta,meta_cl,cds,
+     file = Rdata_filename)
+
+
+ggplot(data=subset(combined_result_cl_df,combined_result_cl_df$gene=="SMAD2"), aes(x=log2(as.numeric(FC)), y=log10(q_value)*-1)) +
+  geom_point(aes(colour = cell_types), size=1.5) +scale_colour_manual(values=color_df_l_EB003E7$cl_col)+
+  ggrepel::geom_text_repel(
+    data = subset(combined_result_cl_df,combined_result_cl_df$gene=="SMAD2"&sig==T&FC<=2|combined_result_cl_df$gene=="SMAD2"&sig==T&FC>=2*-1),
+    aes(label = clone_name),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  geom_hline(yintercept = -log10(0.05),linetype="dotted")+
+  geom_vline(xintercept = log2(2),linetype="dotted")+
+  geom_vline(xintercept = -log2(2),linetype="dotted")+
+  ggtitle("fisher test statistics per clone in each cluster")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2FC compared to CTR",
+    y = "-Log10 adj p-value",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_fisher_stats_clone_SMAD2_EB003E7.pdf"),
+       width = 6, height = 4)
+
+ggplot(data=subset(combined_result_cl_df,combined_result_cl_df$gene=="B2M"), aes(x=log2(as.numeric(FC)), y=log10(q_value)*-1)) +
+  geom_point(aes(colour = cell_types), size=1.5) +scale_colour_manual(values=color_df_l_EB003E7$cl_col)+
+  ggrepel::geom_text_repel(
+    data = subset(combined_result_cl_df,combined_result_cl_df$gene=="B2M"&sig==T&FC<=2|combined_result_cl_df$gene=="B2M"&sig==T&FC>=2*-1),
+    aes(label = clone_name),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  geom_hline(yintercept = -log10(0.05),linetype="dotted")+
+  geom_vline(xintercept = log2(2),linetype="dotted")+
+  geom_vline(xintercept = -log2(2),linetype="dotted")+
+  ggtitle("fisher test statistics per clone in each cluster")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2FC compared to CTR",
+    y = "-Log10 adj p-value",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_fisher_stats_clone_B2M_EB003E7.pdf"),
+       width = 6, height = 4)
+
+ggplot(data=combined_result_cl_df, aes(x=log2(as.numeric(FC)), y=log10(q_value)*-1)) +
+  geom_point(aes(colour = cell_types), size=1.5) +scale_colour_manual(values=color_df_l_EB003E7$cl_col)+
+  ggrepel::geom_text_repel(
+    data = subset(combined_result_cl_df,combined_result_cl_df$sig==T&FC<=2|combined_result_cl_df$sig==T&FC>=2*-1),
+    aes(label = clone_name),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines"),
+    max.overlaps = 20
+  )+
+  geom_hline(yintercept = -log10(0.05),linetype="dotted")+
+  geom_vline(xintercept = log2(2),linetype="dotted")+
+  geom_vline(xintercept = -log2(2),linetype="dotted")+
+  ggtitle("fisher test statistics per clone in each cluster")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2FC compared to CTR",
+    y = "-Log10 adj p-value",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_fisher_stats_clone_SMAD2_B2M_EB003E7.pdf"),
+       width = 6, height = 4)
+
+stat_filename = paste0(fname_prefix_stat, "_fisher_stat_clones_clusters_EB003E7.csv")
+write.csv(combined_result_cl_df, stat_filename, quote = F, row.names = T, sep=",")
+
+
+```
+
+####plot for SMAD2
+
+```{r}
+# Extract normalized expression for SMAD2
+norm_expr <- normalized_counts(cds)["SMAD2", ]
+raw_expr <- exprs(cds)["SMAD2", ]
+
+
+# Combine with metadata
+plot_df <- as.data.frame(colData(cds))
+plot_df$cell_id <- rownames(plot_df)
+plot_df$SMAD2_RNA <- norm_expr[plot_df$cell_id]
+plot_df$SMAD2_raw=raw_expr[plot_df$cell_id]
+
+library(ggpattern)
+my_colors <- c(
+  "CTR" = "grey",
+  "KD" = "#0072B2"
+)
+
+ggplot(data=subset(plot_df,plot_df$assigned_cell_type=="Early cardiomyocytes"&plot_df$shRNA_gene=="SMAD2"), aes(x=shRNA_gene, y=SMAD2_RNA,fill=KD)) + 
+  geom_violin(trim = FALSE, position = position_dodge(width = 0.9)) +
+  stat_summary(
+    fun = median,
+    width = 0.3,
+    geom = "crossbar", 
+    aes(group = KD), 
+    position = position_dodge(width = 0.9), 
+    shape = 23, size = 2, color = "black", fill = "white"
+  ) +scale_fill_manual(values = my_colors)+
+  stat_compare_means(aes(group = KD))+
+  labs(
+    x = "",
+    y = "log2(SMAD2 + 1) counts",
+    title = "SMAD2 gene expression in early cardiomyocytes")
+
+ggsave(filename = paste0(fname_prefix_CITE_seq, "_", "SMAD2_gene_early_cardio.pdf"),
+     width = 6, height = 5)
+
+ggplot(data=subset(plot_df,plot_df$assigned_cell_type=="Early cardiomyocytes"), aes(x=shRNA_gene, y=SMAD2_RNA,fill=KD)) + 
+  geom_violin(trim = FALSE, position = position_dodge(width = 0.9)) +
+  stat_summary(
+    fun = median,
+    width = 0.3,
+    geom = "crossbar", 
+    aes(group = KD), 
+    position = position_dodge(width = 0.9), 
+    shape = 23, size = 2, color = "black", fill = "white"
+  ) +scale_fill_manual(values = my_colors)+
+  stat_compare_means(aes(group = KD))+
+  labs(
+    x = "",
+    y = "log2(SMAD2 + 1) counts",
+    title = "SMAD2 gene expression in early cardiomyocytes")
+
+ggsave(filename = paste0(fname_prefix_CITE_seq, "_", "SMAD2_gene_early_cardio_both_samp.pdf"),
+     width = 10, height = 5)
+
+
+ggplot(data=subset(plot_df), aes(x=shRNA_gene, y=SMAD2_RNA,fill=KD)) + 
+  geom_violin(trim = FALSE, position = position_dodge(width = 0.9)) +
+  stat_summary(
+    fun = median,
+    width = 0.3,
+    geom = "crossbar", 
+    aes(group = KD), 
+    position = position_dodge(width = 0.9), 
+    shape = 23, size = 2, color = "black", fill = "white"
+  ) +scale_fill_manual(values = my_colors)+
+  stat_compare_means(aes(group = KD))+
+  labs(
+    x = "",
+    y = "log2(SMAD2 + 1) counts",
+    title = "SMAD2 gene expression")
+
+ggsave(filename = paste0(fname_prefix_CITE_seq, "_", "SMAD2_gene.pdf"),
+     width = 10, height = 5)
+
+
+ggplot(data=subset(plot_df,plot_df$assigned_cell_type=="Early cardiomyocytes"&plot_df$shRNA_gene=="SMAD2"), aes(x=shRNA_gene, y=SMAD2_raw,fill=KD)) + 
+  geom_violin(trim = FALSE, position = position_dodge(width = 0.9)) +
+  stat_summary(
+    fun = median,
+    width = 0.3,
+    geom = "crossbar", 
+    aes(group = KD), 
+    position = position_dodge(width = 0.9), 
+    shape = 23, size = 2, color = "black", fill = "white"
+  ) +scale_fill_manual(values = my_colors)+
+  stat_compare_means(aes(group = KD))+
+  labs(
+    x = "",
+    y = "SMAD2 counts",
+    title = "SMAD2 gene expression in early cardiomyocytes")
+
+ggsave(filename = paste0(fname_prefix_CITE_seq, "_", "SMAD2_gene_raw_early_cardio.pdf"),
+     width = 6, height = 5)
+
+ggplot(data=subset(plot_df,plot_df$assigned_cell_type=="Early cardiomyocytes"), aes(x=shRNA_gene, y=SMAD2_raw,fill=KD)) + 
+  geom_violin(trim = FALSE, position = position_dodge(width = 0.9)) +
+  stat_summary(
+    fun = median,
+    width = 0.3,
+    geom = "crossbar", 
+    aes(group = KD), 
+    position = position_dodge(width = 0.9), 
+    shape = 23, size = 2, color = "black", fill = "white"
+  ) +scale_fill_manual(values = my_colors)+
+  stat_compare_means(aes(group = KD))+
+  labs(
+    x = "",
+    y = "SMAD2 counts",
+    title = "SMAD2 gene expression in early cardiomyocytes")
+
+ggsave(filename = paste0(fname_prefix_CITE_seq, "_", "SMAD2_gene_raw_early_cardio_both_samp.pdf"),
+     width = 10, height = 5)
+
+
+ggplot(data=subset(plot_df), aes(x=shRNA_gene, y=SMAD2_raw,fill=KD)) + 
+  geom_violin(trim = FALSE, position = position_dodge(width = 0.9)) +
+  stat_summary(
+    fun = median,
+    width = 0.3,
+    geom = "crossbar", 
+    aes(group = KD), 
+    position = position_dodge(width = 0.9), 
+    shape = 23, size = 2, color = "black", fill = "white"
+  ) +scale_fill_manual(values = my_colors)+
+  stat_compare_means(aes(group = KD))+
+  labs(
+    x = "",
+    y = "SMAD2 counts",
+    title = "SMAD2 gene expression")
+
+ggsave(filename = paste0(fname_prefix_CITE_seq, "_", "SMAD2_gene_raw.pdf"),
+     width = 10, height = 5)
+
+
+```
+
+
+
+
+
+#####analyze modules
+####selected top 16 in n1 #filtered_a
+
+```{r}
+top_16=top%>%select(-max,-delta,-min)
+
+hp3=pheatmap::pheatmap(select_modules,
+                   scale="column", clustering_method="ward.D2",main="Top 16 modules",color = viridis(n = 256, alpha = 1, 
+                                   begin = 0, end = 1, option = "H"))#scaled on row (modules)
+
+Rdata_filename = paste0(fname_prefix_heatmap, "_hp_modules_top16_Turbo.pdf")
+pdf(Rdata_filename, height = 4, width = 4)
+hp3
+dev.off()
+```
+##KS stats
+```{r}
+analyze=data.frame(t(select_modules))
+analyze$module=rownames(analyze)
+analyze$module_nb=sapply(strsplit(as.character(analyze$mod), "_"), "[[", 2)
+analyze$mod=paste0("Module ",analyze$module_nb)
+rownames(analyze)=analyze$module
+analyze$pal=c("#AA0DFE","#3283FE","#85660D","#782AB6","#565656","#1C8356","#16FF32","#F7E1A0","#E2E2E2","#1CBE4F","#C4451C","#DEA0FD","#FE00FA","#325A9B","#FEAF16","black")
+
+#row=data.frame(module=rownames(top15_norm))
+#rownames(row)=row$module
+
+my_colour = list(module = c("Module 15"="#AA0DFE","Module 59"="#3283FE","Module 27"="#85660D","Module 41"="#782AB6","Module 2"="#565656","Module 25"="#1C8356","Module 37"="#16FF32","Module 56"="#F7E1A0","Module 39"="#E2E2E2","Module 73"="#1CBE4F","Module 17"="#C4451C","Module 48"="#DEA0FD","Module 62"="#FE00FA","Module 44"="#325A9B","Module 60"="#FEAF16","Module 65"="black"))
+
+
+plot_cells(cds,
+           genes=gene_module_df %>% filter(module %in% c(analyze$module_nb)),
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE,cell_size=1)+
+labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle modules")
+last_plot() + scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "Monocle_modules_top_15.pdf"),
+     width = 10, height = 8)
+
+analysis=c(analyze$module)
+
+TET = subset(meta, meta$knockdown == "TET")
+CTR = subset(meta, meta$knockdown == "CTR")
+
+ks_stat = data.frame()
+
+for (c in unique(meta$shRNA_gene)) {
+  for (analysis_type in analysis) {
+    tmp_TET = TET[TET$shRNA_gene == "SMAD2", analysis_type]
+    tmp_CTR = CTR[CTR$shRNA_gene == c, analysis_type]
+    
+    ks_pval = ks.test(tmp_TET, tmp_CTR)[["p.value"]]
+    
+    ks_stat = rbind(ks_stat, data.frame(gene = c, pval = ks_pval, analysis = analysis_type))
+  }
+}
+
+colnames(ks_stat) <- c("gene", "pval", "analysis")
+
+ks_stat$padj <- p.adjust(ks_stat$pval, method = "BH")
+ks_stat$sig <- ks_stat$padj <= 0.01
+
+ks_stat_filtered_modules=ks_stat
+
+write.csv(ks_stat_filtered_modules, file= paste0(fname_prefix_csv, "_", "ks_statistics_filtered_modules.csv"), row.names=FALSE)
+
+
+#######see modules that stands out
+analysis=c(analyze$module)
+
+TET = subset(meta, meta$knockdown == "TET")
+CTR = subset(meta, meta$knockdown == "CTR")
+
+ks_stat = data.frame()
+
+for (c in unique(meta$shRNA_gene)) {
+  for (analysis_type in analysis) {
+    tmp_TET = TET[TET$shRNA_gene == "SMAD2", analysis_type]
+    tmp_CTR = CTR[CTR$shRNA_gene == c, analysis_type]
+    
+    ks_pval = ks.test(tmp_TET, tmp_CTR)[["p.value"]]
+    ks_pval_g = ks.test(tmp_TET, tmp_CTR,alternative="greater")[["p.value"]]
+    ks_sig_g = ks.test(tmp_TET, tmp_CTR,alternative="greater")[["statistic"]][["D^+"]]
+    ks_pval_l = ks.test(tmp_TET, tmp_CTR,alternative="less")[["p.value"]]
+    ks_sig_l = ks.test(tmp_TET, tmp_CTR,alternative="less")[["statistic"]][["D^-"]]
+    ks_sig = ks.test(tmp_TET, tmp_CTR)[["statistic"]][["D"]]
+    
+    ks_stat = rbind(ks_stat, data.frame(gene = c, pval = ks_pval, pval_g = ks_pval_g,pval_l = ks_pval_l,ks_sign_g=ks_sig_g,ks_sign_l=ks_sig_l,ks_sign=ks_sig, analysis = analysis_type))
+  }
+}
+
+colnames(ks_stat) <- c("gene", "pval", "pval_greater","pval_less","ks_greater","ks_less","ks_sign","analysis")
+
+ks_stat$padj <- p.adjust(ks_stat$pval, method = "BH")
+ks_stat$sig <- ks_stat$padj <= 0.01
+ks_stat$greater <- ks_stat$pval_greater <= 0.01
+ks_stat$less <- ks_stat$pval_less <= 0.01
+
+ks_stat$k_sign_summary <- ifelse(
+  # "greater" is TRUE and "less" is FALSE
+  ks_stat$greater & !ks_stat$less,
+  as.numeric(ks_stat$ks_greater),  # Return ks_sign value
+  ifelse(
+    # "greater" is FALSE and "less" is TRUE
+    !ks_stat$greater & ks_stat$less,
+    -as.numeric(ks_stat$ks_less),  # Return negative of ks_sign
+    ks_stat$ks_sign  # Otherwise, return ks sign
+  )
+)
+
+ks_stat$k_colour <- ifelse(
+  ks_stat$sig==T,ks_stat$analysis,"")
+ 
+k_stat_all=ks_stat
+write.csv(ks_stat, file= paste0(fname_prefix_csv, "_", "ks_statistics_sign_top15.csv"), row.names=FALSE)
+
+k_stat_all=k_stat_all%>%dplyr::rename(module=analysis)
+k_stat_all=k_stat_all%>%left_join(analyze, by="module")
+
+k_stat_SMAD=subset(k_stat_all,k_stat_all$gene=="SMAD2")
+k_stat_B2M=subset(k_stat_all,k_stat_all$gene=="B2M")
+```
+
+#####volcano plot statistics
+###genes
+
+```{r}
+library(pals)
+
+a=k_stat_SMAD%>%filter(k_stat_SMAD$sig==T)%>%dplyr::select(module,pal)%>%distinct(module,pal)
+a=a[order(a$module),]
+
+ggplot(data=k_stat_SMAD, aes(x=k_sign_summary, y=log10(padj)*-1)) +
+  geom_point(aes(colour = k_colour), size=1.5) +scale_color_manual(values=c("grey",a$pal))+
+  ggrepel::geom_text_repel(
+    data = subset(k_stat_SMAD, sig==T&k_sign_summary>0.1|sig==T&k_sign_summary<=-0.1),
+    aes(label = module_nb),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  ggtitle("ks test statistics per gene vs its control")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "KS statistic summary",
+    y = "-Log10 adj p-value",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_ks_stats_gene.pdf"),
+       width = 6, height = 4)
+
+```
+######get info about gene modules
+
+```{r}
+
+mod_sig = subset(k_stat_SMAD, sig==T&k_sign_summary>0.1|sig==T&k_sign_summary<=-0.1)
+
+
+gene_modules=list()
+
+for (c in unique(gene_module_df$module)) {
+ 
+tmp=subset(gene_module_df, gene_module_df$module==c)
+gene_list=tmp$id
+
+gene_modules[[c]]=gene_list
+}
+
+library(topGO)
+
+library(org.Hs.eg.db)
+
+hs <- org.Hs.eg.db
+
+modules=c(mod_sig$module_nb)
+
+go.de_list <- list()
+k_list <- list()
+
+# Iterate over each module in 'modules'
+for (module in modules) {
+  # Convert gene symbols to ENSEMBL or ENTREZID
+  gene.df <- clusterProfiler::bitr(gene_modules[[module]], fromType = "SYMBOL",
+                                    toType = c("ENSEMBL", "ENTREZID"),
+                                    OrgDb = org.Hs.eg.db)
+  
+  # Perform GO analysis
+  go.de <- goana(list(DE1 = gene.df$ENTREZID), species = "Hs", convert = TRUE) %>%
+    mutate(module = module)
+  
+  # Perform KEGG analysis
+  k <- kegga(list(DE1 = gene.df$ENTREZID), species = "Hs", convert = TRUE) %>%
+    mutate(module = module)
+  
+  # Store the results in lists
+  go.de_list[[module]] <- go.de
+  k_list[[module]] <- k
+}
+
+# Combine all data frames in the lists into single data frames
+GO <- do.call(rbind, go.de_list)%>%filter(Ont!="CC",DE1>=20,P.DE1<=0.05)
+k <- do.call(rbind, k_list)%>%filter(DE1>=6,P.DE1<=0.05)
+
+write.csv(GO, file= paste0(fname_prefix_csv, "_", "GO_modules.csv"), row.names=FALSE)
+write.csv(k, file= paste0(fname_prefix_csv, "_", "kegg_modules.csv"), row.names=FALSE)
+
+```
+
+####save data
+
+```{r}
+meta=as.data.frame(cds@colData@listData)
+
+Rdata_filename = paste0(fname_prefix_R, "_downsampledata.RData")
+save(seurat_downsample,libID_downsample,cds_subset,cds,seurat,
+     file = Rdata_filename)
+
+Rdata_filename = paste0(fname_prefix_R, "_cds_updated.RData")
+save(meta,cds,clust_df,color_df_EB003E7,color_df_l_EB003E7,color_df_s_EB003E7,color_df_EB003E6,color_df_l_EB003E6,color_df_s_EB003E6,select,seurat,meta_cl,meta_sh,
+     file = Rdata_filename)
+```
+
+
+

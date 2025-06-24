@@ -1,0 +1,1143 @@
+---
+title: "#A1 n5.2 3D E/D analysis (1) D0 2D vs CTR cardioidi; (2) D0 2D vs TET cardioidi; (3) CTR cardioidi vs TET cardioidi"
+author: "Elisa Balmas PhD"
+date: "2024-02-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set up environment
+
+```{r}
+library(monocle3)
+library(tidyr)
+library(stringr)
+library(grid)
+library(viridis)
+library(viridisLite)
+library(ggthemes)
+library(dplyr)
+library(tidyverse)
+library(ggsignif)
+library(umap)
+library(heatmap3)
+library(plyr)
+library(edgeR)
+library(compareGroups)
+library(dbscan)
+library(MAST)
+library(geosphere)
+library(RColorBrewer)
+library(Seurat)
+library(htmlwidgets)
+library(Matrix)
+library(tidyseurat)
+library(SeuratWrappers)
+library(scMAGeCK)
+library(readxl)
+library(rCASC)
+library(deepToolsUtils)
+library(R.utils)
+
+
+library(ggplot2); library(reshape2); theme_set(theme_bw(26) + theme(panel.grid.major = element_blank(), 
+                                                                    panel.grid.minor = element_blank()) +
+                                                 theme(legend.key = element_blank()))
+update_geom_defaults("point", aes(size = 4))
+
+#setwd("/home/ebalmas/scpHUB/projects/H001AS7_iKDseq_10X_4tp_monocle/analysis_EB")
+
+# Session options
+options(stringsAsFactors = FALSE)
+set.seed(12345)
+
+# Set up the ggplot default params
+theme_set(theme_bw(12) + 
+          theme(panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(),
+                plot.title = element_text(size=15, face="bold", margin = margin(10,0,10,0)),
+                axis.text.x = element_text(angle=45, hjust = 1)))
+
+
+# Set up filename prefixes and output folders with the data
+dir.create("Output")
+dir.create(file.path("Output","scratch"))
+
+dir.create(file.path("Output","revision"))
+dir.create(file.path("Output","revision","E_D"))#create forders E_D (enrichment and depletion)
+dir.create(file.path("Output","revision","E_D", format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","revision","E_D", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","revision","E_D", format(Sys.Date(), "%y%m%d"), "dotplots"))
+dir.create(file.path("Output","revision","E_D", format(Sys.Date(), "%y%m%d"), "dotplots","single"))
+dir.create(file.path("Output","revision","E_D", format(Sys.Date(), "%y%m%d"), "stat"))
+dir.create(file.path("Output","revision","E_D", format(Sys.Date(), "%y%m%d"), "csv"))
+dir.create(file.path("Output","revision","E_D", format(Sys.Date(), "%y%m%d"), "UMAP"))
+dir.create(file.path("Output","revision","E_D", format(Sys.Date(), "%y%m%d"), "mosaic"))
+dir.create(file.path("Output","revision","E_D", format(Sys.Date(), "%y%m%d"), "heatmap"))
+
+
+fname_scratch <- file.path("Output","scratch")
+
+#set up forder path E_D
+fname_prefix_R <- file.path("Output","revision","E_D", format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot <- file.path("Output","revision","E_D", format(Sys.Date(), "%y%m%d"), "dotplots", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot_single <- file.path("Output","revision","E_D", format(Sys.Date(), "%y%m%d"), "dotplots", "single", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_csv<-file.path("Output","revision","E_D", format(Sys.Date(), "%y%m%d"), "csv", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_stat<-file.path("Output","revision","E_D", format(Sys.Date(), "%y%m%d"), "stat", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_UMAP<-file.path("Output","revision","E_D", format(Sys.Date(), "%y%m%d"), "UMAP", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_mosaic<-file.path("Output","revision","E_D", format(Sys.Date(), "%y%m%d"), "mosaic", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_heatmap<-file.path("Output","revision","E_D", format(Sys.Date(), "%y%m%d"), "heatmap", 
+                               format(Sys.Date(), "%y%m%d"))
+
+
+okabe_tab=read_excel("Output/scratch/color_scale.xlsx")
+okabe_pal=okabe_tab$hex
+
+okabe_pal=c("#E69F00","#56B4E9","#009E73","#f0E442","#0072B2","#D55E00","#CC79A7","#000000")
+
+pal <- c("#000000","#004949","#009292","#ff6db6","#ffb6db",
+         "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+         "#920000","#924900","#db6d00","#24ff24","#ffff6d")
+```
+####create dataset
+
+```{r}
+####data AB03
+#load("Output/monocle/240411/R_objects/240411_cds_updated.RData")
+#ID_key=read_excel("shRNA_IDs.xlsx")
+#Rdata_filename = paste0(fname_prefix_R, "_AB03_starting_material_E_D.RData")
+#save(clones_AB03,meta_AB03,
+ #    file = Rdata_filename)
+
+####data 2D
+#load(paste0("/Users/elisabalmaselisabalmas/Library/CloudStorage/GoogleDrive-elisa.balmas@unito.it/Shared drives/MBC-HEDGe_EB/EB003_CHD/H001A_screening/H001AS7_H001AS5_monocle_analysis/ANALYSIS_PAPER_NEW/Output/monocle/240313/R_objects/240313_monocle_cds_clone_selected.RData"))
+#Rdata_filename = paste0(fname_prefix_R, "_2D_starting_material_E_D.RData")
+#save(meta_2D,
+ #    file = Rdata_filename)
+#load("/Output/revision/E_D/240819/R_objects/240819_2D_starting_material_E_D.RData")
+#load("/Output/revision/E_D/240819/R_objects/240819_AB03_starting_material_E_D.RData")
+#Rdata_filename = paste0(fname_prefix_R, "_starting_material_E_D.RData")
+#save(clones_AB03,meta_AB03,meta_2D,
+ #    file = Rdata_filename)
+
+#load(paste0(getwd(),"/Output/revision/E_D/240819/R_objects/240819_starting_material_E_D.RData"))
+#ID_key=read_excel("shRNA_IDs.xlsx")
+
+#clones_info=clones_AB03
+
+#meta_AB03$sample_ID=ifelse(meta_AB03$sample_id=="n3_no_TET","Cardioid n3 CT",
+                     #               ifelse(meta_AB03$sample_id=="n3_TET","Cardioid n3 KD",
+                      #                     ifelse(meta_AB03$sample_id=="n4_no_TET","Cardioid n4 CT",
+                       #                           ifelse(meta_AB03$sample_id=="n4_TET","Cardioid n4 KD","else"))))
+
+#meta_2D$knockdown="TET"
+#meta_2D$treatment="TET"
+#meta_2D$KD="KD"
+#meta_AB03$DD="cardioid"
+#meta_2D$ID="2D"
+#meta_AB03$ID="3D"
+#meta_2D$libID=paste0(meta_2D$lib_ID,"-",meta_2D$orig.ident,"_",meta_2D$ID)
+#meta_AB03$libID=paste0(meta_AB03$lib_ID,"-",meta_AB03$orig.ident,"_",meta_AB03$ID)
+#rownames(meta_AB03)=meta_AB03$libID
+#rownames(meta_2D)=meta_2D$libID
+
+#meta_2D=meta_2D%>%dplyr::select(lib_ID,libID,info, sample, sample_id,sample_ID, experiment, KD, ID, DD, treatment, batch, clone, side,shRNA_BC, shRNA_gene, cell_BC,shRNA_BC_FWD,shRNA_BC_RVS,shRNA_Sequence)
+
+#meta_AB03=meta_AB03%>%dplyr::select(lib_ID,libID,info, sample, sample_id,sample_ID, experiment, KD, ID, DD, treatment, batch, clone, side,shRNA_BC, shRNA_gene, cell_BC,shRNA_BC_FWD,shRNA_BC_RVS,shRNA_Sequence)
+
+#meta=rbind(meta_2D,meta_AB03) #41877 rows
+
+#meta=meta%>%dplyr::right_join(clones_info, by=c("clone","shRNA_gene","cell_BC"))
+
+#meta$set_ED=ifelse(meta$sample_id=="PSC","hiPSC",
+                                 #   ifelse(meta$sample_id=="D0","hiPSC",
+                                  #         ifelse(meta$sample_id=="n3_no_TET","cardioids_CT",
+                                   #               ifelse(meta$sample_id=="n4_no_TET","cardioids_CT",
+                                    #                     ifelse(meta$sample_id=="n3_TET","cardioids",                                                       #ifelse(meta$sample_id=="n4_TET","cardioids","other"))))))
+
+
+#meta$KD_B2M= ifelse(meta$shRNA_gene == "B2M", "control", "gene")
+#meta$KD_empty= ifelse(meta$shRNA_gene == "NA", "control", "gene")
+#meta$KD_SCR= ifelse(meta$shRNA_gene == "SCR", "control", "gene")
+
+#meta_ipsc=subset(meta, meta$set_ED!="other")
+
+#meta_ipsc_TET=subset(meta_ipsc, meta_ipsc$set_ED!="cardioids_CT")
+
+#meta_CT=subset(meta_ipsc, meta_ipsc$set_ED!="cardioids")
+
+#S_filename = paste0(fname_scratch, "/E_D_starting_meta_all_sides")
+#save(clones_info,meta,meta_AB03,meta_ipsc,meta_ipsc_TET,meta_CT,
+ #    file = S_filename)
+
+#meta_s2=subset(meta,meta$side=="Side2")
+
+#meta_AB03_s2=subset(meta_AB03,meta_AB03$side=="Side2")
+#meta_ipsc_s2=subset(meta_ipsc,meta_ipsc$side=="Side2")
+#meta_ipsc_TET_s2=subset(meta_ipsc_TET,meta_ipsc_TET$side=="Side2")
+#meta_CT_s2=subset(meta_CT,meta_CT$side=="Side2")
+
+#S_filename = paste0(fname_scratch, "/E_D_starting_meta_s2")
+#save(clones_info,meta,meta_s2,meta_AB03_s2,meta_ipsc_s2,meta_ipsc_TET_s2,meta_CT_s2,
+ #    file = S_filename)
+
+```
+
+########load data
+
+```{r}
+
+
+load(paste0(getwd(),"/",fname_scratch,"/E_D_starting_meta_all_sides"))
+load(paste0(getwd(),"/",fname_scratch,"/E_D_starting_meta_s2"))
+
+```
+
+####### fisher test enrichment depletion AB03
+###ER between cardioids with and without TET
+
+```{r}
+#####total Fisher test
+m_cl=meta_AB03%>%dplyr::select(clone,KD)
+clone_list=unique(m_cl$clone)#52
+
+
+for (clone in clone_list) {
+  # Create a new column named after the clone and assign boolean values
+  m_cl[[clone]] <- m_cl$clone == clone
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  # Perform Fisher's test
+  fisher_result <- fisher.test(m_cl[[clone_list[i]]], m_cl$KD, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+result_ED_TOTAL <- data.frame(clone = clone_names, P_value_TOTAL = p_values)
+result_ED_TOTAL$qval=p.adjust(result_ED_TOTAL$P_value_TOTAL)
+
+```
+
+####
+
+```{r}
+sig_level <- 0.05
+#Set a fold-change cutoff
+fc_level <- log2(2)
+fc_level2 <- (log2(2))*-1
+
+result_ED_TOTAL$sig=result_ED_TOTAL$qval<=sig_level
+
+counts=meta_AB03 %>%
+  dplyr::group_by(clone,KD) %>%
+  dplyr::summarise(count = n())###tot clones
+counts=spread(counts, key = KD, value = count)
+counts <- counts %>% replace(is.na(.), 0)
+
+totals=meta_AB03%>%
+  dplyr::group_by(KD)%>%
+  dplyr::summarise(total = n())
+totals=as.data.frame(totals)
+
+counts$tot_CTR=totals[1,2]
+counts$tot_KD=totals[2,2]
+counts$TOT=counts$tot_CTR+counts$tot_KD
+counts$TOT_clone=counts$CTR+counts$KD
+
+counts$tot_other_CTR=counts$tot_CTR-counts$CTR
+counts$tot_other_KD=counts$tot_KD-counts$KD
+counts=counts%>%mutate(FC=(KD/tot_KD)/(CTR/tot_CTR),
+                       percent_CTR=CTR/tot_CTR*100,
+                       percent_KD=KD/tot_KD*100,
+                       percent_cl=TOT_clone/TOT*100)
+side=meta_AB03 %>%
+     dplyr::group_by(clone,side)%>%
+     dplyr::summarise(count_clone = n())
+
+
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(counts,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(clones_info,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(side,by="clone")
+
+result_ED_TOTAL=result_ED_TOTAL %>% 
+  filter_all(all_vars(!is.infinite(.)))
+result_ED_TOTAL=subset(result_ED_TOTAL,result_ED_TOTAL$FC>0)
+
+write.csv(result_ED_TOTAL, file= paste0(fname_prefix_csv, "_", "result_ED_AB03_all.csv"), row.names=FALSE)
+ED_AB03_all_results=result_ED_TOTAL
+
+ED_AB03_all_results=subset(ED_AB03_all_results,ED_AB03_all_results$clone!="empty_NA_empty")
+
+```
+
+####volcano plot
+
+```{r}
+ggplot(data=ED_AB03_all_results, aes(x=log2(FC), y=(log2(percent_cl)))) +
+  geom_point(aes(colour = log10(qval)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(ED_AB03_all_results,ED_AB03_all_results$qval<=0.05&log2(ED_AB03_all_results$FC)>fc_level|ED_AB03_all_results$qval<=0.05&log2(ED_AB03_all_results$FC)<fc_level2),
+    aes(label = clone_short),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  #ylim(-5,1.5)+
+  #xlim(-6,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion KD compared to CTR")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in KD vs CTR",
+    y = "Log2 of clone fraction",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_AB03_clone_enrichment_depletion.pdf"),
+       width = 8, height = 5)
+
+ggplot(data=ED_AB03_all_results, aes(x=log2(FC), y=(log2(percent_cl)))) +
+  geom_point(aes(colour = side, size=1.5)) +
+  scale_colour_manual(values = okabe_pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(ED_AB03_all_results,ED_AB03_all_results$qval<=0.05&log2(ED_AB03_all_results$FC)>fc_level|ED_AB03_all_results$qval<=0.05&log2(ED_AB03_all_results$FC)<fc_level2),
+    aes(label = clone_short),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  #ylim(-5,1.5)+
+  #xlim(-6,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion KD compared to CTR")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in KD vs CTR",
+    y = "Log2 of clone fraction",
+    color = "side"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_AB03_clone_enrichment_depletion_side.pdf"),
+       width = 8, height = 5)
+```
+
+####### fisher test enrichment depletion AB03 in SIDE 2 only
+###ER between cardioids with and without TET
+
+```{r}
+#####total Fisher test
+m_cl=meta_AB03_s2%>%dplyr::select(clone,KD)
+clone_list=unique(m_cl$clone)#52
+
+
+for (clone in clone_list) {
+  # Create a new column named after the clone and assign boolean values
+  m_cl[[clone]] <- m_cl$clone == clone
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  # Perform Fisher's test
+  fisher_result <- fisher.test(m_cl[[clone_list[i]]], m_cl$KD, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+result_ED_TOTAL <- data.frame(clone = clone_names, P_value_TOTAL = p_values)
+result_ED_TOTAL$qval=p.adjust(result_ED_TOTAL$P_value_TOTAL)
+
+```
+
+####
+
+```{r}
+sig_level <- 0.05
+#Set a fold-change cutoff
+fc_level <- log2(2)
+fc_level2 <- (log2(2))*-1
+
+result_ED_TOTAL$sig=result_ED_TOTAL$qval<=sig_level
+
+counts=meta_AB03_s2 %>%
+  dplyr::group_by(clone,KD) %>%
+  dplyr::summarise(count = n())###tot clones
+counts=spread(counts, key = KD, value = count)
+counts <- counts %>% replace(is.na(.), 0)
+
+totals=meta_AB03_s2%>%
+  dplyr::group_by(KD)%>%
+  dplyr::summarise(total = n())
+totals=as.data.frame(totals)
+
+counts$tot_CTR=totals[1,2]
+counts$tot_KD=totals[2,2]
+counts$TOT=counts$tot_CTR+counts$tot_KD
+counts$TOT_clone=counts$CTR+counts$KD
+
+counts$tot_other_CTR=counts$tot_CTR-counts$CTR
+counts$tot_other_KD=counts$tot_KD-counts$KD
+counts=counts%>%mutate(FC=(KD/tot_KD)/(CTR/tot_CTR),
+                       percent_CTR=CTR/tot_CTR*100,
+                       percent_KD=KD/tot_KD*100,
+                       percent_cl=TOT_clone/TOT*100)
+side=meta_AB03_s2 %>%
+     dplyr::group_by(clone,side)%>%
+     dplyr::summarise(count_clone = n())
+
+
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(counts,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(clones_info,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(side,by="clone")
+
+result_ED_TOTAL=result_ED_TOTAL %>% 
+  filter_all(all_vars(!is.infinite(.)))
+result_ED_TOTAL=subset(result_ED_TOTAL,result_ED_TOTAL$FC>0)
+
+write.csv(result_ED_TOTAL, file= paste0(fname_prefix_csv, "_", "result_ED_AB03_s2.csv"), row.names=FALSE)
+ED_AB03_s2_results=result_ED_TOTAL
+ED_AB03_s2_results=subset(ED_AB03_s2_results,ED_AB03_s2_results$clone!="empty_NA_empty")
+
+```
+
+####volcano plot
+
+```{r}
+ggplot(data=ED_AB03_s2_results, aes(x=log2(FC), y=(log2(percent_cl)))) +
+  geom_point(aes(colour = log10(qval)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(ED_AB03_s2_results,ED_AB03_s2_results$qval<=0.05&log2(ED_AB03_s2_results$FC)>fc_level|ED_AB03_s2_results$qval<=0.05&log2(ED_AB03_s2_results$FC)<fc_level2),
+    aes(label = clone_short),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  #ylim(-5,1.5)+
+  #xlim(-6,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion KD compared to CTR")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in KD vs CTR",
+    y = "Log2 of clone fraction",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_AB03_clone_enrichment_depletion_SIDE2.pdf"),
+       width = 8, height = 5)
+
+
+```
+
+####### fisher test enrichment depletion AB03 and hPSC
+###ER between cardioids without TET and hPSC (controls) all sides
+
+```{r}
+#####total Fisher test
+m_cl=meta_CT%>%dplyr::select(clone,set_ED)
+clone_list=unique(m_cl$clone)#50
+
+
+for (clone in clone_list) {
+  # Create a new column named after the clone and assign boolean values
+  m_cl[[clone]] <- m_cl$clone == clone
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  # Perform Fisher's test
+  fisher_result <- fisher.test(m_cl[[clone_list[i]]], m_cl$set_ED, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+result_ED_TOTAL <- data.frame(clone = clone_names, P_value_TOTAL = p_values)
+result_ED_TOTAL$qval=p.adjust(result_ED_TOTAL$P_value_TOTAL)
+
+```
+
+####
+
+```{r}
+sig_level <- 0.05
+#Set a fold-change cutoff
+fc_level <- log2(2)
+fc_level2 <- (log2(2))*-1
+
+result_ED_TOTAL$sig=result_ED_TOTAL$qval<=sig_level
+
+counts=meta_CT %>%
+  dplyr::group_by(clone,set_ED) %>%
+  dplyr::summarise(count = n())###tot clones
+counts=spread(counts, key = set_ED, value = count)
+counts <- counts %>% replace(is.na(.), 0)
+
+totals=meta_CT%>%
+  dplyr::group_by(set_ED)%>%
+  dplyr::summarise(total = n())
+totals=as.data.frame(totals)
+
+counts$tot_hiPSC=totals[2,2]
+counts$tot_cardio=totals[1,2]
+
+#counts$hiPSC=counts$hiPSC+1
+#counts$tot_hiPSC=counts$tot_hiPSC+1
+
+counts$TOT=counts$tot_hiPSC+counts$tot_cardio
+counts$TOT_clone=counts$hiPSC+counts$cardioids_CT
+
+counts$tot_other_CTR=counts$tot_hiPSC-counts$hiPSC
+counts$tot_other_cardioids=counts$tot_cardio-counts$cardioids_CT
+counts=counts%>%mutate(FC=(cardioids_CT/tot_cardio)/(hiPSC/tot_hiPSC),
+                       percent_hiPSC=hiPSC/tot_hiPSC*100,
+                       percent_cardioids=cardioids_CT/tot_cardio*100,
+                       percent_cl=TOT_clone/TOT*100)
+side=meta_CT %>%
+     dplyr::group_by(clone,side)%>%
+     dplyr::summarise(count_clone = n())
+
+
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(counts,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(clones_info,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(side,by="clone")
+
+result_ED_TOTAL=result_ED_TOTAL %>% 
+  filter_all(all_vars(!is.infinite(.)))
+result_ED_TOTAL=subset(result_ED_TOTAL,result_ED_TOTAL$FC>0)
+
+write.csv(result_ED_TOTAL, file= paste0(fname_prefix_csv, "_", "result_ED_CT_all.csv"), row.names=FALSE)
+ED_CT_all_results=result_ED_TOTAL
+ED_CT_all_results=subset(ED_CT_all_results,ED_CT_all_results$clone!="empty_NA_empty")
+
+
+```
+
+####volcano plot
+
+```{r}
+ggplot(data=ED_CT_all_results, aes(x=log2(FC), y=(log2(percent_cl)))) +
+  geom_point(aes(colour = log10(qval)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(ED_CT_all_results,ED_CT_all_results$qval<=0.05&log2(ED_CT_all_results$FC)>fc_level|ED_CT_all_results$qval<=0.05&log2(ED_CT_all_results$FC)<fc_level2),
+    aes(label = clone_short),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  #ylim(-5,1.5)+
+  #xlim(-6,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion Cardioid compared to hiPSC")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in Cardioids vs hiPSC",
+    y = "Log2 of clone fraction",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_CT_clone_enrichment_depletion.pdf"),
+       width = 8, height = 5)
+
+ggplot(data=ED_CT_all_results, aes(x=log2(FC), y=(log2(percent_cl)))) +
+  geom_point(aes(colour = side, size=1.5)) +
+  scale_colour_manual(values = okabe_pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(ED_CT_all_results,ED_CT_all_results$qval<=0.05&log2(ED_CT_all_results$FC)>fc_level|ED_CT_all_results$qval<=0.05&log2(ED_CT_all_results$FC)<fc_level2),
+    aes(label = clone_short),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  #ylim(-5,1.5)+
+  #xlim(-6,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion Cardioid compared to hiPSC")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in Cardioids vs hiPSC",
+    y = "Log2 of clone fraction",
+    color = "side"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_CT_clone_enrichment_depletion_side.pdf"),
+       width = 8, height = 5)
+```
+
+####### fisher test enrichment depletion AB03 and hPSC
+###ER between cardioids without TET and hPSC (controls)
+
+```{r}
+#####total Fisher test
+m_cl=meta_CT_s2%>%dplyr::select(clone,set_ED)
+clone_list=unique(m_cl$clone)#22
+
+
+for (clone in clone_list) {
+  # Create a new column named after the clone and assign boolean values
+  m_cl[[clone]] <- m_cl$clone == clone
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  # Perform Fisher's test
+  fisher_result <- fisher.test(m_cl[[clone_list[i]]], m_cl$set_ED, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+result_ED_TOTAL <- data.frame(clone = clone_names, P_value_TOTAL = p_values)
+result_ED_TOTAL$qval=p.adjust(result_ED_TOTAL$P_value_TOTAL)
+
+```
+
+####
+
+```{r}
+sig_level <- 0.05
+#Set a fold-change cutoff
+fc_level <- log2(2)
+fc_level2 <- (log2(2))*-1
+
+result_ED_TOTAL$sig=result_ED_TOTAL$qval<=sig_level
+
+counts=meta_CT_s2 %>%
+  dplyr::group_by(clone,set_ED) %>%
+  dplyr::summarise(count = n())###tot clones
+counts=spread(counts, key = set_ED, value = count)
+counts <- counts %>% replace(is.na(.), 0)
+
+totals=meta_CT_s2%>%
+  dplyr::group_by(set_ED)%>%
+  dplyr::summarise(total = n())
+totals=as.data.frame(totals)
+
+counts$tot_hiPSC=totals[2,2]
+counts$tot_cardio=totals[1,2]
+
+#counts$hiPSC=counts$hiPSC+1
+#counts$tot_hiPSC=counts$tot_hiPSC+1
+
+counts$TOT=counts$tot_hiPSC+counts$tot_cardio
+counts$TOT_clone=counts$hiPSC+counts$cardioids_CT
+
+counts$tot_other_CTR=counts$tot_hiPSC-counts$hiPSC
+counts$tot_other_cardioids=counts$tot_cardio-counts$cardioids_CT
+counts=counts%>%mutate(FC=(cardioids_CT/tot_cardio)/(hiPSC/tot_hiPSC),
+                       percent_hiPSC=hiPSC/tot_hiPSC*100,
+                       percent_cardioids=cardioids_CT/tot_cardio*100,
+                       percent_cl=TOT_clone/TOT*100)
+side=meta_CT_s2 %>%
+     dplyr::group_by(clone,side)%>%
+     dplyr::summarise(count_clone = n())
+
+
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(counts,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(clones_info,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(side,by="clone")
+
+result_ED_TOTAL=result_ED_TOTAL %>% 
+  filter_all(all_vars(!is.infinite(.)))
+result_ED_TOTAL=subset(result_ED_TOTAL,result_ED_TOTAL$FC>0)
+
+write.csv(result_ED_TOTAL, file= paste0(fname_prefix_csv, "_", "result_ED_CT_side2.csv"), row.names=FALSE)
+ED_CT_s2_results=result_ED_TOTAL
+ED_CT_s2_results=subset(ED_CT_s2_results,ED_CT_s2_results$clone!="empty_NA_empty")
+
+
+```
+
+####volcano plot
+
+```{r}
+ggplot(data=ED_CT_s2_results, aes(x=log2(FC), y=(log2(percent_cl)))) +
+  geom_point(aes(colour = log10(qval)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(ED_CT_s2_results,ED_CT_s2_results$qval<=0.05&log2(ED_CT_s2_results$FC)>fc_level|ED_CT_s2_results$qval<=0.05&log2(ED_CT_s2_results$FC)<fc_level2),
+    aes(label = clone_short),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  #ylim(-5,1.5)+
+  #xlim(-6,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion Cardioid compared to hiPSC")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in Cardioids vs hiPSC",
+    y = "Log2 of clone fraction",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_CT_s2_clone_enrichment_depletion.pdf"),
+       width = 8, height = 5)
+
+```
+
+####### fisher test enrichment depletion AB03 and hPSC
+###ER between cardioids with TET and hPSC (controls) all sides
+
+```{r}
+#####total Fisher test
+m_cl=meta_ipsc_TET%>%dplyr::select(clone,set_ED)
+clone_list=unique(m_cl$clone)#50
+
+
+for (clone in clone_list) {
+  # Create a new column named after the clone and assign boolean values
+  m_cl[[clone]] <- m_cl$clone == clone
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  # Perform Fisher's test
+  fisher_result <- fisher.test(m_cl[[clone_list[i]]], m_cl$set_ED, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+result_ED_TOTAL <- data.frame(clone = clone_names, P_value_TOTAL = p_values)
+result_ED_TOTAL$qval=p.adjust(result_ED_TOTAL$P_value_TOTAL)
+
+```
+
+####
+
+```{r}
+sig_level <- 0.05
+#Set a fold-change cutoff
+fc_level <- log2(2)
+fc_level2 <- (log2(2))*-1
+
+result_ED_TOTAL$sig=result_ED_TOTAL$qval<=sig_level
+
+counts=meta_ipsc_TET %>%
+  dplyr::group_by(clone,set_ED) %>%
+  dplyr::summarise(count = n())###tot clones
+counts=spread(counts, key = set_ED, value = count)
+counts <- counts %>% replace(is.na(.), 0)
+
+totals=meta_ipsc_TET%>%
+  dplyr::group_by(set_ED)%>%
+  dplyr::summarise(total = n())
+totals=as.data.frame(totals)
+
+counts$tot_hiPSC=totals[2,2]
+counts$tot_cardio=totals[1,2]
+
+#counts$hiPSC=counts$hiPSC+1
+#counts$tot_hiPSC=counts$tot_hiPSC+1
+
+counts$TOT=counts$tot_hiPSC+counts$tot_cardio
+counts$TOT_clone=counts$hiPSC+counts$cardioids
+
+counts$tot_other_CTR=counts$tot_hiPSC-counts$hiPSC
+counts$tot_other_cardioids=counts$tot_cardio-counts$cardioids
+counts=counts%>%mutate(FC=(cardioids/tot_cardio)/(hiPSC/tot_hiPSC),
+                       percent_hiPSC=hiPSC/tot_hiPSC*100,
+                       percent_cardioids=cardioids/tot_cardio*100,
+                       percent_cl=TOT_clone/TOT*100)
+side=meta_ipsc_TET %>%
+     dplyr::group_by(clone,side)%>%
+     dplyr::summarise(count_clone = n())
+
+
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(counts,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(clones_info,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(side,by="clone")
+
+result_ED_TOTAL=result_ED_TOTAL %>% 
+  filter_all(all_vars(!is.infinite(.)))
+result_ED_TOTAL=subset(result_ED_TOTAL,result_ED_TOTAL$FC>0)
+
+write.csv(result_ED_TOTAL, file= paste0(fname_prefix_csv, "_", "result_ED_ipsc_cardio_all.csv"), row.names=FALSE)
+ED_ipsc_cardio_all_results=result_ED_TOTAL
+ED_ipsc_cardio_all_results=subset(ED_CT_all_results,ED_CT_all_results$clone!="empty_NA_empty")
+
+
+```
+
+####volcano plot
+
+```{r}
+ggplot(data=ED_ipsc_cardio_all_results, aes(x=log2(FC), y=(log2(percent_cl)))) +
+  geom_point(aes(colour = log10(qval)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(ED_ipsc_cardio_all_results,ED_ipsc_cardio_all_results$qval<=0.05&log2(ED_ipsc_cardio_all_results$FC)>fc_level|ED_ipsc_cardio_all_results$qval<=0.05&log2(ED_ipsc_cardio_all_results$FC)<fc_level2),
+    aes(label = clone_short),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  #ylim(-5,1.5)+
+  #xlim(-6,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion Cardioid compared to hiPSC")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in Cardioids vs hiPSC",
+    y = "Log2 of clone fraction",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_ipsc_cardio_clone_enrichment_depletion.pdf"),
+       width = 8, height = 5)
+
+ggplot(data=ED_ipsc_cardio_all_results, aes(x=log2(FC), y=(log2(percent_cl)))) +
+  geom_point(aes(colour = side, size=1.5)) +
+  scale_colour_manual(values = okabe_pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(ED_ipsc_cardio_all_results,ED_ipsc_cardio_all_results$qval<=0.05&log2(ED_ipsc_cardio_all_results$FC)>fc_level|ED_ipsc_cardio_all_results$qval<=0.05&log2(ED_ipsc_cardio_all_results$FC)<fc_level2),
+    aes(label = clone_short),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  #ylim(-5,1.5)+
+  #xlim(-6,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion Cardioid compared to hiPSC")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in Cardioids vs hiPSC",
+    y = "Log2 of clone fraction",
+    color = "side"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_ipsc_cardio_clone_enrichment_depletion_side.pdf"),
+       width = 8, height = 5)
+```
+
+####### fisher test enrichment depletion AB03 and hPSC
+###ER between cardioids with TET and hPSC (controls) side 2
+
+```{r}
+#####total Fisher test
+m_cl=meta_ipsc_TET_s2%>%dplyr::select(clone,set_ED)
+clone_list=unique(m_cl$clone)#22
+
+
+for (clone in clone_list) {
+  # Create a new column named after the clone and assign boolean values
+  m_cl[[clone]] <- m_cl$clone == clone
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  # Perform Fisher's test
+  fisher_result <- fisher.test(m_cl[[clone_list[i]]], m_cl$set_ED, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+result_ED_TOTAL <- data.frame(clone = clone_names, P_value_TOTAL = p_values)
+result_ED_TOTAL$qval=p.adjust(result_ED_TOTAL$P_value_TOTAL)
+
+```
+
+####
+
+```{r}
+sig_level <- 0.05
+#Set a fold-change cutoff
+fc_level <- log2(2)
+fc_level2 <- (log2(2))*-1
+
+result_ED_TOTAL$sig=result_ED_TOTAL$qval<=sig_level
+
+counts=meta_ipsc_TET_s2 %>%
+  dplyr::group_by(clone,set_ED) %>%
+  dplyr::summarise(count = n())###tot clones
+counts=spread(counts, key = set_ED, value = count)
+counts <- counts %>% replace(is.na(.), 0)
+
+totals=meta_ipsc_TET_s2%>%
+  dplyr::group_by(set_ED)%>%
+  dplyr::summarise(total = n())
+totals=as.data.frame(totals)
+
+counts$tot_hiPSC=totals[2,2]
+counts$tot_cardio=totals[1,2]
+
+#counts$hiPSC=counts$hiPSC+1
+#counts$tot_hiPSC=counts$tot_hiPSC+1
+
+counts$TOT=counts$tot_hiPSC+counts$tot_cardio
+counts$TOT_clone=counts$hiPSC+counts$cardioids
+
+counts$tot_other_CTR=counts$tot_hiPSC-counts$hiPSC
+counts$tot_other_cardioids=counts$tot_cardio-counts$cardioids
+counts=counts%>%mutate(FC=(cardioids/tot_cardio)/(hiPSC/tot_hiPSC),
+                       percent_hiPSC=hiPSC/tot_hiPSC*100,
+                       percent_cardioids=cardioids/tot_cardio*100,
+                       percent_cl=TOT_clone/TOT*100)
+side=meta_ipsc_TET_s2 %>%
+     dplyr::group_by(clone,side)%>%
+     dplyr::summarise(count_clone = n())
+
+
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(counts,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(clones_info,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(side,by="clone")
+
+result_ED_TOTAL=result_ED_TOTAL %>% 
+  filter_all(all_vars(!is.infinite(.)))
+result_ED_TOTAL=subset(result_ED_TOTAL,result_ED_TOTAL$FC>0)
+
+write.csv(result_ED_TOTAL, file= paste0(fname_prefix_csv, "_", "result_ED_ipsc_cardio_s2.csv"), row.names=FALSE)
+ED_ipsc_cardio_s2_results=result_ED_TOTAL
+ED_ipsc_cardio_s2_results=subset(ED_ipsc_cardio_s2_results,ED_ipsc_cardio_s2_results$clone!="empty_NA_empty")
+
+
+```
+
+####volcano plot
+
+```{r}
+ggplot(data=ED_ipsc_cardio_s2_results, aes(x=log2(FC), y=(log2(percent_cl)))) +
+  geom_point(aes(colour = log10(qval)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(ED_ipsc_cardio_s2_results,ED_ipsc_cardio_s2_results$qval<=0.05&log2(ED_ipsc_cardio_s2_results$FC)>fc_level|ED_ipsc_cardio_s2_results$qval<=0.05&log2(ED_ipsc_cardio_s2_results$FC)<fc_level2),
+    aes(label = clone_short),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  #ylim(-5,1.5)+
+  #xlim(-6,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion Cardioid compared to hiPSC")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in Cardioids vs hiPSC",
+    y = "Log2 of clone fraction",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_ipsc_cardio_side2_clone_enrichment_depletion.pdf"),
+       width = 8, height = 5)
+
+
+```
+
+##########################
+######OLD E/D codes#######
+##########################
+
+
+####### fisher test enrichment depletion
+
+```{r}
+#####total Fisher test
+m_cl=meta%>%dplyr::select(clone,KD)
+clone_list=unique(m_cl$clone)#52
+
+
+for (clone in clone_list) {
+  # Create a new column named after the clone and assign boolean values
+  m_cl[[clone]] <- m_cl$clone == clone
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  # Perform Fisher's test
+  fisher_result <- fisher.test(m_cl[[clone_list[i]]], m_cl$KD, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+result_ED_TOTAL <- data.frame(clone = clone_names, P_value_TOTAL = p_values)
+result_ED_TOTAL$qval=p.adjust(result_ED_TOTAL$P_value_TOTAL)
+
+```
+
+####
+
+```{r}
+sig_level <- 0.05
+#Set a fold-change cutoff
+fc_level <- log2(1.5)
+fc_level2 <- (log2(1.5))*-1
+
+result_ED_TOTAL$sig=result_ED_TOTAL$qval<=sig_level
+
+counts=meta %>%
+  dplyr::group_by(clone,KD) %>%
+  dplyr::summarise(count = n())###tot clones
+counts=spread(counts, key = KD, value = count)
+counts <- counts %>% replace(is.na(.), 0)
+
+totals=meta%>%
+  dplyr::group_by(KD)%>%
+  dplyr::summarise(total = n())
+totals=as.data.frame(totals)
+
+counts$tot_CTR=totals[1,2]
+counts$tot_KD=totals[2,2]
+counts$TOT=counts$tot_CTR+counts$tot_KD
+counts$TOT_clone=counts$CTR+counts$KD
+
+counts$tot_other_CTR=counts$tot_CTR-counts$CTR
+counts$tot_other_KD=counts$tot_KD-counts$KD
+counts=counts%>%mutate(FC=(KD/tot_KD)/(CTR/tot_CTR),
+                       percent_CTR=CTR/tot_CTR*100,
+                       percent_KD=KD/tot_KD*100,
+                       percent_cl=TOT_clone/TOT*100)
+
+
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(counts,by="clone")
+result_ED_TOTAL=result_ED_TOTAL%>%left_join(clones_AB03,by="clone")
+result_ED_TOTAL=result_ED_TOTAL %>% 
+  filter_all(all_vars(!is.infinite(.)))
+result_ED_TOTAL=subset(result_ED_TOTAL,result_ED_TOTAL$FC>0)
+```
+
+####volcano plot
+
+```{r}
+ggplot(data=result_ED_TOTAL, aes(x=log2(FC), y=(log2(percent_cl)))) +
+  geom_point(aes(colour = log10(qval)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(result_ED_TOTAL,result_ED_TOTAL$qval<=0.05&log2(result_ED_TOTAL$percent_cl)>1.5|result_ED_TOTAL$qval<=0.05&log2(result_ED_TOTAL$FC)*-1.5>1.5),
+    aes(label = clone_short),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  #ylim(-5,1.5)+
+  #xlim(-6,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion KD compared to CTR")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in KD vs CTR",
+    y = "Log2 of clone fraction",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_clone_enrichment_depletion.pdf"),
+       width = 8, height = 5)
+```
+
+

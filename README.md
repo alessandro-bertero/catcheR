@@ -2,7 +2,11 @@
 Pipelines and codes relative to the hPS2-seq screening platform
 Data analysis pipeline from HEDGe lab. 
 
-See preprint DOI: XXXXXX.
+See preprint DOI: http://dx.doi.org/10.2139/ssrn.4854180
+
+Balmas, Elisa and Ratto, Maria Luisa and Snijders, Kirsten E. and Calogero, Raffaele and Mendjan, Sasha and Bertero, Alessandro, Single Cell Transcriptional Perturbome in Pluripotent Stem Cell Models.
+Available at SSRN: https://ssrn.com/abstract=4854180 or http://dx.doi.org/10.2139/ssrn.4854180
+
 See associated protocol and CatcheR protocol from preprint XXXXX.
 
 Repository contains 2 sets of scripts: 

@@ -1,0 +1,635 @@
+---
+title: "n1 EB003E3: clonal drift"
+author: "Elisa Balmas PhD"
+date: "2024-02-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set up environment
+
+```{r}
+library(tidyr)
+library(stringr)
+library(grid)
+library(viridis)
+library(viridisLite)
+library(ggthemes)
+library(dplyr)
+library(tidyverse)
+library(ggsignif)
+library(umap)
+library(heatmap3)
+library(plyr)
+library(edgeR)
+library(compareGroups)
+library(dbscan)
+library(geosphere)
+library(RColorBrewer)
+library(htmlwidgets)
+library(readxl)
+library(SparseArray)
+library(plotly)
+#library(rCASC)
+#library(deepToolsUtils)
+#library(R.utils)
+
+
+library(ggplot2); library(reshape2); theme_set(theme_bw(26) + theme(panel.grid.major = element_blank(), 
+                                                                    panel.grid.minor = element_blank()) +
+                                                 theme(legend.key = element_blank()))
+update_geom_defaults("point", aes(size = 4))
+
+#setwd("/home/ebalmas/scpHUB/projects/H001AS7_iKDseq_10X_4tp_monocle/analysis_EB")
+
+# Session options
+options(stringsAsFactors = FALSE)
+set.seed(12345)
+
+# Set up the ggplot default params
+theme_set(theme_bw(12) + 
+          theme(panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(),
+                plot.title = element_text(size=15, face="bold", margin = margin(10,0,10,0)),
+                axis.text.x = element_text(angle=45, hjust = 1)))
+
+
+# Set up filename prefixes and output folders with the data
+dir.create("Output")
+#dir.create(file.path("Output","scratch"))
+
+dir.create(file.path("Output","monocle"))#create forders MONOCLE
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "stat"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "plots"))
+
+
+fname_scratch <- file.path("scratch")
+
+#set up forder path MONOCLE
+fname_prefix_R <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_plot <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "plots", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_stat<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "stat", 
+                               format(Sys.Date(), "%y%m%d"))
+
+
+okabe_tab <- read_excel("scratch/color_scale.xlsx")
+okabe_pal=okabe_tab$hex
+
+okabe_pal=c("#E69F00","#56B4E9","#009E73","#f0E442","#0072B2","#D55E00","#CC79A7","#000000")
+
+
+pal <- c("#000000","#004949","#009292","#ff6db6","#ffb6db",
+         "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+         "#920000","#924900","#db6d00","#24ff24","#ffff6d")
+```
+
+###load data
+```{r}
+
+# get side information
+clone_side=read.csv(paste0(getwd(),"/scratch/clone_side.csv"), header = TRUE, sep = ",", quote = "\"", 
+                     dec = ".", fill = TRUE, comment.char = "",row.names=1)
+#get colour scale
+shRNA_IDs <- read_excel("scratch/shRNA_IDs.xlsx")
+
+#get clones info
+clone=read.csv(paste0(getwd(),"/scratch/all_clones.csv"), header = TRUE, sep = ";")
+rownames(clone)=clone$clone
+clone=clone%>%select(-X)
+
+#clone=read.csv(paste0(getwd(),"/scratch/clones.csv"), header = TRUE, sep = ",", quote = "\"", 
+                #     dec = ".", fill = TRUE, comment.char = "",row.names=1)
+
+clone_names=clone%>%select(clone, shRNA_ID_unified, cl_ID,order.shRNA, order.genes)%>%mutate(clone_ID=paste0(shRNA_ID_unified, "_", cl_ID))
+# Define the stages and directories
+stages <- c("early", "mid", "late")
+groups <- c("four", "three", "all")
+
+# Create an empty list to store data frames
+distribution_tables <- list()
+
+# Loop through the groups and stages to read the CSV files
+for (group in groups) {
+  for (stage in stages) {
+    # Construct the file path
+    file_path <- paste0(getwd(), "/scratch/", stage, "/", group, "/distribution_all_clones.csv")
+    
+    # Read the CSV file and store it in the list
+    key <- paste(group, stage, sep = "_")
+    distribution_tables[[key]] <- read.csv(
+      file_path,
+      header = TRUE,
+      sep = ",",
+      quote = "\"",
+      dec = ".",
+      fill = TRUE,
+      comment.char = "",
+      row.names = 1
+    )
+  }
+}
+
+# add info to the tables
+for (key in names(distribution_tables)) {
+  
+  group_stage <- strsplit(key, "_")[[1]]
+  group <- group_stage[1]
+  stage <- group_stage[2]
+  
+  distribution_tables[[key]]$shRNA_BC <- distribution_tables[[key]]$barcode
+  distribution_tables[[key]]$groups <- group
+  distribution_tables[[key]]$stages <- stage
+  distribution_tables[[key]] <- distribution_tables[[key]] %>% left_join(shRNA_IDs, by = "shRNA_BC")
+  distribution_tables[[key]]$clone=paste0(distribution_tables[[key]]$barcode,"_",distribution_tables[[key]]$shRNA_gene,"_",distribution_tables[[key]]$UCI)
+  distribution_tables[[key]]=distribution_tables[[key]]%>%left_join(clone_side, by="clone")
+  distribution_tables[[key]] <- distribution_tables[[key]] %>% mutate(side = ifelse(is.na(side), "unknown", side))
+}
+
+# Define the stages and directories
+stages <- c("early", "mid", "late")
+groups <- c("four", "three", "all")
+
+# Create an empty list to store data frames
+data_tables <- list()
+
+# Loop through the groups and stages to read the CSV files
+for (group in groups) {
+  for (stage in stages) {
+    # Construct the file path
+    file_path <- paste0(getwd(), "/scratch/", stage, "/", group, "/complete_table_final_plasmid.csv")
+    
+    # Read the CSV file and store it in the list
+    key <- paste(group, stage, sep = "_")
+    data_tables[[key]] <- read.csv(
+      file_path,
+      header = TRUE,
+      sep = ",",
+      quote = "\"",
+      dec = ".",
+      fill = TRUE,
+      comment.char = "",
+      row.names = 1
+    )
+  }
+}
+
+# add info to the tables
+for (key in names(data_tables)) {
+  
+  group_stage <- strsplit(key, "_")[[1]]
+  group <- group_stage[1]
+  stage <- group_stage[2]
+  
+  data_tables[[key]]$shRNA_BC <- data_tables[[key]]$barcode
+  data_tables[[key]]$groups <- group
+  data_tables[[key]]$stages <- stage
+  data_tables[[key]] <- data_tables[[key]] %>% left_join(shRNA_IDs, by = "shRNA_BC")
+  data_tables[[key]] =subset(data_tables[[key]] ,!is.na(data_tables[[key]] $shRNA_gene))
+  data_tables[[key]]$clone=paste0(data_tables[[key]]$barcode,"_",data_tables[[key]]$shRNA_gene,"_",data_tables[[key]]$UCI)
+  data_tables[[key]]=data_tables[[key]]%>%left_join(clone_side, by="clone")
+  data_tables[[key]] <- data_tables[[key]] %>% mutate(side = ifelse(is.na(side), "unknown", side))
+}
+
+#four_early <- data_tables[["four_early"]]#1178556
+
+
+#four_early <- distribution_tables[["four_early"]]#1178556
+```
+
+#Clone counting and plotting #4
+
+```{r}
+
+four_early=data_tables[["four_early"]] %>%
+  dplyr::group_by(clone,shRNA_gene,side) %>%
+  dplyr::summarise(count_early = n())
+four_early=subset(four_early,four_early$count_early>1)#757
+
+four_mid=data_tables[["four_mid"]] %>%
+  dplyr::group_by(clone,shRNA_gene,side) %>%
+  dplyr::summarise(count_mid = n())
+four_mid=subset(four_mid,four_mid$count_mid>1)#556
+
+four_late=data_tables[["four_late"]] %>%
+  dplyr::group_by(clone,shRNA_gene,side) %>%
+  dplyr::summarise(count_late = n())
+four_late=subset(four_late,four_late$count_late>1)#526
+
+four_early$freq_early=100*four_early$count_early/sum(four_early$count_early)
+four_mid$freq_mid=freq_mid=100*four_mid$count_mid/sum(four_mid$count_mid)
+four_late$freq_late=freq_late=100*four_late$count_late/sum(four_late$count_late)
+
+four=four_early%>%left_join(four_mid, by=c("clone","side","shRNA_gene"))%>%left_join(four_late, by=c("clone","side","shRNA_gene"))
+
+four$side_polished=ifelse(four$side=="Side1","iPSC-neuro",
+                                 ifelse(four$side=="Side2","iPSC",
+                                        ifelse(four$side=="mixed","iPSC-mixed",
+                                               ifelse(four$side=="unknown","iPSC-unknown","other"))))
+
+
+four_NA <- four
+four <- replace(four, is.na(four),0)
+
+pal_sides <- c("#818589", "#009292", "#000000")
+
+four=four%>%dplyr::left_join(clone_names, by="clone")
+four$name=paste0(four$shRNA_ID_unified,four$cl_ID)
+
+four$side_order=ifelse(four$side_polished=="iPSC-neuro",2,
+                                 ifelse(four$side_polished=="iPSC",1,
+                                        ifelse(four$side_polished=="iPSC-mixed",3,4)))
+
+write.csv(four, paste0(fname_prefix_stat,"_four.csv",sep=""))
+
+four_polished=subset(four,four$side!="unknown")
+four_polished <- four_polished[order(four_polished$order.shRNA, four_polished$side_order), ]
+write.csv(four_polished, paste0(fname_prefix_stat,"_four_polished.csv",sep=""))
+
+fig=plot_ly(four_polished) %>%
+  add_pie(four_polished, labels = ~`side_polished`, values = ~`count_early`,
+          type = 'pie', hole = 0.7, sort = F,
+          marker = list(line = list(width = 2),
+                        colors = pal_sides)) %>%
+  add_pie(four, labels = ~`name`, values = ~`count_early`,
+          domain = list(
+            x = c(0.15, 0.85),
+            y = c(0.15, 0.85)),
+          sort = F,textinfo = 'none', hoverinfo = 'label+value+percent') %>%
+  layout(
+    legend = list(font = list(size = 10)), # Adjust font size
+    width = 800,  # Increase width
+    height = 900   # Increase height
+  )
+# Save the graph as a PDF
+html_file <- tempfile(fileext = ".html")
+pdf_file <- paste0(fname_prefix_plot, "_", "four_early.pdf")
+
+# Save the plotly object as HTML and then convert to PDF
+htmlwidgets::saveWidget(fig, html_file, selfcontained = TRUE)
+webshot2::webshot(html_file, file = pdf_file, vwidth = 800, vheight = 800)
+fig
+
+fig=plot_ly(subset(four,four$side!="unknown")) %>%
+  add_pie(four, labels = ~`side_polished`, values = ~`count_mid`,
+          type = 'pie', hole = 0.7, sort = F,
+          marker = list(line = list(width = 2),
+                        colors = pal_sides)) %>%
+  add_pie(four, labels = ~`name`, values = ~`count_mid`,
+          domain = list(
+            x = c(0.15, 0.85),
+            y = c(0.15, 0.85)),
+          sort = F,textinfo = 'none', hoverinfo = 'label+value+percent') %>%
+  layout(
+    legend = list(font = list(size = 10)), # Adjust font size
+    width = 800,  # Increase width
+    height = 900   # Increase height
+  )
+# Save the graph as a PDF
+html_file <- tempfile(fileext = ".html")
+pdf_file <- paste0(fname_prefix_plot, "_", "four_mid.pdf")
+
+# Save the plotly object as HTML and then convert to PDF
+htmlwidgets::saveWidget(fig, html_file, selfcontained = TRUE)
+webshot2::webshot(html_file, file = pdf_file, vwidth = 800, vheight = 800)
+fig
+
+fig=plot_ly(subset(four,four$side!="unknown")) %>%
+  add_pie(four, labels = ~`side_polished`, values = ~`count_late`,
+          type = 'pie', hole = 0.7, sort = F,
+          marker = list(line = list(width = 2),
+                        colors = pal_sides)) %>%
+  add_pie(four, labels = ~`name`, values = ~`count_late`,
+          domain = list(
+            x = c(0.15, 0.85),
+            y = c(0.15, 0.85)),
+          sort = F,
+          textinfo = 'none', hoverinfo = 'label+value+percent')%>%
+  layout(
+    legend = list(font = list(size = 10)), # Adjust font size
+    width = 800,  # Increase width
+    height = 900   # Increase height
+  )
+# Save the graph as a PDF
+html_file <- tempfile(fileext = ".html")
+pdf_file <- paste0(fname_prefix_plot, "_", "four_late.pdf")
+
+# Save the plotly object as HTML and then convert to PDF
+htmlwidgets::saveWidget(fig, html_file, selfcontained = TRUE)
+webshot2::webshot(html_file, file = pdf_file, vwidth = 800, vheight = 800)
+fig
+
+
+
+```
+
+
+#Clone counting and plotting #3
+
+```{r}
+three_early=data_tables[["three_early"]] %>%
+  dplyr::group_by(clone,shRNA_gene,side) %>%
+  dplyr::summarise(count_early = n())
+three_early=subset(three_early,three_early$count_early>1)#757
+
+three_mid=data_tables[["three_mid"]] %>%
+  dplyr::group_by(clone,shRNA_gene,side) %>%
+  dplyr::summarise(count_mid = n())
+three_mid=subset(three_mid,three_mid$count_mid>1)#556
+
+three_late=data_tables[["three_late"]] %>%
+  dplyr::group_by(clone,shRNA_gene,side) %>%
+  dplyr::summarise(count_late = n())
+three_late=subset(three_late,three_late$count_late>1)#526
+
+three_early$freq_early=100*three_early$count_early/sum(three_early$count_early)
+three_mid$freq_mid=freq_mid=100*three_mid$count_mid/sum(three_mid$count_mid)
+three_late$freq_late=freq_late=100*three_late$count_late/sum(three_late$count_late)
+
+three=three_early%>%left_join(three_mid, by=c("clone","side","shRNA_gene"))%>%left_join(three_late, by=c("clone","side","shRNA_gene"))
+
+three$side_polished=ifelse(three$side=="Side1","iPSC-neuro",
+                                 ifelse(three$side=="Side2","iPSC",
+                                        ifelse(three$side=="mixed","iPSC-mixed",
+                                               ifelse(three$side=="unknown","iPSC-unknown","other"))))
+
+three_NA <- three
+three <- replace(three, is.na(three),0)
+
+pal_sides <- c("#818589", "#009292", "#000000")
+
+
+three=three%>%dplyr::left_join(clone_names, by="clone")
+three$name=paste0(three$shRNA_ID_unified,three$cl_ID)
+
+three$side_order=ifelse(three$side_polished=="iPSC-neuro",2,
+                                 ifelse(three$side_polished=="iPSC",1,
+                                        ifelse(three$side_polished=="iPSC-mixed",3,4)))
+
+write.csv(three, paste0(fname_prefix_stat,"_three.csv",sep=""))
+
+three_polished=subset(three,three$side!="unknown")
+three_polished <- three_polished[order(three_polished$order.shRNA, three_polished$side_order), ]
+write.csv(three_polished, paste0(fname_prefix_stat,"_three_polished.csv",sep=""))
+
+three_polished=as.data.frame(three_polished)
+
+fig=plot_ly(three_polished) %>%
+  add_pie(three, labels = ~`side_polished`, values = ~`count_early`,
+          type = 'pie', hole = 0.7, sort = F,
+          marker = list(line = list(width = 2),
+                        colors = pal_sides)) %>%
+  add_pie(three_polished, labels = ~`name`, values = ~`count_early`,
+          domain = list(
+            x = c(0.15, 0.85),
+            y = c(0.15, 0.85)),
+          sort = F,textinfo = 'none', hoverinfo = 'label+value+percent') %>%
+  layout(
+    legend = list(font = list(size = 10)), # Adjust font size
+    width = 800,  # Increase width
+    height = 1000   # Increase height
+  )
+# Save the graph as a PDF
+html_file <- tempfile(fileext = ".html")
+pdf_file <- paste0(fname_prefix_plot, "_", "three_early.pdf")
+
+# Save the plotly object as HTML and then convert to PDF
+htmlwidgets::saveWidget(fig, html_file, selfcontained = TRUE)
+webshot2::webshot(html_file, file = pdf_file, vwidth = 800, vheight = 1000)
+fig
+
+fig=plot_ly(three_polished) %>%
+  add_pie(three_polished, labels = ~`side_polished`, values = ~`count_mid`,
+          type = 'pie', hole = 0.7, sort = F,
+          marker = list(line = list(width = 2),
+                        colors = pal_sides)) %>%
+  add_pie(three_polished, labels = ~`name`, values = ~`count_mid`,
+          domain = list(
+            x = c(0.15, 0.85),
+            y = c(0.15, 0.85)),
+          sort = F,textinfo = 'none', hoverinfo = 'label+value+percent') %>%
+  layout(
+    legend = list(font = list(size = 10)), # Adjust font size
+    width = 800,  # Increase width
+    height = 1000   # Increase height
+  )
+# Save the graph as a PDF
+html_file <- tempfile(fileext = ".html")
+pdf_file <- paste0(fname_prefix_plot, "_", "three_mid.pdf")
+
+# Save the plotly object as HTML and then convert to PDF
+htmlwidgets::saveWidget(fig, html_file, selfcontained = TRUE)
+webshot2::webshot(html_file, file = pdf_file, vwidth = 800, vheight = 1000)
+fig
+
+fig=plot_ly(three_polished) %>%
+  add_pie(three_polished, labels = ~`side_polished`, values = ~`count_late`,
+          type = 'pie', hole = 0.7, sort = F,
+          marker = list(line = list(width = 2),
+                        colors = pal_sides)) %>%
+  add_pie(three_polished, labels = ~`name`, values = ~`count_late`,
+          domain = list(
+            x = c(0.15, 0.85),
+            y = c(0.15, 0.85)),
+          sort = F,
+          textinfo = 'none', hoverinfo = 'label+value+percent')%>%
+  layout(
+    legend = list(font = list(size = 10)), # Adjust font size
+    width = 800,  # Increase width
+    height = 1000   # Increase height
+  )
+# Save the graph as a PDF
+html_file <- tempfile(fileext = ".html")
+pdf_file <- paste0(fname_prefix_plot, "_", "three_late.pdf")
+
+# Save the plotly object as HTML and then convert to PDF
+htmlwidgets::saveWidget(fig, html_file, selfcontained = TRUE)
+webshot2::webshot(html_file, file = pdf_file, vwidth = 800, vheight = 1000)
+fig
+```
+
+
+#Clone counting and plotting #all
+
+```{r}
+all_early=data_tables[["all_early"]] %>%
+  dplyr::group_by(clone,shRNA_gene,side) %>%
+  dplyr::summarise(count_early = n())
+all_early=subset(all_early,all_early$count_early>1)#757
+
+all_mid=data_tables[["all_mid"]] %>%
+  dplyr::group_by(clone,shRNA_gene,side) %>%
+  dplyr::summarise(count_mid = n())
+all_mid=subset(all_mid,all_mid$count_mid>1)#556
+
+all_late=data_tables[["all_late"]] %>%
+  dplyr::group_by(clone,shRNA_gene,side) %>%
+  dplyr::summarise(count_late = n())
+all_late=subset(all_late,all_late$count_late>1)#526
+
+all_early$freq_early=100*all_early$count_early/sum(all_early$count_early)
+all_mid$freq_mid=freq_mid=100*all_mid$count_mid/sum(all_mid$count_mid)
+all_late$freq_late=freq_late=100*all_late$count_late/sum(all_late$count_late)
+
+all=all_early%>%left_join(all_mid, by=c("clone","side","shRNA_gene"))%>%left_join(all_late, by=c("clone","side","shRNA_gene"))
+
+all$side_polished=ifelse(all$side=="Side1","iPSC-neuro",
+                                 ifelse(all$side=="Side2","iPSC",
+                                        ifelse(all$side=="mixed","iPSC-mixed",
+                                               ifelse(all$side=="unknown","iPSC-unknown","other"))))
+
+all_NA <- all
+all <- replace(all, is.na(all),0)
+
+pal_sides <- c("#818589", "#009292", "#000000")
+
+all=all%>%dplyr::left_join(clone_names, by="clone")
+all$name=paste0(all$shRNA_ID_unified,all$cl_ID)
+
+all$side_order=ifelse(all$side_polished=="iPSC-neuro",2,
+                                 ifelse(all$side_polished=="iPSC",1,
+                                        ifelse(all$side_polished=="iPSC-mixed",3,4)))
+
+write.csv(all, paste0(fname_prefix_stat,"_all.csv",sep=""))
+
+all_polished=subset(all,all$side!="unknown")
+#all_polished <- all_polished[order(all_polished$order.shRNA, all_polished$side_order), ]
+all_polished <- all_polished[order(all_polished$order.shRNA), ]
+all_polished <- all_polished[order(all_polished$side_order), ]
+
+
+write.csv(all_polished, paste0(fname_prefix_stat,"_all_polished.csv",sep=""))
+
+fig=plot_ly(all_polished) %>%
+  add_pie(all, labels = ~`side_polished`, values = ~`count_early`,
+          type = 'pie', hole = 0.7, sort = F,
+          marker = list(line = list(width = 2),
+                        colors = pal_sides)) %>%
+  add_pie(all, labels = ~`name`, values = ~`count_early`,
+          domain = list(
+            x = c(0.15, 0.85),
+            y = c(0.15, 0.85)),
+          sort = F,textinfo = 'none', hoverinfo = 'label+value+percent') %>%
+  layout(
+    legend = list(font = list(size = 10)), # Adjust font size
+    width = 800,  # Increase width
+    height = 1000   # Increase height
+  )
+# Save the graph as a PDF
+html_file <- tempfile(fileext = ".html")
+pdf_file <- paste0(fname_prefix_plot, "_", "all_early.pdf")
+
+# Save the plotly object as HTML and then convert to PDF
+htmlwidgets::saveWidget(fig, html_file, selfcontained = TRUE)
+webshot2::webshot(html_file, file = pdf_file, vwidth = 800, vheight = 1000)
+fig
+
+fig=plot_ly(all_polished ) %>%
+  add_pie(all, labels = ~`side_polished`, values = ~`count_mid`,
+          type = 'pie', hole = 0.7, sort = F,
+          marker = list(line = list(width = 2),
+                        colors = pal_sides)) %>%
+  add_pie(all, labels = ~`name`, values = ~`count_mid`,
+          domain = list(
+            x = c(0.15, 0.85),
+            y = c(0.15, 0.85)),
+          sort = F,textinfo = 'none', hoverinfo = 'label+value+percent') %>%
+  layout(
+    legend = list(font = list(size = 10)), # Adjust font size
+    width = 800,  # Increase width
+    height = 1000   # Increase height
+  )
+# Save the graph as a PDF
+html_file <- tempfile(fileext = ".html")
+pdf_file <- paste0(fname_prefix_plot, "_", "all_mid.pdf")
+
+# Save the plotly object as HTML and then convert to PDF
+htmlwidgets::saveWidget(fig, html_file, selfcontained = TRUE)
+webshot2::webshot(html_file, file = pdf_file, vwidth = 800, vheight = 1000)
+fig
+
+fig=plot_ly(all_polished) %>%
+  add_pie(all, labels = ~`side_polished`, values = ~`count_late`,
+          type = 'pie', hole = 0.7, sort = F,
+          marker = list(line = list(width = 2),
+                        colors = pal_sides)) %>%
+  add_pie(all, labels = ~`name`, values = ~`count_late`,
+          domain = list(
+            x = c(0.15, 0.85),
+            y = c(0.15, 0.85)),
+          sort = F,
+          textinfo = 'none', hoverinfo = 'label+value+percent')%>%
+  layout(
+    legend = list(font = list(size = 10)), # Adjust font size
+    width = 800,  # Increase width
+    height = 1000   # Increase height
+  )
+# Save the graph as a PDF
+html_file <- tempfile(fileext = ".html")
+pdf_file <- paste0(fname_prefix_plot, "_", "all_late.pdf")
+
+# Save the plotly object as HTML and then convert to PDF
+htmlwidgets::saveWidget(fig, html_file, selfcontained = TRUE)
+webshot2::webshot(html_file, file = pdf_file, vwidth = 800, vheight = 1000)
+fig
+```
+#save all data as dataframes
+
+```{r}
+
+# Initialize batch column as NA
+all$batch <- NA
+all$batch[all$clone %in% three$clone] <- "three"
+all$batch[all$clone %in% four$clone] <- "four"
+all$batch[is.na(all$batch)] <- "unknown"
+
+all_early$batch <- NA
+all_early$batch[all_early$clone %in% three_early$clone] <- "three"
+all_early$batch[all_early$clone %in% four_early$clone] <- "four"
+all_early$batch[is.na(all_early$batch)] <- "unknown"
+
+all_mid$batch <- NA
+all_mid$batch[all_mid$clone %in% three_mid$clone] <- "three"
+all_mid$batch[all_mid$clone %in% four_mid$clone] <- "four"
+all_mid$batch[is.na(all_mid$batch)] <- "unknown"
+
+all_late$batch <- NA
+all_late$batch[all_late$clone %in% three_late$clone] <- "three"
+all_late$batch[all_late$clone %in% four_late$clone] <- "four"
+all_late$batch[is.na(all_late$batch)] <- "unknown"
+
+all=all%>%left_join(clone_names, by=c("clone"="clone"))
+all_mid=all_mid%>%left_join(clone_names, by=c("clone"="clone"))
+all_early=all_early%>%left_join(clone_names, by=c("clone"="clone"))
+all_late=all_late%>%left_join(clone_names, by=c("clone"="clone"))
+
+library(openxlsx)
+
+# Create a new workbook
+wb <- createWorkbook()
+
+# Add each data frame as a worksheet
+addWorksheet(wb, "all")
+writeData(wb, "all", all)
+
+addWorksheet(wb, "all_early")
+writeData(wb, "all_early", all_early)
+
+addWorksheet(wb, "all_late")
+writeData(wb, "all_late", all_late)
+
+addWorksheet(wb, "all_mid")
+writeData(wb, "all_mid", all_mid)
+
+# Save the workbook
+saveWorkbook(wb, file = paste0(fname_prefix_stat, "_clone_counts_all.xlsx"), overwrite = TRUE)
+
+```
+
+

@@ -107,13 +107,13 @@ Example
 
 Note. Check the UMIxUCI plots and the percentage_of_UMIxUCI_dist plots showing the distribution of shRNA and assess the noise of the dataset. Then re-run the previous analysis when, for example, to change the thresholds to custom values or the mode for threshold identification. In this case, run the catcheR_explorative function.
 
-  catcheR_10XcatchQC(
+    catcheR_10XcatchQC(
                 group = "docker", 
                 folder = "/20tb/ratto/catcheR/test_CM5/", 
                 reference = "GGCGCGTTCATCTGGGGGAGCCG", 
                 mode = "noise")
                 
-  catcheR_filtercatch(group = "docker", 
+    catcheR_filtercatch(group = "docker", 
                        folder = "/20tb/ratto/catcheR/sci_8/", 
                        expression.matrix = "exp_mat.csv", 
                        UMI.count = 5, 
@@ -121,17 +121,17 @@ Note. Check the UMIxUCI plots and the percentage_of_UMIxUCI_dist plots showing t
 
 To allow reproducibility of the scripts outside CatcheR we recommend pulling the Docker image below from the terminal:
 
-dockered
+    dockered
 
-docker pull hedgelab/rstudio-hedgelab
+    docker pull hedgelab/rstudio-hedgelab
 
-docker run -d -itv /the/folder/you/want/to/share:/scratch --privileged=true -p 8080:8787 --name=NAME_CONTAINER hedgelab/rstudio-hedgelab:iPS2seq
+    docker run -d -itv /the/folder/you/want/to/share:/scratch --privileged=true -p 8080:8787 --name=NAME_CONTAINER hedgelab/rstudio-hedgelab:iPS2seq
 
-docker exec -idt NAME_CONTAINER rstudio-server start
+    docker exec -idt NAME_CONTAINER rstudio-server start
 
 Then on your browser, write the port number:
 
-localhost:8787
+    localhost:8787
 
 Then use Rstudio through a browser
 

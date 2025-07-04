@@ -17,7 +17,7 @@ Repository contains 2 sets of scripts:
 - single cell analysis curated by Elisa Balmas: Evaluate the perturbation effect of a gene or shRNA at the clonal or population level.
   Clustering is done with Monocle 3 and customized statistical methods have been employed to assess:
   (1) Cluster enrichment variation due to a perturbation; (2) Changes in Pseudotime or Module gene expression associated with a perturbation.
-  Zenodo repository https://doi.org/10.5281/zenodo.11085619 contains the scratch folder to reproduce the analysis in the paper with the ![scripts](catcheR
+  Zenodo repository https://doi.org/10.5281/zenodo.11085619 contains the scratch folder to reproduce the analysis in the paper with the ![scripts](
 /single_cell_analysis)
 
 # CatcheR installation

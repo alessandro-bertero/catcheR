@@ -40,7 +40,7 @@ Starting from a single-cell gene expression matrix, the wrapper function catcheR
 Inputs:
 - read 1 fastq (or fastq.gz) containing the barcodes sequencing library (from cellranger mkfastq)
 - read 2 fastq (or fastq.gz) containing the barcodes sequencing library (from cellranger mkfastq)
-- gene expression matrix in csv format (transform the cellranger count matrix to a csv file with rCASC ![h5tocsv](https://kendomaniac.github.io/rCASC/reference/h5tocsv.html))
+- gene expression matrix in csv format (transform the cellranger count matrix to a csv file with rCASC h5tocsv (https://kendomaniac.github.io/rCASC/reference/h5tocsv.html)
 - a file called rc_barcodes_gene.csv, containing the association between barcodes and shRNAs, comma separated. Use the reverse complement of the shRNA barcode. E.g.
   
       CTTCTTTC,CHD7.1

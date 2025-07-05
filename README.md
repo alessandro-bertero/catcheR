@@ -125,13 +125,10 @@ To allow reproducibility of the scripts outside CatcheR we recommend pulling the
 
     docker pull hedgelab/rstudio-hedgelab
 
-    docker run -d -itv /the/folder/you/want/to/share:/scratch --privileged=true -p 8787:8787 --name=NAME_CONTAINER hedgelab/rstudio-hedgelab:iPS2seq
+    docker run -d -itv /the/folder/you/want/to/share:/scratch --privileged=true -p 8787:8787 -e PASSWORD=<your_password> -e USER=rstudio --name=NAME_CONTAINER hedgelab/rstudio-hedgelab:iPS2seq
 
     docker exec -idt NAME_CONTAINER rstudio-server start
 
-Then on your browser, write the port number:
-
-    localhost:8787
-
+Replace <your_password> with your desired password. This command maps port 8787 on your host machine to port 8787 in the container, allowing you to access RStudio via your browser at http://localhost:8787. The USER=rstudio part ensures you'll log in as the rstudio user, and the PASSWORD variable sets the password you'll use to log in.
 Then use Rstudio through a browser
 

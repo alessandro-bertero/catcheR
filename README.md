@@ -125,7 +125,8 @@ To allow reproducibility of the scripts outside CatcheR we recommend pulling the
 
     docker pull hedgelab/rstudio-hedgelab
 
-    docker run -d -itv /the/folder/you/want/to/share:/scratch --privileged=true -p 8787:8787 -e PASSWORD=<your_password> -e USER=rstudio --name=NAME_CONTAINER hedgelab/rstudio-hedgelab:iPS2seq
+    docker run -d -itv /the/folder/you/want/to/share:/scratch --privileged=true -p 8787:8787 \\
+    -e PASSWORD=<your_password> -e USER=rstudio --name=NAME_CONTAINER hedgelab/rstudio-hedgelab:iPS2seq
 
     docker exec -idt NAME_CONTAINER rstudio-server start
 

@@ -1,6 +1,7 @@
-# HEDGe_iPS2-seq
-Pipelines and codes relative to the hPS2-seq screening platform
-Data analysis pipeline from HEDGe lab. 
+# catcheR
+## Clonality And Treatment Controlled sHrna Effect findeR
+
+is a tool for iPS2-seq screening platform data from HEDGe lab. 
 
 See preprint DOI: http://dx.doi.org/10.2139/ssrn.4854180
 
@@ -10,17 +11,6 @@ Available at SSRN: https://ssrn.com/abstract=4854180 or http://dx.doi.org/10.213
 See complete documentation at http://marialuisaratto.github.io/catcheRdocs
 
 See associated protocol and CatcheR ![protocol](/DOCUMENTATION/catcheR.pdf) in DOCUMENTATION.
-
-Repository contains 2 sets of scripts: 
-
-- CatcheR barcode pipeline curated by Maria Luisa Ratto: first step of the analysis, to assign perturbation to single cells.
-  There are two different versions: one for 10X data and one for double indexing sci-RNAseq. An overview of the workflow can be found in the DOCUMENTATION folder.
-  
-- single cell analysis curated by Elisa Balmas: Evaluate the perturbation effect of a gene or shRNA at the clonal or population level.
-  Clustering is done with Monocle 3 and customized statistical methods have been employed to assess:
-  (1) Cluster enrichment variation due to a perturbation; (2) Changes in Pseudotime or Module gene expression associated with a perturbation.
-  Zenodo repository https://doi.org/10.5281/zenodo.11085619 contains the scratch folders to download and reproduce the analysis as in the paper with the ![scripts](
-/single_cell_analysis)
 
 # CatcheR installation
 Use the "install_github" function in the "devtools" package.
@@ -36,6 +26,11 @@ Alternatively, the repository can be download manually and loaded as follows:
 
 ## Prerequisites
 The following R functions require docker, since each of them opens a docker, computes the analysis inside of it to ensure reproducibility and then closes it. 
+
+Library "rrundocker" is also required and can be installed with:
+
+      install_github("Reproducible -Bioinformatics/rrundocker")
+      library(rrundocker)
 
 # Barcode pipeline for 10X
 Starting from a single-cell gene expression matrix, the wrapper function catcheR_10Xcatch() produces a gene expression matrix where cell names contain annotations about the perturbation present in each cell. 

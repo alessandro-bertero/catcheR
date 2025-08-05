@@ -1,7 +1,7 @@
 # catcheR
 ## Clonality And Treatment Controlled sHrna Effect findeR
 
-is a tool for iPS2-seq screening platform data from HEDGe lab. 
+is a tool for iPS2-seq screening platform data from HEDGe lab (curated by Maria Luisa Ratto). 
 
 See preprint DOI: http://dx.doi.org/10.2139/ssrn.4854180
 
@@ -11,6 +11,10 @@ Available at SSRN: https://ssrn.com/abstract=4854180 or http://dx.doi.org/10.213
 See complete documentation at http://marialuisaratto.github.io/catcheRdocs
 
 See associated protocol and CatcheR ![protocol](/DOCUMENTATION/catcheR.pdf) in DOCUMENTATION.
+
+CatcheR analysis can be divided in two steps: single cell perturbation deconvolution and assignment, and perturbation effects statistical analysis (dimensionality reduction and clustering with Monocle3, pseudotime evaluation, enrichment / depletion analysis, genes modules analysis).
+
+The folder manuscript_analysis_sc contains scripts used in the secondary analysis for the manuscript, curated by Elisa Balmas. Zenodo repository https://doi.org/10.5281/zenodo.11085619 contains the scratch folders to download and reproduce the analysis as in the paper with the scripts.
 
 # CatcheR installation
 Use the "install_github" function in the "devtools" package.

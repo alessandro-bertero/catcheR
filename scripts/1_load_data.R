@@ -63,7 +63,7 @@ suppressMessages(library(tidyverse))
 suppressMessages(library(ggplot2))
 suppressMessages(library(gtools))
 suppressMessages(library(dplyr))
-set.seed(1111)
+set.seed(1234597698)
 
 #LOAD ANNOTATED GENE EXP
 #exp = read.csv("/30tb/3tb/data/ratto/testing/annotated_silencing_matrix_complete_all_samples.csv", header = T)
@@ -160,9 +160,7 @@ save(starting_cds, file = paste0(dir, "/starting_cds.RData"))
 
 #NORMALIZE for size and log
 norm = normalized_counts(
-  starting_cds,
-  norm_method = "log",
-  pseudocount = 1
+  starting_cds#,norm_method = "log",pseudocount = 1
 )
 
 cds <- new_cell_data_set(expression_data = norm,
@@ -172,11 +170,11 @@ cds <- new_cell_data_set(expression_data = norm,
 # Save dataframe as an RData file
 #save(cds, file = paste0(dir, "/norm_cds.RData"))
 
-cds <- preprocess_cds(cds, num_dim = 100)
+cds <- preprocess_cds(cds, num_dim = 20)
 p = plot_pc_variance_explained(cds)
 ggsave(p, filename = paste0(dir,"/PCA.pdf"),
        width = 5, height = 5)
-cds <- align_cds(cds, alignment_group = "replicate", useNames = TRUE)
+#cds <- align_cds(cds, alignment_group = "replicate", useNames = TRUE)
 cds <- reduce_dimension(cds, reduction_method="UMAP", umap.fast_sgd = FALSE,cores=1,n_sgd_threads=1)
 
 UMAP = as.data.frame(reducedDims(cds)$UMAP)

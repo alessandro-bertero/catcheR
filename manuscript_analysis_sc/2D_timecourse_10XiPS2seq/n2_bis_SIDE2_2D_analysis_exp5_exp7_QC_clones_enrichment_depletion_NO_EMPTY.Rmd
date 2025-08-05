@@ -1,0 +1,1443 @@
+---
+title: "n1 2D analysis exp5 exp7 combined: QC and monocle analysis"
+author: "Elisa Balmas PhD"
+date: "2024-02-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set up environment
+
+```{r}
+library(see)
+library(monocle3)
+library(tidyr)
+library(stringr)
+library(grid)
+library(viridis)
+library(viridisLite)
+library(ggthemes)
+library(dplyr)
+library(tidyverse)
+library(ggsignif)
+library(umap)
+library(heatmap3)
+library(plyr)
+library(edgeR)
+library(compareGroups)
+library(dbscan)
+library(MAST)
+library(geosphere)
+library(RColorBrewer)
+library(Seurat)
+library(htmlwidgets)
+library(Matrix)
+library(tidyseurat)
+library(SeuratWrappers)
+library(scMAGeCK)
+library(readxl)
+library(deepToolsUtils)
+library(R.utils)
+
+
+library(ggplot2); library(reshape2); theme_set(theme_bw(26) + theme(panel.grid.major = element_blank(), 
+                                                                    panel.grid.minor = element_blank()) +
+                                                 theme(legend.key = element_blank()))
+update_geom_defaults("point", aes(size = 4))
+
+#setwd("/home/ebalmas/scpHUB/projects/H001AS7_iKDseq_10X_4tp_monocle/analysis_EB")
+
+# Session options
+options(stringsAsFactors = FALSE)
+set.seed(12345)
+
+# Set up the ggplot default params
+theme_set(theme_bw(12) + 
+          theme(panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(),
+                plot.title = element_text(size=15, face="bold", margin = margin(10,0,10,0)),
+                axis.text.x = element_text(angle=45, hjust = 1)))
+
+
+# Set up filename prefixes and output folders with the data
+dir.create("Output")
+
+dir.create(file.path("Output","monocle"))#create forders MONOCLE
+dir.create(file.path("Output","monocle","no_empty"))
+dir.create(file.path("Output","monocle","no_empty","SIDE2"))
+dir.create(file.path("Output","monocle","no_empty","SIDE2",  format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","monocle","no_empty","SIDE2", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","monocle","no_empty","SIDE2", format(Sys.Date(), "%y%m%d"), "dotplots"))
+dir.create(file.path("Output","monocle","no_empty","SIDE2", format(Sys.Date(), "%y%m%d"), "dotplots","single"))
+dir.create(file.path("Output","monocle","no_empty","SIDE2", format(Sys.Date(), "%y%m%d"), "stat"))
+dir.create(file.path("Output","monocle","no_empty","SIDE2", format(Sys.Date(), "%y%m%d"), "csv"))
+dir.create(file.path("Output","monocle","no_empty","SIDE2", format(Sys.Date(), "%y%m%d"), "UMAP"))
+dir.create(file.path("Output","monocle","no_empty","SIDE2", format(Sys.Date(), "%y%m%d"), "mosaic"))
+dir.create(file.path("Output","monocle","no_empty","SIDE2", format(Sys.Date(), "%y%m%d"), "line"))
+
+fname_scratch <- file.path("Output","scratch")
+
+#set up forder path MONOCLE
+fname_prefix_R <- file.path("Output","monocle","no_empty","SIDE2",format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot <- file.path("Output","monocle","no_empty","SIDE2",format(Sys.Date(), "%y%m%d"), "dotplots", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot_single <- file.path("Output","monocle","no_empty","SIDE2", format(Sys.Date(), "%y%m%d"), "dotplots", "single", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_csv<-file.path("Output","monocle","no_empty","SIDE2",format(Sys.Date(), "%y%m%d"), "csv", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_stat<-file.path("Output","monocle","no_empty","SIDE2", format(Sys.Date(), "%y%m%d"), "stat", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_UMAP<-file.path("Output","monocle","no_empty","SIDE2", format(Sys.Date(), "%y%m%d"), "UMAP", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_mosaic<-file.path("Output","monocle","no_empty","SIDE2", format(Sys.Date(), "%y%m%d"), "mosaic", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_line<-file.path("Output","monocle","no_empty","SIDE2", format(Sys.Date(), "%y%m%d"), "line", 
+                               format(Sys.Date(), "%y%m%d"))
+
+okabe_pal=c("#E69F00","#56B4E9","#009E73","#F0E442","#0072B2","#D55E00","#CC79A7","#000000","#b6dbff","#004949")
+
+
+pal <- c("#000000","#004949","#009292","#ff6db6","#ffb6db",
+         "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+         "#920000","#924900","#db6d00","#24ff24","#ffff6d")
+```
+#load data
+###make gene lists
+
+```{r}
+#load cds file monocle
+cds=readRDS("scratch/2D_iPS2seq10X_cds_monocle_processed.rds",refhook = T)
+ID_key=readxl::read_excel(paste0(fname_scratch,"/shRNA_IDs.xlsx"))
+
+cds <- cds[,cds@colData@listData[["clone_selection"]]==T] #from 36244 to 36019
+cds_side2= cds[,cds@colData@listData[["side"]]=="Side2"]
+meta_s2=as.data.frame(cds_side2@colData@listData)
+
+
+clone_counts=meta_s2 %>%
+  dplyr::group_by(clone,sample_ID) %>%
+  dplyr::summarise(count = n())###tot clones 305
+
+ggplot(clone_counts, aes(x = count, color = sample_ID)) +
+  geom_density() +
+  geom_vline(xintercept = 20, linetype = "dashed", color = "red")+
+  labs(title = "Distribution of Clones by Timepoint",
+       x = "Count",
+       y = "Density") +
+  theme_minimal()
+
+ggsave(filename = paste0(fname_prefix_stat, "_", "QC_clones.pdf"),
+     width = 20, height = 8)
+
+clone_counts=spread(clone_counts, key = sample_ID, value = count)
+clone_counts <- replace(clone_counts, is.na(clone_counts), 0)###tot clones 55
+clone_counts$has_20_counts <- apply(clone_counts[, -1] >= 20, 1, any)
+clone_counts=clone_counts%>%dplyr::select(clone,has_20_counts)
+
+meta_s2=meta_s2%>%right_join(clone_counts,by="clone")
+row.names(meta_s2)=meta_s2$info
+
+cds_side2@colData$clone_selection=meta_s2$has_20_counts#add info to CDS file
+
+cds_side2 <- cds_side2[,cds_side2@colData@listData[["clone_selection"]]==T] #from 36244 to 36019
+meta_s2=as.data.frame(cds_side2@colData@listData)
+
+m0=subset(meta_s2, meta$DD=="D0")
+
+
+Rdata_filename = paste0(fname_prefix_R, "_side2.RData")
+save(cds_side2,meta_s2,m0,
+     file = Rdata_filename)
+
+```
+
+
+#calculate fold change from D0 to each timepoint
+
+```{r}
+#select all the not empty clones
+meta=meta_s2
+clone_batch_counts=meta%>%select(clone,batch)
+clone_batch_counts=clone_batch_counts%>%distinct()
+clone_batch_meta=meta%>%dplyr::select(libID,info,clone,batch,side)
+meta=subset(meta,meta$shRNA_BC!="empty")
+
+meta$KD_B2M= ifelse(meta$shRNA_gene == "B2M", "control", "gene")
+meta$KD_SCR= ifelse(meta$shRNA_gene == "SCR", "control", "gene")
+
+totals=meta %>%
+  dplyr::group_by(DD,experiment) %>%
+  dplyr::summarise(TOTAL = n())
+t_e5=subset(totals,totals$experiment=="exp5")
+t_e7=subset(totals,totals$experiment=="exp7")
+t_e5=spread(t_e5, key = DD, value = c(TOTAL))%>%dplyr::rename(D0_TOT=D0,D23_TOT=D23)
+t_e7=spread(t_e7, key = DD, value = c(TOTAL))%>%dplyr::rename(D0_TOT=D0,D2_TOT=D2,D6_TOT=D6,D12_TOT=D12)
+
+clone_counts=meta %>%
+  dplyr::group_by(clone,DD,experiment) %>%
+  dplyr::summarise(count = n())
+
+B2M_counts=meta %>%
+  dplyr::group_by(DD,experiment,KD_B2M) %>%
+  dplyr::summarise(B2M_count = n())%>%filter(KD_B2M=="control")%>%dplyr::select(-KD_B2M)
+B2M_counts_e5=subset(B2M_counts,B2M_counts$experiment=="exp5")
+B2M_counts_e7=subset(B2M_counts,B2M_counts$experiment=="exp7")
+B2M_counts_e5=spread(B2M_counts_e5, key = DD, value = c(B2M_count))%>%dplyr::rename(D0B2M=D0,D23B2M=D23)
+B2M_counts_e7=spread(B2M_counts_e7, key = DD, value = c(B2M_count))%>%dplyr::rename(D0B2M=D0,D2B2M=D2,D6B2M=D6,D12B2M=D12)
+
+SCR_counts=meta %>%
+  dplyr::group_by(DD,experiment,KD_SCR) %>%
+  dplyr::summarise(SCR_count = n())%>%filter(KD_SCR=="control")%>%dplyr::select(-KD_SCR)
+SCR_counts_e5=subset(SCR_counts,SCR_counts$experiment=="exp5")
+SCR_counts_e7=subset(SCR_counts,SCR_counts$experiment=="exp7")
+SCR_counts_e5=spread(SCR_counts_e5, key = DD, value = c(SCR_count))%>%dplyr::rename(D0SCR=D0,D23SCR=D23)
+SCR_counts_e7=spread(SCR_counts_e7, key = DD, value = c(SCR_count))%>%dplyr::rename(D0SCR=D0,D2SCR=D2,D6SCR=D6,D12SCR=D12)
+
+cc_ex5=subset(clone_counts,clone_counts$experiment=="exp5")
+cc_ex5=spread(cc_ex5, key = DD, value = c(count))
+cc_ex5 <- replace(cc_ex5, is.na(cc_ex5), 0)
+cc_ex5=cc_ex5%>%left_join(B2M_counts_e5, by="experiment")%>%left_join(SCR_counts_e5, by="experiment")%>%left_join(t_e5, by="experiment")
+
+cc_ex5$clone_fraction_hiPSC=cc_ex5$D0/cc_ex5$D0_TOT
+cc_ex5$clone_fraction_D23=cc_ex5$D23/cc_ex5$D23_TOT
+cc_ex5$clone_fraction_D23vshiPSC=cc_ex5$clone_fraction_D23/cc_ex5$clone_fraction_hiPSC
+
+cc_ex5$clone_fraction_hiPSC_B2M=cc_ex5$D0/cc_ex5$D0B2M
+cc_ex5$clone_fraction_D23_B2M=cc_ex5$D23/cc_ex5$D23B2M
+cc_ex5$clone_fraction_D23vshiPSC_B2M=cc_ex5$clone_fraction_D23_B2M/cc_ex5$clone_fraction_hiPSC_B2M
+
+cc_ex5$clone_fraction_hiPSC_SCR=cc_ex5$D0/cc_ex5$D0SCR
+cc_ex5$clone_fraction_D23_SCR=cc_ex5$D23/cc_ex5$D23SCR
+cc_ex5$clone_fraction_D23vshiPSC_SCR=cc_ex5$clone_fraction_D23_SCR/cc_ex5$clone_fraction_hiPSC_SCR
+
+cc_ex5=cc_ex5%>%dplyr::rename(D0_ex5=D0,
+                              D0B2M_ex5=D0B2M,
+                              D0SCR_ex5=D0SCR,D0_TOT_ex5=D0_TOT,D23_TOT_ex5=D23_TOT,
+                              clone_fraction_hiPSC_ex5=clone_fraction_hiPSC,
+                              clone_fraction_hiPSC_B2M_ex5=clone_fraction_hiPSC_B2M,
+                              clone_fraction_hiPSC_SCR_ex5=clone_fraction_hiPSC_SCR)%>%dplyr::select(-experiment)
+#####21 clones
+
+cc_ex7=subset(clone_counts,clone_counts$experiment=="exp7")
+cc_ex7=spread(cc_ex7, key = DD, value = count)
+cc_ex7 <- replace(cc_ex7, is.na(cc_ex7), 0)
+cc_ex7=cc_ex7%>%left_join(B2M_counts_e7, by="experiment")%>%left_join(SCR_counts_e7, by="experiment")%>%left_join(t_e7, by="experiment")###43 clones
+
+cc_ex7$clone_fraction_hiPSC=cc_ex7$D0/cc_ex7$D0_TOT
+cc_ex7$clone_fraction_D2=cc_ex7$D2/cc_ex7$D2_TOT
+cc_ex7$clone_fraction_D6=cc_ex7$D6/cc_ex7$D6_TOT
+cc_ex7$clone_fraction_D12=cc_ex7$D12/cc_ex7$D12_TOT
+cc_ex7$clone_fraction_D2vshiPSC=cc_ex7$clone_fraction_D2/cc_ex7$clone_fraction_hiPSC
+cc_ex7$clone_fraction_D6vshiPSC=cc_ex7$clone_fraction_D6/cc_ex7$clone_fraction_hiPSC
+cc_ex7$clone_fraction_D12vshiPSC=cc_ex7$clone_fraction_D12/cc_ex7$clone_fraction_hiPSC
+
+cc_ex7$clone_fraction_hiPSC_B2M=cc_ex7$D0/cc_ex7$D0B2M
+cc_ex7$clone_fraction_D2_B2M=cc_ex7$D2/cc_ex7$D2B2M
+cc_ex7$clone_fraction_D6_B2M=cc_ex7$D6/cc_ex7$D6B2M
+cc_ex7$clone_fraction_D12_B2M=cc_ex7$D12/cc_ex7$D12B2M
+cc_ex7$clone_fraction_D2vshiPSC_B2M=cc_ex7$clone_fraction_D2_B2M/cc_ex7$clone_fraction_hiPSC_B2M
+cc_ex7$clone_fraction_D6vshiPSC_B2M=cc_ex7$clone_fraction_D6_B2M/cc_ex7$clone_fraction_hiPSC_B2M
+cc_ex7$clone_fraction_D12vshiPSC_B2M=cc_ex7$clone_fraction_D12_B2M/cc_ex7$clone_fraction_hiPSC_B2M
+
+cc_ex7$clone_fraction_hiPSC_SCR=cc_ex7$D0/cc_ex7$D0SCR
+cc_ex7$clone_fraction_D2_SCR=cc_ex7$D2/cc_ex7$D2SCR
+cc_ex7$clone_fraction_D6_SCR=cc_ex7$D6/cc_ex7$D6SCR
+cc_ex7$clone_fraction_D12_SCR=cc_ex7$D12/cc_ex7$D12SCR
+cc_ex7$clone_fraction_D2vshiPSC_SCR=cc_ex7$clone_fraction_D2_SCR/cc_ex7$clone_fraction_hiPSC_SCR
+cc_ex7$clone_fraction_D6vshiPSC_SCR=cc_ex7$clone_fraction_D6_SCR/cc_ex7$clone_fraction_hiPSC_SCR
+cc_ex7$clone_fraction_D12vshiPSC_SCR=cc_ex7$clone_fraction_D12_SCR/cc_ex7$clone_fraction_hiPSC_SCR
+
+cc_ex7=cc_ex7%>%dplyr::rename(D0_ex7=D0,
+                              D0B2M_ex7=D0B2M,
+                              D0SCR_ex7=D0SCR,D0_TOT_ex7=D0_TOT,D2_TOT_ex7=D2_TOT,D6_TOT_ex7=D6_TOT,D12_TOT_ex7=D12_TOT,
+                              clone_fraction_hiPSC_ex7=clone_fraction_hiPSC,
+                              clone_fraction_hiPSC_B2M_ex7=clone_fraction_hiPSC_B2M,
+                              clone_fraction_hiPSC_SCR_ex7=clone_fraction_hiPSC_SCR)%>%dplyr::select(-experiment)
+###21 clones
+cc=cc_ex7%>%full_join(cc_ex5, by="clone")###21
+FC_df=cc%>%dplyr::select(-D0_ex7,-D0_ex5,-D0B2M_ex7,-D0B2M_ex5,-D0SCR_ex7,-D0SCR_ex5,-D0_TOT_ex7,-D0_TOT_ex5,-D2_TOT_ex7,-D6_TOT_ex7,-D12_TOT_ex7,-D23_TOT_ex5,-D12,-D2,-D6,-D12B2M,-D2B2M,-D6B2M,-D12SCR,-D2SCR,-D6SCR,-D23,-D23B2M,-D23SCR,)
+
+FC_df=FC_df%>%left_join(side,by="clone")%>%left_join(clone_batch_counts,by="clone")
+FC_df$shRNA_gene=sapply(strsplit(as.character(FC_df$clone), "_"), "[[", 2)
+FC_df$cell_BC=sapply(strsplit(as.character(FC_df$clone), "_"), "[[", 3)
+FC_df$shRNA_BC=sapply(strsplit(as.character(FC_df$clone), "_"), "[[", 1)
+FC_df=FC_df%>%left_join(ID_key, by=c("shRNA_gene","shRNA_BC"))
+
+```
+
+#add pvalue with fishertest statistics per timepoint
+
+#Initialize dataframes
+
+```{r}
+#set up controls sets
+meta$KD_B2M= ifelse(meta$shRNA_gene == "B2M", "control", "gene")
+meta$KD_SCR= ifelse(meta$shRNA_gene == "SCR", "control", "gene")
+
+D23=meta %>% filter(experiment == "exp5" & DD == "D0"|DD == "D23")
+D2=meta %>% filter(experiment == "exp7" & DD == "D0"|DD == "D2")
+D6=meta %>% filter(experiment == "exp7" & DD == "D0"|DD == "D6")
+D12=meta %>% filter(experiment == "exp7" & DD == "D0"|DD == "D12")
+```
+
+#add pvalue with fishertest statistics D23
+
+```{r}
+#####B2M set
+D23_cl=D23%>%dplyr::select(clone,KD_B2M,DD)
+clone_list=unique(D23_cl$clone)
+
+D23_fisher_CTRD0=data.frame(clone=clone_list,KD_B2M="control",DD="D0")
+D23_fisher_KDD0=data.frame(clone=clone_list,KD_B2M="gene",DD="D0")
+D23_fisher_CTRD23=data.frame(clone=clone_list,KD_B2M="control",DD="D23")
+D23_fisher_KDD23=data.frame(clone=clone_list,KD_B2M="gene",DD="D23")
+
+D23_cl_B2M=rbind(D23_cl,D23_fisher_CTRD0,D23_fisher_KDD0,D23_fisher_CTRD23,D23_fisher_KDD23)
+
+#####SCR set
+D23_cl=D23%>%dplyr::select(clone,KD_SCR,DD)
+clone_list=unique(D23_cl$clone)
+
+D23_fisher_CTRD0=data.frame(clone=clone_list,KD_SCR="control",DD="D0")
+D23_fisher_KDD0=data.frame(clone=clone_list,KD_SCR="gene",DD="D0")
+D23_fisher_CTRD23=data.frame(clone=clone_list,KD_SCR="control",DD="D23")
+D23_fisher_KDD23=data.frame(clone=clone_list,KD_SCR="gene",DD="D23")
+
+D23_cl_SCR=rbind(D23_cl,D23_fisher_CTRD0,D23_fisher_KDD0,D23_fisher_CTRD23,D23_fisher_KDD23)
+
+# Define the list of clones
+clone_list=unique(D23_cl$clone)
+
+# Initialize empty vectors for p-values and clone names
+p_values_B2M <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  t <- D23_cl_B2M %>% filter(KD_B2M == "control" | clone == clone_list[i])
+  
+  # Perform Fisher's test
+  fisher_result <- fisher.test(t$KD_B2M, t$DD, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values_B2M[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values_SCR <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  t <- D23_cl_SCR %>% filter(KD_SCR == "control" | clone == clone_list[i])
+  
+  # Perform Fisher's test
+  fisher_result <- fisher.test(t$KD_SCR, t$DD, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values_SCR[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+# Create the result data frame
+result_df_DD23 <- data.frame(clone = clone_names, P_value_B2M = p_values_B2M, p_value_SCR = p_values_SCR)
+
+result_df_DD23=result_df_DD23%>%dplyr::mutate(qval_DD23_B2M=p.adjust(result_df_DD23$P_value_B2M,method = "BH"),
+                                       qval_DD23_SCR=p.adjust(result_df_DD23$p_value_SCR,method = "BH"))
+result_df_DD23=result_df_DD23%>%dplyr::select(clone, qval_DD23_B2M,qval_DD23_SCR)
+
+```
+
+#add pvalue with fishertest statistics D2
+
+```{r}
+#####B2M set
+D2_cl=D2%>%dplyr::select(clone,KD_B2M,DD)
+clone_list=unique(D2_cl$clone)
+
+D2_fisher_CTRD0=data.frame(clone=clone_list,KD_B2M="control",DD="D0")
+D2_fisher_KDD0=data.frame(clone=clone_list,KD_B2M="gene",DD="D0")
+D2_fisher_CTRD2=data.frame(clone=clone_list,KD_B2M="control",DD="D2")
+D2_fisher_KDD2=data.frame(clone=clone_list,KD_B2M="gene",DD="D2")
+
+D2_cl_B2M=rbind(D2_cl,D2_fisher_CTRD0,D2_fisher_KDD0,D2_fisher_CTRD2,D2_fisher_KDD2)
+
+#####SCR set
+D2_cl=D2%>%dplyr::select(clone,KD_SCR,DD)
+clone_list=unique(D2_cl$clone)
+
+D2_fisher_CTRD0=data.frame(clone=clone_list,KD_SCR="control",DD="D0")
+D2_fisher_KDD0=data.frame(clone=clone_list,KD_SCR="gene",DD="D0")
+D2_fisher_CTRD2=data.frame(clone=clone_list,KD_SCR="control",DD="D2")
+D2_fisher_KDD2=data.frame(clone=clone_list,KD_SCR="gene",DD="D2")
+
+D2_cl_SCR=rbind(D2_cl,D2_fisher_CTRD0,D2_fisher_KDD0,D2_fisher_CTRD2,D2_fisher_KDD2)
+
+# Define the list of clones
+clone_list=unique(D2_cl$clone)
+
+# Initialize empty vectors for p-values and clone names
+p_values_B2M <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  t <- D2_cl_B2M %>% filter(KD_B2M == "control" | clone == clone_list[i])
+  
+  # Perform Fisher's test
+  fisher_result <- fisher.test(t$KD_B2M, t$DD, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values_B2M[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values_SCR <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  t <- D2_cl_SCR %>% filter(KD_SCR == "control" | clone == clone_list[i])
+  
+  # Perform Fisher's test
+  fisher_result <- fisher.test(t$KD_SCR, t$DD, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values_SCR[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+
+# Create the result data frame
+result_df_DD2 <- data.frame(clone = clone_names, P_value_B2M = p_values_B2M, p_value_SCR = p_values_SCR)
+
+result_df_DD2=result_df_DD2%>%dplyr::mutate(qval_DD2_B2M=p.adjust(result_df_DD2$P_value_B2M,method = "BH"),
+                                       qval_DD2_SCR=p.adjust(result_df_DD2$p_value_SCR,method = "BH"))
+result_df_DD2=result_df_DD2%>%dplyr::select(clone, qval_DD2_B2M,qval_DD2_SCR)
+
+```
+
+#add pvalue with fishertest statistics D6
+
+```{r}
+#####B2M set
+D6_cl=D6%>%dplyr::select(clone,KD_B2M,DD)
+clone_list=unique(D6_cl$clone)
+
+D6_fisher_CTRD0=data.frame(clone=clone_list,KD_B2M="control",DD="D0")
+D6_fisher_KDD0=data.frame(clone=clone_list,KD_B2M="gene",DD="D0")
+D6_fisher_CTRD6=data.frame(clone=clone_list,KD_B2M="control",DD="D6")
+D6_fisher_KDD6=data.frame(clone=clone_list,KD_B2M="gene",DD="D6")
+
+D6_cl_B2M=rbind(D6_cl,D6_fisher_CTRD0,D6_fisher_KDD0,D6_fisher_CTRD6,D6_fisher_KDD6)
+
+#####SCR set
+D6_cl=D6%>%dplyr::select(clone,KD_SCR,DD)
+clone_list=unique(D6_cl$clone)
+
+D6_fisher_CTRD0=data.frame(clone=clone_list,KD_SCR="control",DD="D0")
+D6_fisher_KDD0=data.frame(clone=clone_list,KD_SCR="gene",DD="D0")
+D6_fisher_CTRD6=data.frame(clone=clone_list,KD_SCR="control",DD="D6")
+D6_fisher_KDD6=data.frame(clone=clone_list,KD_SCR="gene",DD="D6")
+
+D6_cl_SCR=rbind(D6_cl,D6_fisher_CTRD0,D6_fisher_KDD0,D6_fisher_CTRD6,D6_fisher_KDD6)
+
+
+# Define the list of clones
+clone_list=unique(D6_cl$clone)
+
+# Initialize empty vectors for p-values and clone names
+p_values_B2M <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  t <- D6_cl_B2M %>% filter(KD_B2M == "control" | clone == clone_list[i])
+  
+  # Perform Fisher's test
+  fisher_result <- fisher.test(t$KD_B2M, t$DD, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values_B2M[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values_SCR <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  t <- D6_cl_SCR %>% filter(KD_SCR == "control" | clone == clone_list[i])
+  
+  # Perform Fisher's test
+  fisher_result <- fisher.test(t$KD_SCR, t$DD, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values_SCR[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+
+# Create the result data frame
+result_df_DD6 <- data.frame(clone = clone_names, P_value_B2M = p_values_B2M, p_value_SCR = p_values_SCR)
+
+result_df_DD6=result_df_DD6%>%dplyr::mutate(qval_DD6_B2M=p.adjust(result_df_DD6$P_value_B2M,method = "BH"),
+                                       qval_DD6_SCR=p.adjust(result_df_DD6$p_value_SCR,method = "BH"))
+result_df_DD6=result_df_DD6%>%dplyr::select(clone, qval_DD6_B2M,qval_DD6_SCR)
+
+```
+
+#add pvalue with fishertest statistics D12
+
+```{r}
+#####B2M set
+D12_cl=D12%>%dplyr::select(clone,KD_B2M,DD)
+clone_list=unique(D12_cl$clone)
+
+D12_fisher_CTRD0=data.frame(clone=clone_list,KD_B2M="control",DD="D0")
+D12_fisher_KDD0=data.frame(clone=clone_list,KD_B2M="gene",DD="D0")
+D12_fisher_CTRD12=data.frame(clone=clone_list,KD_B2M="control",DD="D12")
+D12_fisher_KDD12=data.frame(clone=clone_list,KD_B2M="gene",DD="D12")
+
+D12_cl_B2M=rbind(D12_cl,D12_fisher_CTRD0,D12_fisher_KDD0,D12_fisher_CTRD12,D12_fisher_KDD12)
+
+#####SCR set
+D12_cl=D12%>%dplyr::select(clone,KD_SCR,DD)
+clone_list=unique(D12_cl$clone)
+
+D12_fisher_CTRD0=data.frame(clone=clone_list,KD_SCR="control",DD="D0")
+D12_fisher_KDD0=data.frame(clone=clone_list,KD_SCR="gene",DD="D0")
+D12_fisher_CTRD12=data.frame(clone=clone_list,KD_SCR="control",DD="D12")
+D12_fisher_KDD12=data.frame(clone=clone_list,KD_SCR="gene",DD="D12")
+
+D12_cl_SCR=rbind(D12_cl,D12_fisher_CTRD0,D12_fisher_KDD0,D12_fisher_CTRD12,D12_fisher_KDD12)
+
+
+# Define the list of clones
+clone_list=unique(D12_cl$clone)
+
+# Initialize empty vectors for p-values and clone names
+p_values_B2M <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  t <- D12_cl_B2M %>% filter(KD_B2M == "control" | clone == clone_list[i])
+  
+  # Perform Fisher's test
+  fisher_result <- fisher.test(t$KD_B2M, t$DD, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values_B2M[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values_SCR <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  t <- D12_cl_SCR %>% filter(KD_SCR == "control" | clone == clone_list[i])
+  
+  # Perform Fisher's test
+  fisher_result <- fisher.test(t$KD_SCR, t$DD, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values_SCR[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+
+# Create the result data frame
+result_df_DD12 <- data.frame(clone = clone_names, P_value_B2M = p_values_B2M, p_value_SCR = p_values_SCR)
+
+result_df_DD12=result_df_DD12%>%dplyr::mutate(qval_DD12_B2M=p.adjust(result_df_DD12$P_value_B2M,method = "BH"),
+                                       qval_DD12_SCR=p.adjust(result_df_DD12$p_value_SCR,method = "BH"))%>%dplyr::select(clone, qval_DD12_B2M,qval_DD12_SCR)
+
+
+######combine results
+######################
+result_df_NCT=result_df_DD2%>%right_join(result_df_DD6,by="clone")%>%right_join(result_df_DD12,by="clone")%>%full_join(result_df_DD23,by="clone")
+result_df_NCT <- result_df_NCT %>% filter(qval_DD23_B2M!= is.na(qval_DD23_B2M))
+
+```
+
+####make fisher test based on total
+```{r}
+D23=meta %>% filter(experiment == "exp5" & DD == "D0"|DD == "D23")
+D2=meta %>% filter(experiment == "exp7" & DD == "D0"|DD == "D2")
+D6=meta %>% filter(experiment == "exp7" & DD == "D0"|DD == "D6")
+D12=meta %>% filter(experiment == "exp7" & DD == "D0"|DD == "D12")
+
+#####D23 on total Fisher test
+D23_cl=D23%>%dplyr::select(clone,DD)
+clone_list=unique(D23_cl$clone)
+
+D23_f_CTRD0=data.frame(clone=clone_list,DD="D0")
+D23_f_CTRD23=data.frame(clone=clone_list,DD="D23")
+
+D23_cl=rbind(D23_cl,D23_f_CTRD0,D23_f_CTRD23)
+
+for (clone in clone_list) {
+  # Create a new column named after the clone and assign boolean values
+  D23_cl[[clone]] <- D23_cl$clone == clone
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  # Perform Fisher's test
+  fisher_result <- fisher.test(D23_cl[[clone_list[i]]], D23_cl$DD, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+result_df_DD23_TOTAL <- data.frame(clone = clone_names, P_value_TOTAL_DD23 = p_values)
+
+
+#####D2 on total Fisher test
+D2_cl=D2%>%dplyr::select(clone,DD)
+clone_list=unique(D2_cl$clone)
+
+D2_f_CTRD0=data.frame(clone=clone_list,DD="D0")
+D2_f_CTRD2=data.frame(clone=clone_list,DD="D2")
+
+D2_cl=rbind(D2_cl,D2_f_CTRD0,D2_f_CTRD2)
+
+for (clone in clone_list) {
+  # Create a new column named after the clone and assign boolean values
+  D2_cl[[clone]] <- D2_cl$clone == clone
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  # Perform Fisher's test
+  fisher_result <- fisher.test(D2_cl[[clone_list[i]]], D2_cl$DD, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+result_df_DD2_TOTAL <- data.frame(clone = clone_names, P_value_TOTAL_DD2 = p_values)
+
+#####D6 on total Fisher test
+D6_cl=D6%>%dplyr::select(clone,DD)
+clone_list=unique(D6_cl$clone)
+
+D6_f_CTRD0=data.frame(clone=clone_list,DD="D0")
+D6_f_CTRD6=data.frame(clone=clone_list,DD="D6")
+
+D6_cl=rbind(D6_cl,D6_f_CTRD0,D6_f_CTRD6)
+
+for (clone in clone_list) {
+  # Create a new column named after the clone and assign boolean values
+  D6_cl[[clone]] <- D6_cl$clone == clone
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  # Perform Fisher's test
+  fisher_result <- fisher.test(D6_cl[[clone_list[i]]], D6_cl$DD, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+result_df_DD6_TOTAL <- data.frame(clone = clone_names, P_value_TOTAL_DD6 = p_values)
+
+#####D12 on total Fisher test
+D12_cl=D12%>%dplyr::select(clone,DD)
+clone_list=unique(D12_cl$clone)
+
+D12_f_CTRD0=data.frame(clone=clone_list,DD="D0")
+D12_f_CTRD12=data.frame(clone=clone_list,DD="D12")
+
+D12_cl=rbind(D12_cl,D12_f_CTRD0,D12_f_CTRD12)
+
+for (clone in clone_list) {
+  # Create a new column named after the clone and assign boolean values
+  D12_cl[[clone]] <- D12_cl$clone == clone
+}
+
+# Initialize empty vectors for p-values and clone names
+p_values <- vector(mode="numeric", length = length(clone_list))
+clone_names <- vector(mode="character", length = length(clone_list))
+
+# Loop through each clone
+for (i in 1:length(clone_list)) {
+  # Filter data based on current clone
+  # Perform Fisher's test
+  fisher_result <- fisher.test(D12_cl[[clone_list[i]]], D12_cl$DD, simulate.p.value=TRUE)
+  
+  # Store p-value and clone name
+  p_values[i] <- fisher_result$p.value
+  clone_names[i] <- clone_list[i]
+}
+
+result_df_DD12_TOTAL <- data.frame(clone = clone_names, P_value_TOTAL_DD12 = p_values)
+
+result_df_TOTAL=result_df_DD2_TOTAL%>%left_join(result_df_DD6_TOTAL,by="clone")%>%left_join(result_df_DD12_TOTAL,by="clone")%>%full_join(result_df_DD23_TOTAL,by="clone")
+
+result_df_TOTAL=result_df_TOTAL%>%dplyr::mutate(qval_DD2_TOTAL=p.adjust(result_df_TOTAL$P_value_TOTAL_DD2,method = "BH"),
+                                       qval_DD6_TOTAL=p.adjust(result_df_TOTAL$P_value_TOTAL_DD6,method = "BH"),
+                                       qval_DD12_TOTAL=p.adjust(result_df_TOTAL$P_value_TOTAL_DD12,method = "BH"),
+                                       qval_DD23_TOTAL=p.adjust(result_df_TOTAL$P_value_TOTAL_DD23,method = "BH"))
+
+result_df_TOTAL <- result_df_TOTAL%>% filter(P_value_TOTAL_DD23!= is.na(P_value_TOTAL_DD23))
+
+```
+
+
+
+###combine results fisher test with Fold changes
+
+```{r}
+
+FC_df=FC_df%>%right_join(result_df_NCT,by="clone")%>%left_join(result_df_TOTAL,by="clone")
+
+
+stat_filename = paste0(fname_prefix_stat, "_stat_enrichment_depletion_clones.csv")
+write.csv(FC_df, stat_filename, quote = F, row.names = T, sep=",")
+
+
+```
+
+#make volcano plots FC timepoints vs D0 and Pvalue of fisher test
+##statistics based on SCR
+
+```{r}
+
+##########make volcano plots
+sig_level <- 0.05
+#Set a fold-change cutoff
+fc_level <- log2(2)
+fc_level2 <- (log2(2))*-1
+
+###D23
+
+ggplot(data=FC_df, aes(x=log2(clone_fraction_D23vshiPSC_SCR), y=(log2(clone_fraction_hiPSC_SCR_ex5)))) +
+  geom_point(aes(colour = log10(qval_DD23_SCR)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(FC_df,FC_df$qval_DD23_SCR<=0.05&log2(FC_df$clone_fraction_D23vshiPSC_SCR)>1|FC_df$qval_DD23_SCR<=0.05&log2(FC_df$clone_fraction_D23vshiPSC_SCR)*-1>1.5),
+    aes(label = shRNA_label),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  ylim(-5,1)+
+  xlim(-5,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion D23 compared to SCR")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in hiPSC CM D23 vs hiPSC",
+    y = "Log2 of clone fraction in hiPSC",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_enrichment_depletion_D23_SCR.pdf"),
+       width = 5, height = 4)
+
+###D2
+
+ggplot(data=FC_df, aes(x=log2(clone_fraction_D2vshiPSC_SCR), y=(log2(clone_fraction_hiPSC_SCR_ex7)))) +
+  geom_point(aes(colour = log10(qval_DD2_SCR)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(FC_df,FC_df$qval_DD2_SCR<=0.05&log2(FC_df$clone_fraction_D2vshiPSC_SCR)>1|FC_df$qval_DD2_SCR<=0.05&log2(FC_df$clone_fraction_D2vshiPSC_SCR)*-1>1.5),
+    aes(label = shRNA_label),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  ylim(-5,1)+
+  xlim(-5,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion D2 compared to SCR")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in hiPSC CM D2 vs hiPSC",
+    y = "Log2 of clone fraction in hiPSC",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_enrichment_depletion_D2_SCR.pdf"),
+       width = 5, height = 4)
+
+###D6
+
+ggplot(data=FC_df, aes(x=log2(clone_fraction_D6vshiPSC_SCR), y=(log2(clone_fraction_hiPSC_SCR_ex7)))) +
+  geom_point(aes(colour = log10(qval_DD6_SCR)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(FC_df,FC_df$qval_DD6_SCR<=0.05&log2(FC_df$clone_fraction_D6vshiPSC_SCR)>1|FC_df$qval_DD6_SCR<=0.05&log2(FC_df$clone_fraction_D6vshiPSC_SCR)*-1>1.5),
+    aes(label = shRNA_label),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  ylim(-5,1)+
+  xlim(-5,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion D6 compared to SCR")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in hiPSC CM D6 vs hiPSC",
+    y = "Log2 of clone fraction in hiPSC",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_enrichment_depletion_D6_SCR.pdf"),
+       width = 5, height = 4)
+
+###D12
+
+ggplot(data=FC_df, aes(x=log2(clone_fraction_D12vshiPSC_SCR), y=(log2(clone_fraction_hiPSC_SCR_ex7)))) +
+  geom_point(aes(colour = log10(qval_DD12_SCR)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(FC_df,FC_df$qval_DD12_SCR<=0.05&log2(FC_df$clone_fraction_D12vshiPSC_SCR)>1|FC_df$qval_DD12_SCR<=0.05&log2(FC_df$clone_fraction_D12vshiPSC_SCR)*-1>1.5),
+    aes(label = shRNA_label),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  ylim(-5,1)+
+  xlim(-5,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion D12 compared to SCR")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in hiPSC CM D12 vs hiPSC",
+    y = "Log2 of clone fraction in hiPSC",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_enrichment_depletion_D12_SCR.pdf"),
+       width = 5, height = 4)
+
+```
+#make volcano plots FC timepoints vs D0 and Pvalue of fisher test
+##statistics based on TOTAL
+
+```{r}
+
+##########make volcano plots
+sig_level <- 0.05
+#Set a fold-change cutoff
+fc_level <- log2(2)
+fc_level2 <- (log2(2))*-1
+
+###D23
+
+ggplot(data=subset(FC_df,log2(FC_df$clone_fraction_D23vshiPSC)>=-5), aes(x=log2(clone_fraction_D23vshiPSC), y=(log2(clone_fraction_hiPSC_ex5)))) +
+  geom_point(aes(colour = log10(qval_DD23_TOTAL)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(FC_df,FC_df$qval_DD23_TOTAL<=0.05&log2(FC_df$clone_fraction_D23vshiPSC)>=1|FC_df$qval_DD23_TOTAL<=0.05&log2(FC_df$clone_fraction_D23vshiPSC)*-1>=1),
+    aes(label = shRNA_label),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  ylim(-9,-2)+
+  xlim(-5,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion D23")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in hiPSC CM D23 vs hiPSC",
+    y = "Log2 of clone fraction in hiPSC",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_enrichment_depletion_D23.pdf"),
+       width = 5, height = 4)
+
+###D2
+
+ggplot(data=FC_df, aes(x=log2(clone_fraction_D2vshiPSC), y=(log2(clone_fraction_hiPSC_ex7)))) +
+  geom_point(aes(colour = log10(qval_DD2_TOTAL)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(FC_df,FC_df$qval_DD2_TOTAL<=0.05&log2(FC_df$clone_fraction_D2vshiPSC)>=1|FC_df$qval_DD2_SCR<=0.05&log2(FC_df$clone_fraction_D2vshiPSC)*-1>=1),
+    aes(label = shRNA_label),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  ylim(-9,-2)+
+  xlim(-5,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion D2")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in hiPSC CM D2 vs hiPSC",
+    y = "Log2 of clone fraction in hiPSC",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_enrichment_depletion_D2.pdf"),
+       width = 5, height = 4)
+
+###D6
+
+ggplot(data=FC_df, aes(x=log2(clone_fraction_D6vshiPSC), y=(log2(clone_fraction_hiPSC_ex7)))) +
+  geom_point(aes(colour = log10(qval_DD6_TOTAL)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(FC_df,FC_df$qval_DD6_TOTAL<=0.05&log2(FC_df$clone_fraction_D6vshiPSC)>=1|FC_df$qval_DD6_SCR<=0.05&log2(FC_df$clone_fraction_D6vshiPSC)*-1>=1),
+    aes(label = shRNA_label),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  ylim(-9,-2)+
+  xlim(-5,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion D6")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in hiPSC CM D6 vs hiPSC",
+    y = "Log2 of clone fraction in hiPSC",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_enrichment_depletion_D6.pdf"),
+       width = 5, height = 4)
+
+###D12
+
+ggplot(data=FC_df, aes(x=log2(clone_fraction_D12vshiPSC), y=(log2(clone_fraction_hiPSC_ex7)))) +
+  geom_point(aes(colour = log10(qval_DD12_TOTAL)*-1, size=1.5)) +
+  scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(FC_df,FC_df$qval_DD12_TOTAL<=0.05&log2(FC_df$clone_fraction_D12vshiPSC)>=1|FC_df$qval_DD12_SCR<=0.05&log2(FC_df$clone_fraction_D12vshiPSC)*-1>=1),
+    aes(label = shRNA_label),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_vline(xintercept = fc_level, linetype="dotted")+
+  geom_vline(xintercept = fc_level2, linetype="dotted")+
+  ylim(-9,-2)+
+  xlim(-5,1)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("Clone enrichment depletion D12")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 of clone fraction in hiPSC CM D12 vs hiPSC",
+    y = "Log2 of clone fraction in hiPSC",
+    color = "-log10(q value)"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_enrichment_depletion_D12.pdf"),
+       width = 5, height = 4)
+
+```
+#####overall clone depletion percentage calculated over the total
+
+```{r}
+
+FC_TOT=FC_df%>%
+  dplyr::select(shRNA_label,hex,col_name,shRNA_gene,clone_fraction_D2vshiPSC,clone_fraction_D6vshiPSC,clone_fraction_D12vshiPSC,clone_fraction_D23vshiPSC)%>%
+  dplyr::rename(D2=clone_fraction_D2vshiPSC,D6=clone_fraction_D6vshiPSC,D12=clone_fraction_D12vshiPSC,D23=clone_fraction_D23vshiPSC)%>%
+  mutate(D0=1)
+FC_TOT=FC_TOT %>%gather(key=timepoint, value=percent_vs_hPSC, D0, D2, D6, D12,D23, na.rm = FALSE, convert = FALSE)#210
+FC_TOT=FC_TOT %>%left_join(side, by="clone")
+
+genes= unique(FC_TOT$shRNA_gene)
+
+smad2_FC_TOT=subset(FC_TOT,FC_TOT$shRNA_gene=="SMAD2")
+gata4_FC_TOT=subset(FC_TOT,FC_TOT$shRNA_gene=="GATA4")
+KMT2D_FC_TOT=subset(FC_TOT,FC_TOT$shRNA_gene=="KMT2D")
+CHD7_FC_TOT=subset(FC_TOT,FC_TOT$shRNA_gene=="CHD7")
+NKX25_FC_TOT=subset(FC_TOT,FC_TOT$shRNA_gene=="NKX2.5")
+
+                     
+mean <- smad2_FC_TOT %>%  
+  dplyr::group_by(timepoint) %>%  
+  dplyr::summarize(average = mean(percent_vs_hPSC)) %>% 
+  dplyr::ungroup() 
+
+ggplot(smad2_FC_TOT,aes(x=factor(timepoint,levels=c("D0","D2","D6","D12","D23")),y=percent_vs_hPSC,color=shRNA_label))+
+  geom_line(aes(group=clone))+
+  #scale_linetype_manual(name="side",values = c("dashed", "solid","longdash"))+
+  scale_color_oi(order = c(1, 5, 6, 2, 4, 3, 7))+
+  geom_line(data = mean,mapping = aes(x = timepoint, y = average, group=1), 
+            color="red", size=1.4)+
+  ylim(0.03,1.9)+
+  labs(
+    x = "",
+    y = "clone fraction vs hiPSC",
+    color = "shRNA",
+    title= "Depletion of SMAD2 clones"
+  ) 
+
+ggsave(filename = paste0(fname_prefix_line, "_enrichment_depletion_SMAD2.pdf"),
+       width = 5, height = 4)
+
+mean <- gata4_FC_TOT %>%  
+  dplyr::group_by(timepoint) %>%  
+  dplyr::summarize(average = mean(percent_vs_hPSC)) %>% 
+  dplyr::ungroup() 
+
+ggplot(gata4_FC_TOT,aes(x=factor(timepoint,levels=c("D0","D2","D6","D12","D23")),y=percent_vs_hPSC,color=shRNA_label))+
+  geom_line(aes(group=clone))+
+  #scale_linetype_manual(name="side",values = c("dashed", "solid","longdash"))+
+  scale_color_oi(order = c(1, 5, 6, 2, 4, 3, 7))+
+  geom_line(data = mean,mapping = aes(x = timepoint, y = average, group=1), 
+            color="red", size=1.4)+
+  ylim(0.03,1.9)+
+  labs(
+    x = "",
+    y = "clone fraction vs hiPSC",
+    color = "shRNA",
+    title= "Depletion of GATA4 clones"
+  )
+ggsave(filename = paste0(fname_prefix_line, "_enrichment_depletion_GATA4.pdf"),
+       width = 5, height = 4)
+
+
+mean <- CHD7_FC_TOT %>%  
+  dplyr::group_by(timepoint) %>%  
+  dplyr::summarize(average = mean(percent_vs_hPSC)) %>% 
+  dplyr::ungroup() 
+
+ggplot(CHD7_FC_TOT,aes(x=factor(timepoint,levels=c("D0","D2","D6","D12","D23")),y=percent_vs_hPSC,color=shRNA_label))+
+  geom_line(aes(group=clone))+
+  #scale_linetype_manual(name="side",values = c("solid","longdash"))+
+  scale_color_oi(order = c(1, 5, 6, 2, 4, 3, 7))+
+  geom_line(data = mean,mapping = aes(x = timepoint, y = average, group=1), 
+            color="red", size=1.4)+
+  ylim(0.03,1.9)+
+  labs(
+    x = "",
+    y = "clone fraction vs hiPSC",
+    color = "shRNA",
+    title= "Depletion of CHD7 clones"
+  )
+ggsave(filename = paste0(fname_prefix_line, "_enrichment_depletion_CHD7.pdf"),
+       width = 5, height = 4)
+
+mean <- KMT2D_FC_TOT %>%  
+  dplyr::group_by(timepoint) %>%  
+  dplyr::summarize(average = mean(percent_vs_hPSC)) %>% 
+  dplyr::ungroup() 
+
+ggplot(KMT2D_FC_TOT,aes(x=factor(timepoint,levels=c("D0","D2","D6","D12","D23")),y=percent_vs_hPSC,color=shRNA_label))+
+  geom_line(aes(group=clone))+
+  #scale_linetype_manual(name="side",values = c("solid","longdash"))+
+  scale_color_oi(order = c(1, 5, 6, 2, 4, 3, 7))+
+  geom_line(data = mean,mapping = aes(x = timepoint, y = average, group=1), 
+            color="red", size=1.4)+
+  ylim(0.03,1.9)+
+  labs(
+    x = "",
+    y = "clone fraction vs hiPSC",
+    color = "shRNA",
+    title= "Depletion of KMT2D clones"
+  )
+ggsave(filename = paste0(fname_prefix_line, "_enrichment_depletion_KMT2D.pdf"),
+       width = 5, height = 4)
+
+mean <- NKX25_FC_TOT %>%  
+  dplyr::group_by(timepoint) %>%  
+  dplyr::summarize(average = mean(percent_vs_hPSC)) %>% 
+  dplyr::ungroup() 
+
+ggplot(NKX25_FC_TOT,aes(x=factor(timepoint,levels=c("D0","D2","D6","D12","D23")),y=percent_vs_hPSC,color=shRNA_label))+
+  geom_line(aes(group=clone))+
+  #scale_linetype_manual(name="side",values = c("solid","longdash"))+
+  scale_color_oi(order = c(9, 5, 6, 2, 4, 3, 7))+
+  geom_line(data = mean,mapping = aes(x = timepoint, y = average, group=1), 
+            color="red", size=1.4)+
+  ylim(0.03,1.9)+
+  labs(
+    x = "",
+    y = "clone fraction vs hiPSC",
+    color = "shRNA",
+    title= "Depletion of NKX2.5 clones"
+  )
+ggsave(filename = paste0(fname_prefix_line, "_enrichment_depletion_NKX25.pdf"),
+       width = 5, height = 4)
+
+
+
+```
+#####overall clone depletion percentage calculated over the total of SCR
+
+```{r}
+
+FC_SCR=FC_df%>%
+  dplyr::select(shRNA_label,hex,col_name,shRNA_gene,clone_fraction_D2vshiPSC_SCR,clone_fraction_D6vshiPSC_SCR,clone_fraction_D12vshiPSC_SCR,clone_fraction_D23vshiPSC_SCR)%>%
+  dplyr::rename(D2=clone_fraction_D2vshiPSC_SCR,D6=clone_fraction_D6vshiPSC_SCR,D12=clone_fraction_D12vshiPSC_SCR,D23=clone_fraction_D23vshiPSC_SCR)%>%
+  mutate(D0=1)
+FC_SCR=FC_SCR %>%gather(key=timepoint, value=percent_vs_hPSC, D0, D2, D6, D12,D23, na.rm = FALSE, convert = FALSE)
+FC_SCR=FC_SCR %>%left_join(side, by="clone")
+genes= unique(FC_SCR$shRNA_gene)
+
+smad2_FC_SCR=subset(FC_SCR,FC_SCR$shRNA_gene=="SMAD2")
+gata4_FC_SCR=subset(FC_SCR,FC_SCR$shRNA_gene=="GATA4")
+KMT2D_FC_SCR=subset(FC_SCR,FC_SCR$shRNA_gene=="KMT2D")
+CHD7_FC_SCR=subset(FC_SCR,FC_SCR$shRNA_gene=="CHD7")
+NKX25_FC_SCR=subset(FC_SCR,FC_SCR$shRNA_gene=="NKX2.5")
+
+                     
+mean <- smad2_FC_SCR %>%  
+  dplyr::group_by(timepoint) %>%  
+  dplyr::summarize(average = mean(percent_vs_hPSC)) %>% 
+  dplyr::ungroup() 
+
+ggplot(smad2_FC_SCR,aes(x=factor(timepoint,levels=c("D0","D2","D6","D12","D23")),y=percent_vs_hPSC,color=shRNA_label))+
+  geom_line(aes(group=clone))+
+  #scale_linetype_manual(name="side",values = c("dashed", "solid","longdash"))+
+  scale_color_oi(order = c(1, 5, 6, 2, 4, 3, 7))+
+  geom_line(data = mean,mapping = aes(x = timepoint, y = average, group=1), 
+            color="red", size=1.4)+
+  labs(
+    x = "",
+    y = "clone fraction vs hiPSC",
+    color = "shRNA",
+    title= "Depletion of SMAD2 clones compared to SCR"
+  ) 
+
+ggsave(filename = paste0(fname_prefix_line, "_enrichment_depletion_SMAD2_SCR.pdf"),
+       width = 5, height = 4)
+
+mean <- gata4_FC_SCR %>%  
+  dplyr::group_by(timepoint) %>%  
+  dplyr::summarize(average = mean(percent_vs_hPSC)) %>% 
+  dplyr::ungroup() 
+
+ggplot(gata4_FC_SCR,aes(x=factor(timepoint,levels=c("D0","D2","D6","D12","D23")),y=percent_vs_hPSC,color=shRNA_label))+
+  geom_line(aes(group=clone))+
+  #scale_linetype_manual(name="side",values = c("dashed", "solid","longdash"))+
+  scale_color_oi(order = c(1, 5, 6, 2, 4, 3, 7))+
+  geom_line(data = mean,mapping = aes(x = timepoint, y = average, group=1), 
+            color="red", size=1.4)+
+  labs(
+    x = "",
+    y = "clone fraction vs hiPSC",
+    color = "shRNA",
+    title= "Depletion of GATA4 clones compared to SCR"
+  )
+ggsave(filename = paste0(fname_prefix_line, "_enrichment_depletion_GATA4_SCR.pdf"),
+       width = 5, height = 4)
+
+
+mean <- CHD7_FC_SCR %>%  
+  dplyr::group_by(timepoint) %>%  
+  dplyr::summarize(average = mean(percent_vs_hPSC)) %>% 
+  dplyr::ungroup() 
+
+ggplot(CHD7_FC_SCR,aes(x=factor(timepoint,levels=c("D0","D2","D6","D12","D23")),y=percent_vs_hPSC,color=shRNA_label))+
+  geom_line(aes(group=clone))+
+  #scale_linetype_manual(name="side",values = c("solid","longdash"))+
+  scale_color_oi(order = c(1, 5, 6, 2, 4, 3, 7))+
+  geom_line(data = mean,mapping = aes(x = timepoint, y = average, group=1), 
+            color="red", size=1.4)+
+  labs(
+    x = "",
+    y = "clone fraction vs hiPSC",
+    color = "shRNA",
+    title= "Depletion of CHD7 clones compared to SCR"
+  )
+ggsave(filename = paste0(fname_prefix_line, "_enrichment_depletion_CHD7_SCR.pdf"),
+       width = 5, height = 4)
+
+mean <- KMT2D_FC_SCR %>%  
+  dplyr::group_by(timepoint) %>%  
+  dplyr::summarize(average = mean(percent_vs_hPSC)) %>% 
+  dplyr::ungroup() 
+
+ggplot(KMT2D_FC_SCR,aes(x=factor(timepoint,levels=c("D0","D2","D6","D12","D23")),y=percent_vs_hPSC,color=shRNA_label))+
+  geom_line(aes(group=clone))+
+  #scale_linetype_manual(name="side",values = c("solid","longdash"))+
+  scale_color_oi(order = c(1, 5, 6, 2, 4, 3, 7))+
+  geom_line(data = mean,mapping = aes(x = timepoint, y = average, group=1), 
+            color="red", size=1.4)+
+  labs(
+    x = "",
+    y = "clone fraction vs hiPSC",
+    color = "shRNA",
+    title= "Depletion of KMT2D clones compared to SCR"
+  )
+ggsave(filename = paste0(fname_prefix_line, "_enrichment_depletion_KMT2D_SCR.pdf"),
+       width = 5, height = 4)
+
+mean <- NKX25_FC_SCR %>%  
+  dplyr::group_by(timepoint) %>%  
+  dplyr::summarize(average = mean(percent_vs_hPSC)) %>% 
+  dplyr::ungroup() 
+
+ggplot(NKX25_FC_SCR,aes(x=factor(timepoint,levels=c("D0","D2","D6","D12","D23")),y=percent_vs_hPSC,color=shRNA_label))+
+  geom_line(aes(group=clone))+
+  #scale_linetype_manual(name="side",values = c("solid","longdash"))+
+  scale_color_oi(order = c(9, 5, 6, 2, 4, 3, 7))+
+  geom_line(data = mean,mapping = aes(x = timepoint, y = average, group=1), 
+            color="red", size=1.4)+
+  labs(
+    x = "",
+    y = "clone fraction vs hiPSC",
+    color = "shRNA",
+    title= "Depletion of NKX2.5 clones compared to SCR"
+  )
+ggsave(filename = paste0(fname_prefix_line, "_enrichment_depletion_NKX25_SCR.pdf"),
+       width = 5, height = 4)
+
+
+
+```
+
+###make clone plots for sides and depletion/enrichment
+####clone fraction based on total
+
+```{r}
+percent_hiPSC=percent_hiPSC[order(percent_hiPSC$value,decreasing = T),]
+Side2=percent_hiPSC%>%filter(percent=="percentSide2")
+Side2=Side2[order(Side2$value,decreasing = T),]
+clone_order=Side2$clone
+
+s2clones=side%>%filter(side=="Side2")
+s2clones=as.vector(unique(s2clones$clone))
+
+percent_hiPSC=percent_hiPSC%>%filter(clone%in%s2clones)
+
+##plots sides
+ggplot(percent_hiPSC, aes(x = factor(clone,levels = clone_order), y = value, fill=percent))+ geom_bar(stat = "identity")+
+  scale_fill_okabeito(order=c(5,6))+
+  labs(
+    x = "",
+    y = "%",
+    color = "",
+    title= "Clone side at D0")
+
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "side_shRNAgene.pdf"),
+     width = 6, height = 8)
+
+##plot enrichment depletion
+
+ggplot(FC_df, aes(x = factor(clone,levels = clone_order), y = log2(clone_fraction_D2vshiPSC), fill=shRNA_gene))+ geom_bar(stat = "identity")+
+  scale_fill_okabeito()+
+    geom_hline(yintercept = -1, linetype="dotted")+
+  ylim(-5,2)+
+  labs(
+    x = "",
+    y = "Log2 of clone fraction in hiPSC CM D2 vs hiPSC",
+    color = "shRNA",
+    title= "Enrichment Depletion at D2")
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "enrichment_depletion_D2.pdf"),
+     width = 6, height = 8)
+
+ggplot(FC_df, aes(x = factor(clone,levels = clone_order), y = log2(clone_fraction_D6vshiPSC), fill=shRNA_gene))+ geom_bar(stat = "identity")+
+  scale_fill_okabeito()+
+  geom_hline(yintercept = -1, linetype="dotted")+
+  ylim(-5,2)+
+  labs(
+    x = "",
+    y = "Log2 of clone fraction in hiPSC CM D6 vs hiPSC",
+    color = "shRNA",
+    title= "Enrichment Depletion at D6")
+
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "enrichment_depletion_D6.pdf"),
+     width = 6, height = 8)
+
+ggplot(FC_df, aes(x = factor(clone,levels = clone_order), y = log2(clone_fraction_D12vshiPSC), fill=shRNA_gene))+ geom_bar(stat = "identity")+
+  scale_fill_okabeito()+
+  geom_hline(yintercept = -1, linetype="dotted")+
+  ylim(-5,2)+
+  labs(
+    x = "",
+    y = "Log2 of clone fraction in hiPSC CM D12 vs hiPSC",
+    color = "shRNA",
+    title= "Enrichment Depletion at D12")
+
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "enrichment_depletion_D12.pdf"),
+     width = 6, height = 8)
+
+ggplot(FC_df, aes(x = factor(clone,levels = clone_order), y = log2(clone_fraction_D23vshiPSC), fill=shRNA_gene))+ geom_bar(stat = "identity")+
+  scale_fill_okabeito()+
+  geom_hline(yintercept = -1, linetype="dotted")+
+  ylim(-5,2)+
+  labs(
+    x = "",
+    y = "Log2 of clone fraction in hiPSC CM D23 vs hiPSC",
+    color = "shRNA",
+    title= "Enrichment Depletion at D23")
+
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "enrichment_depletion_D23.pdf"),
+     width = 6, height = 8)
+```
+###make clone plots for sides and depletion/enrichment
+####clone fraction based on total of SCR
+
+```{r}
+percent_hiPSC=percent_hiPSC[order(percent_hiPSC$value,decreasing = T),]
+Side2=percent_hiPSC%>%filter(percent=="percentSide2")
+Side2=Side2[order(Side2$value,decreasing = T),]
+clone_order=Side2$clone
+
+##plots sides
+ggplot(percent_hiPSC, aes(x = factor(clone,levels = clone_order), y = value, fill=percent))+ geom_bar(stat = "identity")+
+  scale_fill_okabeito(order=c(5,6))+
+  labs(
+    x = "",
+    y = "%",
+    color = "",
+    title= "Clone side at D0")
+
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "side_shRNAgene.pdf"),
+     width = 6, height = 8)
+
+##plot enrichment depletion
+
+ggplot(FC_df, aes(x = factor(clone,levels = clone_order), y = log2(clone_fraction_D2vshiPSC_SCR), fill=shRNA_gene))+ geom_bar(stat = "identity")+
+  scale_fill_okabeito()+
+  geom_hline(yintercept = -1, linetype="dotted")+
+  ylim(-6,1)+
+  labs(
+    x = "",
+    y = "Log2 of clone fraction in hiPSC CM D2 vs hiPSC",
+    color = "shRNA",
+    title= "Enrichment Depletion at D2 compared to SCR")
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "enrichment_depletion_D2_SCR.pdf"),
+     width = 6, height = 8)
+
+ggplot(FC_df, aes(x = factor(clone,levels = clone_order), y = log2(clone_fraction_D6vshiPSC_SCR), fill=shRNA_gene))+ geom_bar(stat = "identity")+
+  scale_fill_okabeito()+
+  geom_hline(yintercept = -1, linetype="dotted")+
+  ylim(-6,1)+
+  labs(
+    x = "",
+    y = "Log2 of clone fraction in hiPSC CM D6 vs hiPSC",
+    color = "shRNA",
+    title= "Enrichment Depletion at D6 compared to SCR")
+
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "enrichment_depletion_D6_SCR.pdf"),
+     width = 6, height = 8)
+
+ggplot(FC_df, aes(x = factor(clone,levels = clone_order), y = log2(clone_fraction_D12vshiPSC_SCR), fill=shRNA_gene))+ geom_bar(stat = "identity")+
+  scale_fill_okabeito()+
+  geom_hline(yintercept = -1, linetype="dotted")+
+  ylim(-6,1)+
+  labs(
+    x = "",
+    y = "Log2 of clone fraction in hiPSC CM D12 vs hiPSC",
+    color = "shRNA",
+    title= "Enrichment Depletion at D12 compared to SCR")
+
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "enrichment_depletion_D12_SCR.pdf"),
+     width = 6, height = 8)
+
+ggplot(FC_df, aes(x = factor(clone,levels = clone_order), y = log2(clone_fraction_D23vshiPSC_SCR), fill=shRNA_gene))+ geom_bar(stat = "identity")+
+  scale_fill_okabeito()+
+  geom_hline(yintercept = -1, linetype="dotted")+
+  ylim(-6,1)+
+  labs(
+    x = "",
+    y = "Log2 of clone fraction in hiPSC CM D23 vs hiPSC",
+    color = "shRNA",
+    title= "Enrichment Depletion at D23 compared to SCR")
+
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "enrichment_depletion_D23_SCR.pdf"),
+     width = 6, height = 8)
+```
+#######add clone names
+
+```{r}
+clone_ID=readxl::read_excel(paste0(fname_scratch,"/clones.xlsx"))
+clones=FC_df%>%select(cell_BC)%>%distinct(cell_BC)
+clone_ID=clone_ID%>%filter(cell_BC%in%clones$cell_BC)
+
+suppl_table=FC_df%>%select(clone,cell_BC,shRNA_label,clone_fraction_hiPSC_ex7,clone_fraction_hiPSC_ex5,clone_fraction_D2vshiPSC,clone_fraction_D6vshiPSC,clone_fraction_D12vshiPSC,clone_fraction_D23vshiPSC,qval_DD2_TOTAL,qval_DD6_TOTAL,qval_DD12_TOTAL,qval_DD23_TOTAL)
+
+suppl_table=suppl_table%>%left_join(clone_ID, by=c("clone","cell_BC"))
+suppl_table$cloneID=paste0("cl",suppl_table$cl_ID," ",suppl_table$shRNA_ID_unified)
+library("xlsx")
+stat_filename = paste0(fname_prefix_stat, "_supp_table_enrichment_depletion.csv")
+write.csv(suppl_table, stat_filename, quote = F, row.names = T, sep=",")
+
+```
+

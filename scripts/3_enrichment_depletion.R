@@ -12,13 +12,20 @@ meta = args[3]
 timepoint=args[4]
 #control_gene = "SCR"
 control_gene = args[5]
+#min_cells_cluster = 70
+min_cells_cluster = args[6]
+min_cells_cluster = as.numeric(min_cells_cluster)
+#min_cells_shRNA = 40
+min_cells_shRNA = args[7]
+min_cells_shRNA = as.numeric(min_cells_shRNA)
 
 
-library(tidyverse)
-library(ggplot2)
-library(gtools)
-library(dplyr)
-library(RColorBrewer)
+suppressMessages(library(tidyverse))
+suppressMessages(library(ggplot2))
+suppressMessages(library(gtools))
+suppressMessages(library(dplyr))
+suppressMessages(library(RColorBrewer))
+suppressMessages(library(ggrepel))
 
 #install devtools if you don't have it already for easy installation
 #install.packages("devtools")
@@ -33,20 +40,29 @@ metadata = read.delim(paste0(dir, meta), header = T, sep = ",", row.names = 1)
 metadata$cellsxclone = as.numeric(metadata$cellsxclone)
 load(paste0(dir, file))
 
+cellsxshRNA = distinct(metadata[,c("shRNA", "cellsxclone", "clone")]) %>% 
+  group_by(shRNA) %>%
+  mutate(cellsxshRNA = sum(cellsxclone)) %>%
+  filter(cellsxshRNA > min_cells_shRNA)
+
+metadata = filter(metadata, clone %in% cellsxshRNA$clone)
+
 ##in case of TET vs noTET
 if ("control" %in% metadata$sampleC) {
   print("Control samples are present")
   
-  #separate df based on condition
-  #for (rep in unique(metadata$replicate)) {
-  #print(rep)
-  #data = filter(metadata, replicate == rep)
   data = distinct(metadata[c("clone", "cellsxclone", "sample", "replicate", "sampleC")])
-  TET = filter(data, sampleC == "KD")
+  TET = distinct(filter(data[c("clone", "cellsxclone", "sampleC")], sampleC == "KD"))
+  TET = TET %>%
+    group_by(clone) %>%
+    summarise(cellsxclone = sum(cellsxclone), .groups = "drop")
   tot = sum(TET$cellsxclone)
   TET = mutate(TET, percentage_TET = cellsxclone / tot * 100)
   TET = TET[c("clone", "percentage_TET")]
-  CTR = filter(data, sampleC == "control")
+  CTR = filter(data[c("clone", "cellsxclone", "sampleC")], sampleC == "control")
+  CTR = CTR %>%
+    group_by(clone) %>%
+    summarise(cellsxclone = sum(cellsxclone), .groups = "drop")
   tot = sum(CTR$cellsxclone)
   CTR = mutate(CTR, percentage_CTR = cellsxclone / tot * 100)
   CTR = CTR[c("clone", "percentage_CTR")]
@@ -82,15 +98,16 @@ if ("control" %in% metadata$sampleC) {
     select(-sampleC) %>%
     pivot_longer(cols = c(percentage_TET, percentage_CTR), names_to = "sampleC")
   
-  p = ggplot(data = data_long, aes(x=sampleC, y=value, fill = gene)) +
-    geom_col() +
-    facet_wrap(vars(clone)) +
+  p <- ggplot(data = data_long, aes(x = clone, y = value, fill = sampleC, linetype = gene)) +
+    geom_col(position = "dodge", colour = "black") +
+    theme_minimal() +
     theme(axis.text.x = element_text(angle = 90))
   ggsave(filename = paste0(dir, "cellsxclone_TETvsnoTET.pdf"), plot = p, width = 20, height = 10)
   
   p = ggplot(data = data_long, aes(x=gene, y=value, fill = sampleC)) +
     #facet_grid(col =vars(gene)) +
     geom_col(position = "dodge") +
+    theme_minimal() +  
     theme(axis.text.x = element_text(angle = 90))
   ggsave(filename = paste0(dir, "cellsxgene_TETvsnoTET.pdf"), plot = p, width = 20, height = 10)
   
@@ -100,20 +117,25 @@ if ("control" %in% metadata$sampleC) {
   data = mutate(data, FC = percentage_TET / percentage_CTR)
   data = mutate(data, log2FC = log2(FC))
   #wide[is.na(wide)] <- 0
-  p = ggplot(data = data, aes(x=clone, y= log2FC, fill = gene)) +
+  gra = distinct(data[c("clone", "log2FC", "gene")])
+  p = ggplot(data = gra, aes(x=clone, y= log2FC, fill = gene)) +
     geom_col() + 
+    theme_minimal() +  
     theme(axis.text.x = element_text(angle = 90))
   ggsave(filename = paste0(dir, "log2FC_TETvsnoTET.pdf"), plot = p, width = 15, height = 10)
   
-  wide_big = filter(data, cellsxclone > 19)
+  wide_big = distinct(filter(data, cellsxclone > 19)[c("clone", "log2FC", "gene", "log2Percentage_CTR")])
   p = ggplot(data = wide_big, aes(x=clone, y= log2FC, fill = gene)) +
     geom_col() + 
+    theme_minimal() +  
     theme(axis.text.x = element_text(angle = 90))
   ggsave(filename = paste0(dir, "log2FC_bigclones_TETvsnoTET.pdf"), plot = p, width = 15, height = 10)
   
   p = ggplot(data = wide_big, aes(x=log2FC, y= log2Percentage_CTR, colour = gene)) + #colour = p.value
     geom_point() +
-    geom_vline(xintercept = c(-1, 1), linetype = "dotted")
+    geom_text_repel(aes(label = ifelse(log2FC>1 | log2FC<(-1),as.character(clone),'')), colour = "black", hjust=0, vjust=0, size = 2) +
+    geom_vline(xintercept = c(-1, 1), linetype = "dotted")+
+    theme_minimal() 
   ggsave(filename = paste0(dir, "volcano_plot_enrich_bigclones_TETvsnoTET.pdf"), plot = p)
   
   #p-value
@@ -125,6 +147,18 @@ if ("control" %in% metadata$sampleC) {
   #STATS FOR CLUSTERS
   colData(cds)$clusters = clusters(cds)
   df = as.data.frame(colData(cds))
+  
+  cellsxcluster = distinct(df[,c("clusters", "nomi")]) %>% 
+    group_by(clusters) %>%
+    mutate(cellsxcluster = n()) 
+  
+  cellsxcluster = distinct(cellsxcluster[, c("clusters", "cellsxcluster")])
+  print(cellsxcluster)
+  print(paste0("Min cells per clusters: ", min_cells_cluster))
+  print(paste0("Removing clusters: ", filter(cellsxcluster, cellsxcluster <= as.numeric(min_cells_cluster))[1]))
+  cellsxcluster = filter(cellsxcluster, cellsxcluster > min_cells_cluster)
+  
+  df = filter(df, clusters %in% cellsxcluster$clusters)
   
   ## GENE LEVEL
   condition = "gene"
@@ -174,12 +208,24 @@ if ("control" %in% metadata$sampleC) {
   p = ggplot(combined_df, aes(x = factor(clusters), y = percentage, fill=gene)) + geom_bar(stat = "identity", colour = "white", linewidth = 0.3)+
     #+theme(legend.position='none')
     #scale_fill_okabeito(reverse=T)+
+    theme_minimal() +  
     facet_grid(~treat)
-  ggsave(p, filename = "genes_in_clusters_TETvsnoTET.pdf")
+  ggsave(p, filename = paste0(dir, "genes_in_clusters_TETvsnoTET.pdf"))
   
   
   ## shRNA level
   df = as.data.frame(colData(cds))
+  cellsxcluster = distinct(df[,c("clusters", "nomi")]) %>% 
+    group_by(clusters) %>%
+    mutate(cellsxcluster = n()) 
+  
+  cellsxcluster = distinct(cellsxcluster[, c("clusters", "cellsxcluster")])
+  print(cellsxcluster)
+  print(paste0("Removing clusters: ", filter(cellsxcluster, cellsxcluster <= min_cells_cluster)[1]))
+  cellsxcluster = filter(cellsxcluster, cellsxcluster > min_cells_cluster)
+  
+  df = filter(df, clusters %in% cellsxcluster$clusters)
+  
   condition = "shRNA"
   
   data_CTR = filter(df, sampleC == "control")
@@ -227,8 +273,9 @@ if ("control" %in% metadata$sampleC) {
   p = ggplot(combined_df, aes(x = factor(clusters), y = percentage, fill=shRNA)) + geom_bar(stat = "identity", colour = "white", linewidth = 0.3)+
     #+theme(legend.position='none')
     #scale_fill_okabeito(reverse=T)+
+    theme_minimal() +  
     facet_grid(~treat)
-  ggsave(p, filename = "shRNA_in_clusters_TETvsnoTET.pdf")
+  ggsave(p, filename = paste0(dir, "shRNA_in_clusters_TETvsnoTET.pdf"))
   
   
   ## CLUSTERS IN PERTURBATIONS
@@ -282,10 +329,13 @@ if ("control" %in% metadata$sampleC) {
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     #+theme(legend.position='none')
     #scale_fill_okabeito(reverse=T)+
+    theme_minimal() +  
     facet_grid(~gene) 
   ggsave(p, filename = paste0(dir, "clusters_in_genes_TETvsnoTET.pdf"), width = 20, height = 10)
   
   ##FISHER TEST
+  #levels(combined_df$clusters) 
+  combined_df = droplevels(combined_df)
   complete_combinded <- combined_df %>%
     complete(clusters, gene, treat, fill = list(count = 0))
   complete_combinded_w <- complete_combinded %>%
@@ -415,11 +465,13 @@ if ("control" %in% metadata$sampleC) {
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     #+theme(legend.position='none')
     #scale_fill_okabeito(reverse=T)+
+    theme_minimal() +  
     facet_grid(~shRNA) 
   ggsave(p, filename = paste0(dir, "clusters_in_shRNAs_TETvsnoTET.pdf"), width = 20, height = 7)
   
   
   ##FISHER TEST
+  combined_df = droplevels(combined_df)
   complete_combinded <- combined_df %>%
     complete(clusters, shRNA, treat, fill = list(count = 0))
   complete_combinded_w <- complete_combinded %>%
@@ -502,7 +554,7 @@ if ("control" %in% metadata$sampleC) {
 
 ## VS TIMEPOINT
 print(timepoint)
-if (! is.na(timepoint)) {
+if (timepoint %in% metadata$sample_ann) {
   print(paste0("Starting timepoint is present. Comparing to ", timepoint, " and ", control_gene))
   data = distinct(metadata[c("clone", "cellsxclone", "sample", "replicate", "sample_ann")])
   data = separate(data, clone, c("gene", "barcode", "UCI"), sep = "_", remove = F)
@@ -510,12 +562,14 @@ if (! is.na(timepoint)) {
   p = ggplot(data = data, aes(x=clone, y=cellsxclone, fill = sample_ann)) +
     #facet_grid(col =vars(gene)) +
     geom_col(position = "dodge") +
+    theme_minimal() +  
     theme(axis.text.x = element_text(angle = 90))
   ggsave(filename = paste0(dir, "cellsxclone_samples.pdf"), plot = p, width = 20, height = 10)
   
   p = ggplot(data = data, aes(x=gene, y=cellsxclone, fill = sample_ann)) +
     #facet_grid(col =vars(gene)) +
     geom_col(position = "dodge") +
+    theme_minimal() +  
     theme(axis.text.x = element_text(angle = 90))
   ggsave(filename = paste0(dir, "cellsxgene_samples.pdf"), plot = p, width = 20, height = 10)
   
@@ -553,6 +607,7 @@ if (! is.na(timepoint)) {
     # Plot both columns as y-values
     p <- ggplot(data = wide_big, aes(x = clone, y = .data[[paste0("log2FC_", v)]], fill = gene)) +
       geom_col(position = "dodge") +  # Use dodge to separate bars
+      theme_minimal() +  
       theme(axis.text.x = element_text(angle = 90))
     
     ggsave(filename = paste0(dir, "log2FC_bigclones_", v, ".pdf"), plot = p, width = 15, height = 10)
@@ -576,15 +631,32 @@ if (! is.na(timepoint)) {
     wide = merge(wide, pvalues, by = "clone")
     
     wide_big = filter(wide, if_any(matches("^cellsxclone"), ~ . > 19))
+    wide_big = distinct(wide_big[,c("clone", paste0("log2FC_", v), paste0("log2Percentage_", timepoint), "padj")])
     p = ggplot(data = wide_big, aes(x=!!sym(paste0("log2FC_", v)), y= !!sym(paste0("log2Percentage_", timepoint)), colour = -log10(padj))) + #colour = p.value
       geom_point() +
-      geom_vline(xintercept = c(-1, 1), linetype = "dotted")
+      geom_vline(xintercept = c(-1, 1), linetype = "dotted") +
+      #geom_hline(yintercept = c(1), linetype = "dotted") +
+      geom_text_repel(aes(label = ifelse(!!sym(paste0("log2FC_", v))<(-1),as.character(clone),'')), size = 1, colour = "black") +
+      theme_minimal() +
+      scale_color_viridis_c()
     ggsave(filename = paste0(dir, "volcano_plot_enrich_", v, "_bigclones.pdf"), plot = p)
   }
   
   #STATS
   colData(cds)$clusters = clusters(cds)
   df = as.data.frame(colData(cds))
+  
+  cellsxcluster = distinct(df[,c("clusters", "nomi")]) %>% 
+    group_by(clusters) %>%
+    mutate(cellsxcluster = n()) 
+  
+  cellsxcluster = distinct(cellsxcluster[, c("clusters", "cellsxcluster")])
+  print(cellsxcluster)
+  print(paste0("Min cells per clusters: ", min_cells_cluster))
+  print(paste0("Removing clusters: ", filter(cellsxcluster, cellsxcluster <= min_cells_cluster)[1]))
+  cellsxcluster = filter(cellsxcluster, cellsxcluster > min_cells_cluster)
+  
+  df = filter(df, clusters %in% cellsxcluster$clusters)
   
   ## GENE LEVEL VS SCR!!!
   # gene in clusters vs SCR in clusters
@@ -662,12 +734,14 @@ if (! is.na(timepoint)) {
     # Plot
     p <- ggplot(combined_df, aes(x = factor(treat), y = percentage, fill = gene)) +
       geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+      theme_minimal() +  
       facet_grid(~clusters)
     
     ggsave(p, filename = paste0(dir, "genes_in_clusters_", v, ".pdf"), width = 20, height = 10)
     
     
     ##FISHER TEST
+    combined_df = droplevels(combined_df)
     complete_combinded <- combined_df %>%
       complete(clusters, gene, treat, fill = list(count = 0))
     complete_combinded <- complete_combinded %>%
@@ -806,6 +880,17 @@ if (! is.na(timepoint)) {
   #STATS
   colData(cds)$clusters = clusters(cds)
   df = as.data.frame(colData(cds))
+  cellsxcluster = distinct(df[,c("clusters", "nomi")]) %>% 
+    group_by(clusters) %>%
+    mutate(cellsxcluster = n()) 
+  
+  cellsxcluster = distinct(cellsxcluster[, c("clusters", "cellsxcluster")])
+  print(cellsxcluster)
+  print(paste0("Min cells per clusters: ", min_cells_cluster))
+  print(paste0("Removing clusters: ", filter(cellsxcluster, cellsxcluster <= min_cells_cluster)[1]))
+  cellsxcluster = filter(cellsxcluster, cellsxcluster > min_cells_cluster)
+  
+  df = filter(df, clusters %in% cellsxcluster$clusters)
   
   ## shRNA LEVEL VS SCR!!!
   # shRNA in clusters vs SCR in clusters
@@ -883,12 +968,14 @@ if (! is.na(timepoint)) {
     # Plot
     p <- ggplot(combined_df, aes(x = factor(treat), y = percentage, fill = shRNA)) +
       geom_bar(stat = "identity", colour = "white", linewidth = 0.3) +
+      theme_minimal() +  
       facet_grid(~clusters)
     
     ggsave(p, filename = paste0(dir, "shRNAs_in_clusters_", v, ".pdf"), width = 20, height = 10)
     
     
     ##FISHER TEST
+    combined_df = droplevels(combined_df)
     complete_combinded <- combined_df %>%
       complete(clusters, shRNA, treat, fill = list(count = 0))
     complete_combinded <- complete_combinded %>%

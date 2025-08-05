@@ -1,0 +1,2032 @@
+---
+title: "n1 EB003E2: analysis MULTIOME from QC to Seurat/Signac"
+author: "Elisa Balmas PhD"
+date: "2024-02-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set up environment
+
+```{r}
+library(monocle3)
+library(tidyr)
+library(stringr)
+library(grid)
+library(viridis)
+library(viridisLite)
+library(ggthemes)
+library(dplyr)
+library(tidyverse)
+library(ggsignif)
+library(umap)
+library(heatmap3)
+library(plyr)
+library(edgeR)
+library(compareGroups)
+library(dbscan)
+library(MAST)
+library(geosphere)
+library(RColorBrewer)
+library(Seurat)
+library(htmlwidgets)
+library(Matrix)
+library(tidyseurat)
+library(SeuratWrappers)
+library(scMAGeCK)
+library(readxl)
+library(SparseArray)
+library(SeuratData)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(hdf5r)
+library(Signac)
+library(irlba)
+library(presto)
+library(chromVAR)
+library(JASPAR2020)
+library(TFBSTools)
+library(motifmatchr)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(ggseqlogo)
+
+#library(rCASC)
+#library(deepToolsUtils)
+#library(R.utils)
+
+
+library(ggplot2); library(reshape2); theme_set(theme_bw(26) + theme(panel.grid.major = element_blank(), 
+                                                                    panel.grid.minor = element_blank()) +
+                                                 theme(legend.key = element_blank()))
+update_geom_defaults("point", aes(size = 4))
+
+#setwd("/home/ebalmas/scpHUB/projects/H001AS7_iKDseq_10X_4tp_monocle/analysis_EB")
+
+# Session options
+options(stringsAsFactors = FALSE)
+set.seed(12345)
+
+# Set up the ggplot default params
+theme_set(theme_bw(12) + 
+          theme(panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(),
+                plot.title = element_text(size=15, face="bold", margin = margin(10,0,10,0)),
+                axis.text.x = element_text(angle=45, hjust = 1)))
+
+
+# Set up filename prefixes and output folders with the data
+dir.create("Output")
+
+fname_scratch <- file.path("/scratch/")
+
+okabe_tab <- read_excel("scratch/color_scale.xlsx")
+okabe_pal=okabe_tab$hex
+
+okabe_pal=c("#E69F00","#56B4E9","#009E73","#f0E442","#0072B2","#D55E00","#CC79A7","#000000")
+
+
+pal <- c("#000000","#004949","#009292","#ff6db6","#ffb6db",
+         "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+         "#920000","#924900","#db6d00","#24ff24","#ffff6d")
+```
+#create folders
+
+```{r}
+dir.create("Output")
+dir.create(file.path("Output","QC"))
+dir.create(file.path("Output","QC", format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","QC", format(Sys.Date(), "%y%m%d"), "csv"))
+dir.create(file.path("Output","QC", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","QC", format(Sys.Date(), "%y%m%d"), "ribomito"))
+dir.create(file.path("Output","QC", format(Sys.Date(), "%y%m%d"), "umap"))
+
+dir.create(file.path("Output","ATAC"))
+dir.create(file.path("Output","ATAC", format(Sys.Date(), "%y%m%d"), "csv"))
+dir.create(file.path("Output","ATAC", format(Sys.Date(), "%y%m%d"), "coverage"))
+dir.create(file.path("Output","ATAC", format(Sys.Date(), "%y%m%d"), "umap"))
+dir.create(file.path("Output","ATAC", format(Sys.Date(), "%y%m%d"), "motifs"))
+dir.create(file.path("Output","ATAC", format(Sys.Date(), "%y%m%d"), "mosaic"))
+dir.create(file.path("Output","ATAC", format(Sys.Date(), "%y%m%d"), "dotplot"))
+dir.create(file.path("Output","ATAC", format(Sys.Date(), "%y%m%d"), "GO"))
+
+#set up folder path QC
+fname_prefix_R_QC <- file.path("Output","QC", format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_csv_QC<-file.path("Output","QC", format(Sys.Date(), "%y%m%d"), "csv", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_ribomito_QC <- file.path("Output","QC", format(Sys.Date(), "%y%m%d"), "ribomito", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_umap_QC <- file.path("Output","QC", format(Sys.Date(), "%y%m%d"), "umap", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_ATAC_csv <- file.path("Output","ATAC", format(Sys.Date(), "%y%m%d"), "csv", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_ATAC_coverage <- file.path("Output","ATAC", format(Sys.Date(), "%y%m%d"), "coverage", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_ATAC_umap <- file.path("Output","ATAC", format(Sys.Date(), "%y%m%d"), "umap", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_ATAC_motifs <- file.path("Output","ATAC", format(Sys.Date(), "%y%m%d"), "motifs", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_mosaic=file.path("Output","ATAC", format(Sys.Date(), "%y%m%d"), "mosaic", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot=file.path("Output","ATAC", format(Sys.Date(), "%y%m%d"), "dotplot", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_ATAC_GO=file.path("Output","ATAC", format(Sys.Date(), "%y%m%d"), "GO", 
+                               format(Sys.Date(), "%y%m%d"))
+
+```
+
+###load data
+```{r}
+#load(paste0(getwd(),"/scratch/241205_data_filtered_for_monocle.RData"))
+catcher_data=read.csv(paste0(getwd(),"/scratch/silencing_matrix_complete_1.csv"), header = TRUE, sep = ",", quote = "\"", 
+                    dec = ".", fill = TRUE, comment.char = "",row.names=1)
+
+# get side information
+clone_side=read.csv(paste0(getwd(),"/scratch/clone_side.csv"), header = TRUE, sep = ",", quote = "\"", 
+                     dec = ".", fill = TRUE, comment.char = "",row.names=1)
+#get colour scale
+shRNA_IDs <- read_excel("scratch/shRNA_IDs.xlsx")
+
+load(paste0(getwd(),"/scratch/protein_coding_genes.RData"))
+
+```
+
+###build cell metadata
+
+```{r}
+####build cell metadata
+cell_metadata=data.frame(info=colnames(catcher_data))
+cell_metadata=cell_metadata%>%dplyr::select(info)%>%dplyr::mutate(lib_ID=sapply(strsplit(as.character(info), "_"), "[[", 1),shRNA_BC = sapply(strsplit(as.character(info), "_"), "[[", 3),
+                                                    shRNA_gene = sapply(strsplit(as.character(info), "_"), "[[", 4),
+                                                    cell_BC = sapply(strsplit(as.character(info), "_"), "[[", 5),
+                                                   # orig.ident= sapply(strsplit(as.character(info), "_"), "[[", 6),
+                                                    UMI_UCI = sapply(strsplit(as.character(info), "_"), "[[", 2))
+cell_metadata$orig.ident="1"
+cell_metadata$sample=cell_metadata$orig.ident
+cell_metadata=cell_metadata%>%mutate(libID=paste0(cell_metadata$lib_ID,"-",cell_metadata$sample),
+                                     clone=paste0(cell_metadata$shRNA_BC,"_",cell_metadata$shRNA_gene,"_",cell_metadata$cell_BC))
+rownames(cell_metadata)=cell_metadata$info
+
+```
+
+#add side data and shRNA data
+
+```{r}
+##add side data and shRNAdata
+cell_metadata=cell_metadata%>%left_join(clone_side, by="clone")#424
+cell_metadata <- cell_metadata %>%
+  mutate(side = ifelse(is.na(side), "unknown", side))
+
+cell_metadata$side_polished=ifelse(cell_metadata$side=="Side1","iPSC-neuro",
+                                 ifelse(cell_metadata$side=="Side2","iPSC",
+                                        ifelse(cell_metadata$side=="mixed","iPSC-mixed",
+                                               ifelse(cell_metadata$side=="unknown","iPSC-unknown","other"))))
+
+cell_metadata=cell_metadata%>%left_join(shRNA_IDs, by=c("shRNA_BC","shRNA_gene"))#424
+cell_metadata <- cell_metadata %>% distinct(lib_ID, libID, orig.ident, .keep_all = TRUE)
+rownames(cell_metadata)=cell_metadata$info
+
+
+write.csv(cell_metadata, paste0(fname_prefix_csv_QC,"_cell_metadata.csv",sep=""))
+
+Rdata_filename = paste0(fname_prefix_R_QC, "_catcheR_data_complete.RData")
+save(cell_metadata, catcher_data,
+     file = Rdata_filename)
+
+
+```
+
+###################
+##loading on Seurat
+####################
+
+
+#create Seurat Object
+
+```{r}
+
+# load the RNA and ATAC data
+counts <- Seurat::Read10X_h5(paste0(getwd(),"/scratch/filtered_feature_bc_matrix.h5"))
+c=counts$`Gene Expression`
+c=c[row.names(c) %in% protein_coding_genes,]#filter for protein coding genes straight away
+fragpath <- paste0(getwd(),"/scratch/atac_fragments.tsv.gz") #note that also atac_fragments.tsv.gz.tbi must be in the folder
+
+# get gene annotations for hg38
+annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+seqlevels(annotation) <- paste0('chr', seqlevels(annotation))
+
+# create a Seurat object containing the RNA data
+data_seurat <- CreateSeuratObject(
+  counts = c,
+  assay = "RNA"
+)
+
+#data_seurat <- CreateSeuratObject(
+ # counts = counts$`Gene Expression`,
+  #assay = "RNA"
+#)
+
+# create ATAC assay and add it to the object
+data_seurat[["ATAC"]] <- CreateChromatinAssay(
+  counts = counts$Peaks,
+  sep = c(":", "-"),
+  fragments = fragpath,
+  annotation = annotation
+)
+
+#add features to metadata
+meta_original=data_seurat[[]]
+meta_original$libID=rownames(meta_original)
+meta_original$lib_ID=sapply(strsplit(as.character(meta_original$libID), "-"), "[[", 1)
+meta_original$orig.ident="1"
+meta_original=meta_original%>%left_join(cell_metadata,by=c("lib_ID","libID","orig.ident"))
+
+rownames(meta_original)=meta_original$libID
+
+
+meta_original <- replace(meta_original, is.na(meta_original), "not_found_catcher")
+
+#update metadata
+data_seurat<- AddMetaData(data_seurat, meta_original, col.name = NULL)
+data_seurat@meta.data[["catcher"]]=data_seurat@meta.data[["clone"]]!="not_found_catcher"
+
+```
+
+
+#QC library
+
+```{r}
+###see https://stuartlab.org/signac/articles/pbmc_vignette.html
+###ATAC features
+DefaultAssay(data_seurat) <- "ATAC"
+
+data_seurat <- NucleosomeSignal(data_seurat)#Total number of fragments in peaks, to exclude cells with few reads  due to low sequencing depth
+data_seurat <- TSSEnrichment(data_seurat) #TSS enrichment score calculation: ATAC-seq targeting score based on the ratio of fragments centered at the Trasctiptional Start Site to fragments in TSS-flanking regions
+
+DensityScatter(data_seurat, x = 'nCount_ATAC', y = 'TSS.enrichment', log_x = TRUE, quantiles = TRUE)
+ggsave(filename = paste0(fname_prefix_ribomito_QC, "_", "DensityScatter_QC_ATAC.pdf"),
+     width = 10, height = 8)
+
+data_seurat[["blacklist_ratio"]]<-FractionCountsInRegion(
+  object = data_seurat, 
+  assay = 'ATAC',
+  regions = blacklist_hg38_unified)
+
+data_seurat[["nucleosome_group"]]<- ifelse(data_seurat$nucleosome_signal > 4, 'NS > 4', 'NS < 4') #high or low nucleosomal signal strength
+
+#FragmentHistogram(object =data_seurat, group.by = 'nucleosome_group')#check for outliers for the mononucleosomal / nucleosome-free ratio have different nucleosomal banding patterns
+FragmentHistogram(object =data_seurat, group.by = 'catcher')
+ggsave(filename = paste0(fname_prefix_ribomito_QC, "_", "nucleosome_group_QC_ATAC.pdf"),
+     width = 10, height = 5)
+
+VlnPlot(
+  object = data_seurat,
+  features = c('nCount_ATAC', 'TSS.enrichment', 'blacklist_ratio', 'nucleosome_signal'), group.by = 'catcher',
+  pt.size = 0.1,
+  ncol = 5
+)
+ggsave(filename = paste0(fname_prefix_ribomito_QC, "_", "VlnPlot_QC_ATAC.pdf"),
+     width = 15, height = 5)
+
+#########calculate % of mitocondiral reads and ribosomal reads
+#DefaultAssay(data_seurat) <- 'ATAC'
+DefaultAssay(data_seurat) <- 'RNA'
+data_seurat[["percent.mt"]] <- PercentageFeatureSet(data_seurat, pattern = "^MT-")
+data_seurat[["percent.ribo"]] <- PercentageFeatureSet(data_seurat, pattern = "RPS")
+
+QC=data_seurat[[c("nFeature_RNA","percent.mt","nCount_RNA","percent.ribo","nCount_ATAC","TSS.enrichment","catcher","nucleosome_group","nucleosome_signal","blacklist_ratio")]]
+
+#make a QC dataframe to plot the QC metrics and then use it as meta table for monocle
+QC <- QC %>%
+        dplyr::rename(nUMI = nCount_RNA,
+                      nGene = nFeature_RNA)
+QC$info=rownames(QC)
+QC$log10GenesPerUMI <- log10(QC$nGene) / log10(QC$nUMI)
+
+plot1=VlnPlot(data_seurat, features = c("nFeature_RNA"),group.by = "catcher",
+     pt.size=0.1)+scale_fill_manual(values =c("#818589","#ff6db6")) +geom_hline(yintercept = 400) #nGene
+plot2=VlnPlot(data_seurat, features = c("nCount_RNA"),group.by = "catcher",
+     pt.size=0.1)+scale_fill_manual(values =c("#818589","#ff6db6")) +geom_hline(yintercept = 1800) #nUMI
+plot1 + plot2
+ggsave(filename = paste0(fname_prefix_ribomito_QC, "_", "feature_QC.pdf"),
+     width = 10, height = 8)
+###n UMI
+QC %>% 
+  	ggplot(aes(color=catcher, x=nUMI, fill= catcher)) + 
+  	geom_density(alpha = 0.2) +scale_fill_manual(values =c("#818589","#ff6db6")) + 
+  	scale_x_log10() + 
+  	theme_classic() +
+  	ylab("Cell density") +
+  	geom_vline(xintercept = 1800)
+ggsave(filename = paste0(fname_prefix_ribomito_QC, "_", "UMI_QC.pdf"),
+     width = 10, height = 8)
+###n genes detected
+QC %>% 
+  	ggplot(aes(color=catcher, x=nGene, fill= catcher)) + 
+  	geom_density(alpha = 0.2) +scale_fill_manual(values =c("#818589","#ff6db6")) + 
+  	theme_classic() +
+  	scale_x_log10() + 
+  	geom_vline(xintercept = 400)
+ggsave(filename = paste0(fname_prefix_ribomito_QC, "_", "gene_det_QC.pdf"),
+     width = 10, height = 8)
+QC %>% 
+  	ggplot(aes(x=catcher, y=log10(nGene), fill=catcher)) + 
+  	geom_boxplot() +scale_fill_manual(values =c("#818589","#ff6db6")) + 
+  	theme_classic() +
+  	theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  	theme(plot.title = element_text(hjust=0.5, face="bold")) +
+  	ggtitle("NCells vs NGenes")
+ggsave(filename = paste0(fname_prefix_ribomito_QC, "_", "gene_QC.pdf"),
+     width = 10, height = 8)
+QC %>% 
+  	ggplot(aes(x=nUMI, y=nGene, color=percent.mt)) + 
+  	geom_point(size=1.5,alpha = 0.5) + 
+	scale_colour_gradient(low = "gray90", high = "black") +
+  	stat_smooth(method=lm) +
+  	scale_x_log10() + 
+  	scale_y_log10() + 
+  	theme_classic() +
+  	geom_vline(xintercept = 1800) +
+  	geom_hline(yintercept = 400) 
+ggsave(filename = paste0(fname_prefix_ribomito_QC, "_", "gene_UMI_QC.pdf"),
+     width = 10, height = 8)
+
+QC %>% 
+  	ggplot(aes(x=nUMI, y=nGene, color=catcher)) + 
+  	geom_point(size=1.5,alpha = 0.5) + scale_colour_manual(values =c("#818589","#ff6db6")) + 
+	#scale_colour_gradient(low = "gray90", high = "black") +
+  	stat_smooth(method=lm) +
+  	scale_x_log10() + 
+  	scale_y_log10() + 
+  	theme_classic() +
+  	geom_vline(xintercept = 1800) +
+  	geom_hline(yintercept = 400) 
+ggsave(filename = paste0(fname_prefix_ribomito_QC, "_", "gene_UMI_QC_catcher.pdf"),
+     width = 10, height = 8)
+
+QC %>% 
+  	ggplot(aes(x=nCount_ATAC, y=TSS.enrichment, color=catcher)) + 
+  	geom_point(size=1.5,alpha = 0.5) + scale_colour_manual(values =c("#818589","#ff6db6")) +
+  	#stat_smooth(method=lm) +
+  	scale_x_log10() + 
+  	scale_y_log10() + 
+  	theme_classic() +
+  	geom_vline(xintercept = 1800,linetype="dotted")+
+  geom_hline(yintercept = 3,linetype="dotted")
+ggsave(filename = paste0(fname_prefix_ribomito_QC, "_", "ATAC_QC.pdf"),
+     width = 10, height = 8)
+
+QC %>% 
+  	ggplot(aes(x=nucleosome_signal, y=TSS.enrichment, color=catcher)) + 
+  	geom_point(size=1.5,alpha = 0.5) + scale_colour_manual(values =c("#818589","#ff6db6")) +
+  	#stat_smooth(method=lm) +
+  	scale_x_log10() + 
+  	scale_y_log10() + 
+  	theme_classic() +
+  	geom_vline(xintercept = 0.5,linetype="dotted")+
+  geom_hline(yintercept = 3,linetype="dotted")
+ggsave(filename = paste0(fname_prefix_ribomito_QC, "_", "ATAC_nucleosome_QC.pdf"),
+     width = 10, height = 8)
+
+QC %>% 
+  	ggplot(aes(x=percent.ribo, y=percent.mt, color=catcher)) + 
+  	geom_point(size=1.5,alpha = 0.5) + scale_colour_manual(values =c("#818589","#ff6db6")) +
+  	#stat_smooth(method=lm) +
+  	scale_x_log10() + 
+  	scale_y_log10() + 
+  	theme_classic() +
+  	geom_vline(xintercept = 10,linetype="dotted")+
+  geom_hline(yintercept = 40,linetype="dotted")
+ggsave(filename = paste0(fname_prefix_ribomito_QC, "_", "percent_MT_RIBO_QC.pdf"),
+     width = 10, height = 8)
+
+QC %>%
+  	ggplot(aes(x=log10GenesPerUMI, color = catcher, fill=catcher)) +
+  	geom_density(alpha = 0.2) +
+  	theme_classic() +
+  	geom_vline(xintercept = 0.95)
+#rownames(QC)=QC$info
+ggsave(filename = paste0(fname_prefix_ribomito_QC, "_", "log10GenesPerUMI_QC.pdf"),
+     width = 10, height = 8)
+
+plot1 <- FeatureScatter(data_seurat, feature1 = "nCount_RNA", feature2 = "percent.mt",group.by = "catcher")+geom_vline(xintercept = 1800,linetype="dotted")+
+  geom_hline(yintercept = 40,linetype="dotted")+ scale_colour_manual(values =c("#818589","#ff6db6"))
+plot2 <- FeatureScatter(data_seurat, feature1 = "nCount_RNA", feature2 = "nFeature_RNA",group.by = "catcher")+geom_vline(xintercept = 1800,linetype="dotted")+
+  geom_hline(yintercept = 400,linetype="dotted")+ scale_colour_manual(values =c("#818589","#ff6db6"))
+plot3 <- FeatureScatter(data_seurat, feature1 = "percent.ribo", feature2 = "percent.mt",group.by = "catcher")+geom_vline(xintercept = 10,linetype="dotted")+
+  geom_hline(yintercept = 40,linetype="dotted")+ scale_colour_manual(values =c("#818589","#ff6db6"))
+plot1 + plot2+ plot3
+ggsave(filename = paste0(fname_prefix_ribomito_QC, "_", "all_QC.pdf"),
+     width = 20, height = 8)
+
+######################################
+#FILTER CELLS by QC metrics #NB. MAria cleaned quite well from the barcode QC analysis
+filtered_seurat <- subset(data_seurat, subset = nFeature_RNA>400 & nCount_RNA>1800 & percent.mt<40& percent.ribo<10& nCount_ATAC>1800& nucleosome_signal > 0.5&TSS.enrichment>3)
+filtered_seurat_catcher=subset(filtered_seurat, subset = catcher==T)
+
+metadata=filtered_seurat[[]]
+counts <- GetAssayData(object = filtered_seurat, slot = "counts")
+metadata_catcher=filtered_seurat_catcher[[]]
+counts_catcher <- GetAssayData(object = filtered_seurat_catcher, slot = "counts")
+
+write.csv(counts, paste0(fname_prefix_csv_QC,"_silencing_matrix_all_samples_EB003E1.csv",sep=""))
+write.csv(metadata, paste0(fname_prefix_csv_QC,"_cell_metadata_filtered.csv",sep=""))
+
+Rdata_filename = paste0(fname_prefix_R_QC, "_seurat_data_filtered.RData")
+save(cell_metadata, counts, metadata,filtered_seurat,clone_side,shRNA_IDs,
+     file = Rdata_filename)
+
+Rdata_filename = paste0(fname_prefix_R_QC, "_catcher_seurat_data_filtered.RData")
+save(cell_metadata, counts_catcher, metadata_catcher,filtered_seurat_catcher,clone_side,shRNA_IDs,
+     file = Rdata_filename)
+
+plot1 <- FeatureScatter(filtered_seurat, feature1 = "nCount_RNA", feature2 = "percent.mt",group.by = "catcher")+geom_vline(xintercept = 1800,linetype="dotted")+
+  geom_hline(yintercept = 40,linetype="dotted")+ scale_colour_manual(values =c("#818589","#ff6db6"))
+plot2 <- FeatureScatter(filtered_seurat, feature1 = "nCount_RNA", feature2 = "nFeature_RNA",group.by = "catcher")+geom_vline(xintercept = 1800,linetype="dotted")+
+  geom_hline(yintercept = 400,linetype="dotted")+ scale_colour_manual(values =c("#818589","#ff6db6"))
+plot3 <- FeatureScatter(filtered_seurat, feature1 = "percent.ribo", feature2 = "percent.mt",group.by = "catcher")+geom_vline(xintercept = 10,linetype="dotted")+
+  geom_hline(yintercept = 40,linetype="dotted")+ scale_colour_manual(values =c("#818589","#ff6db6"))
+plot1 + plot2+ plot3
+ggsave(filename = paste0(fname_prefix_ribomito_QC, "_", "all_QC_after_FILTER.pdf"),
+     width = 20, height = 8)
+
+DensityScatter(filtered_seurat, x = 'nCount_ATAC', y = 'TSS.enrichment', log_x = TRUE, quantiles = TRUE)
+ggsave(filename = paste0(fname_prefix_ribomito_QC, "_", "DensityScatter_QC_ATAC_after_FILTER.pdf"),
+     width = 10, height = 8)
+
+```
+
+###data processing
+####all data no only catcher
+###Normalization and linear dimensional reduction
+
+```{r}
+####################
+####scRNAseq pre processing
+####################
+
+DefaultAssay(filtered_seurat) <- "RNA"
+
+#filtered_seurat <- filtered_seurat[rownames(filtered_seurat) %in% protein_coding_genes,]
+filtered_seurat <- NormalizeData(filtered_seurat, normalization.method = "LogNormalize", scale.factor = 10000)
+filtered_seurat <- FindVariableFeatures(filtered_seurat, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(filtered_seurat)
+filtered_seurat <- ScaleData(filtered_seurat, features = all.genes)
+#filtered_seurat <- SCTransform(filtered_seurat, verbose = FALSE)
+
+filtered_seurat <-RunPCA(filtered_seurat,features = VariableFeatures(object = filtered_seurat))
+ElbowPlot(filtered_seurat)
+
+filtered_seurat=RunUMAP(filtered_seurat,dims = 1:50, reduction.name = 'umap.rna', reduction.key = 'rnaUMAP_')
+
+####################
+####scATACseq pre processing
+####################
+
+DefaultAssay(filtered_seurat) <- "ATAC"
+filtered_seurat <- FindTopFeatures(filtered_seurat, min.cutoff = 5)# top n% of features (peaks) for dimensional reduction
+filtered_seurat <- RunTFIDF(filtered_seurat)
+#term frequency-inverse document frequency (TF-IDF) normalization. This is a two-step normalization procedure, that both normalizes across cells to correct for differences in cellular sequencing depth, and across peaks to give higher values to more rare peaks
+filtered_seurat <- RunSVD(filtered_seurat) #singular value decomposition (SVD) on the TD-IDF matrix, this is a dimensionality reduction similar as PCA for RNAseq
+#NOTE taht RunSVD needs Matrix 1.6-4 and irlba from source
+#remotes::install_version("Matrix", version = "1.6-4")
+#install.packages("irlba",type="source", dependencies=T)
+filtered_seurat <- RunUMAP(filtered_seurat, reduction = "lsi", dims = 2:20, reduction.name = "umap.atac", reduction.key = "atacUMAP_")
+
+Rdata_filename = paste0(fname_prefix_R_QC, "_seurat_data_filtered_PREPROCESSED.RData")
+save(cell_metadata, counts, metadata,filtered_seurat,clone_side,shRNA_IDs,
+     file = Rdata_filename)
+
+# build a joint neighbor graph using both assays
+#We calculate a WNN graph, representing a weighted combination of RNA and ATAC-seq modalities.
+#https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis and https://stuartlab.org/signac/articles/pbmc_multiomic
+filtered_seurat <- FindMultiModalNeighbors(
+  object = filtered_seurat,
+  reduction.list = list("pca", "lsi"), 
+  dims.list = list(1:50, 2:20),
+  modality.weight.name = "RNA.weight",
+  verbose = TRUE
+)
+
+# build a joint UMAP visualization
+filtered_seurat <- RunUMAP(
+  object = filtered_seurat,
+  nn.name = "weighted.nn",reduction.name = "wnn.umap", reduction.key = "wnnUMAP_",
+  assay = "RNA",
+  verbose = TRUE
+)
+
+a=DimPlot(filtered_seurat, label = F, group.by = "catcher", repel = F, reduction = "wnn.umap") + ggtitle("combined")+theme_classic() + scale_colour_manual(values =c("#818589","#ff6db6"))
+b=DimPlot(filtered_seurat, label = F, group.by = "catcher", repel = F, reduction = "umap.rna") + NoLegend() + ggtitle("RNA")+theme_classic() + scale_colour_manual(values =c("#818589","#ff6db6"))
+c=DimPlot(filtered_seurat, label = F, group.by = "catcher", repel = F, reduction = "umap.atac") + NoLegend() + ggtitle("ATAC")+theme_classic() + scale_colour_manual(values =c("#818589","#ff6db6"))
+
+a+b+c
+
+ggsave(filename = paste0(fname_prefix_umap_QC, "_", "umap_catcher_QC.pdf"),
+     width = 20, height = 5)
+
+
+a=DimPlot(filtered_seurat, label = F, group.by = "side_polished", repel = F, reduction = "wnn.umap") + ggtitle("combined")+theme_classic()+ scale_colour_manual(values =c("#818589", "#009292", "#000000","#ff6db6","#f0E442"))
+b=DimPlot(filtered_seurat, label = F, group.by = "side_polished", repel = F, reduction = "umap.rna") + NoLegend() + ggtitle("RNA")+theme_classic() + scale_colour_manual(values =c("#818589", "#009292", "#000000","#ff6db6","#f0E442"))
+c=DimPlot(filtered_seurat, label = F, group.by = "side_polished", repel = F, reduction = "umap.atac") + NoLegend() + ggtitle("ATAC")+theme_classic() + scale_colour_manual(values =c("#818589", "#009292", "#000000","#ff6db6","#f0E442"))
+
+a+b+c
+
+ggsave(filename = paste0(fname_prefix_umap_QC, "_", "side_UMAP_QC.pdf"),
+     width = 20, height = 5)
+
+filtered_seurat <- FindClusters(filtered_seurat, graph.name = "wsnn", algorithm = 3, verbose = FALSE)
+
+filtered_seurat@meta.data[["seurat_clusters_combined"]]=ifelse(filtered_seurat@meta.data[["seurat_clusters"]]==2|filtered_seurat@meta.data[["seurat_clusters"]]==6|filtered_seurat@meta.data[["seurat_clusters"]]==0|filtered_seurat@meta.data[["seurat_clusters"]]==8|filtered_seurat@meta.data[["seurat_clusters"]]==9,"sideA","sideB")
+
+DimPlot(filtered_seurat,reduction = "wnn.umap") + ggtitle("clusters in combined")+theme_classic() 
+ggsave(filename = paste0(fname_prefix_umap_QC, "_", "clustering_UMAP_QC.pdf"),
+     width = 8, height = 5)
+
+DimPlot(filtered_seurat,reduction = "wnn.umap",group.by="seurat_clusters_combined") + ggtitle("clusters in combined")+theme_classic() 
+ggsave(filename = paste0(fname_prefix_umap_QC, "_", "clustering_combined_UMAP_QC.pdf"),
+     width = 8, height = 5)
+
+Rdata_filename = paste0(fname_prefix_R_QC, "_seurat_data_filtered_PREPROCESSED.RData")
+save(cell_metadata, counts, metadata,filtered_seurat,clone_side,shRNA_IDs,
+     file = Rdata_filename)
+
+```
+
+###data processing
+####only catcher
+###Normalization and linear dimensional reduction
+
+```{r}
+####################
+####scRNAseq pre processing
+####################
+
+DefaultAssay(filtered_seurat_catcher) <- "RNA"
+
+filtered_seurat_catcher <- NormalizeData(filtered_seurat_catcher, normalization.method = "LogNormalize", scale.factor = 10000)
+filtered_seurat_catcher <- FindVariableFeatures(filtered_seurat_catcher, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(filtered_seurat_catcher)
+filtered_seurat_catcher <- ScaleData(filtered_seurat_catcher, features = all.genes)
+#filtered_seurat_catcher <- SCTransform(filtered_seurat_catcher, verbose = FALSE)
+
+filtered_seurat_catcher <-RunPCA(filtered_seurat_catcher,features = VariableFeatures(object = filtered_seurat_catcher))
+ElbowPlot(filtered_seurat_catcher)
+
+set.seed(seed = 6786868)
+filtered_seurat_catcher=RunUMAP(filtered_seurat_catcher,dims = 1:50, reduction.name = 'umap.rna', reduction.key = 'rnaUMAP_')
+
+####################
+####scATACseq pre processing
+####################
+
+DefaultAssay(filtered_seurat_catcher) <- "ATAC"
+filtered_seurat_catcher <- FindTopFeatures(filtered_seurat_catcher, min.cutoff = 5)# top n% of features (peaks) for dimensional reduction
+filtered_seurat_catcher <- RunTFIDF(filtered_seurat_catcher)
+#term frequency-inverse document frequency (TF-IDF) normalization. This is a two-step normalization procedure, that both normalizes across cells to correct for differences in cellular sequencing depth, and across peaks to give higher values to more rare peaks
+filtered_seurat_catcher <- RunSVD(filtered_seurat_catcher) #singular value decomposition (SVD) on the TD-IDF matrix, this is a dimensionality reduction similar as PCA for RNAseq
+#NOTE taht RunSVD needs Matrix 1.6-4 and irlba from source
+#remotes::install_version("Matrix", version = "1.6-4")
+#install.packages("irlba",type="source", dependencies=T)
+set.seed(seed = 67868923)
+filtered_seurat_catcher <- RunUMAP(filtered_seurat_catcher, reduction = "lsi", dims = 2:20, reduction.name = "umap.atac", reduction.key = "atacUMAP_")
+
+Rdata_filename = paste0(fname_prefix_R_QC, "_seurat_data_filtered_PREPROCESSED_catcher.RData")
+save(cell_metadata, counts_catcher, metadata_catcher,filtered_seurat_catcher,clone_side,shRNA_IDs,
+     file = Rdata_filename)
+
+
+# build a joint neighbor graph using both assays
+#We calculate a WNN graph, representing a weighted combination of RNA and ATAC-seq modalities.
+#https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis and https://stuartlab.org/signac/articles/pbmc_multiomic
+filtered_seurat_catcher <- FindMultiModalNeighbors(
+  object = filtered_seurat_catcher,
+  reduction.list = list("pca", "lsi"), 
+  dims.list = list(1:50, 2:20),
+  modality.weight.name = "RNA.weight",
+  verbose = TRUE
+)
+
+# build a joint UMAP visualization
+set.seed(seed = 578799223)
+filtered_seurat_catcher <- RunUMAP(
+  object = filtered_seurat_catcher,
+  nn.name = "weighted.nn",reduction.name = "wnn.umap", reduction.key = "wnnUMAP_",
+  assay = "RNA",
+  verbose = TRUE
+)
+
+
+
+a=DimPlot(filtered_seurat_catcher, label = F, group.by = "side_polished", repel = F, reduction = "wnn.umap") + ggtitle("combined")+theme_classic()+ scale_colour_manual(values =c("#818589", "#009292", "#000000","#ff6db6","#f0E442"))
+b=DimPlot(filtered_seurat_catcher, label = F, group.by = "side_polished", repel = F, reduction = "umap.rna") + NoLegend() + ggtitle("RNA")+theme_classic() + scale_colour_manual(values =c("#818589", "#009292", "#000000","#ff6db6","#f0E442"))
+c=DimPlot(filtered_seurat_catcher, label = F, group.by = "side_polished", repel = F, reduction = "umap.atac") + NoLegend() + ggtitle("ATAC")+theme_classic() + scale_colour_manual(values =c("#818589", "#009292", "#000000","#ff6db6","#f0E442"))
+
+a+b+c
+
+ggsave(filename = paste0(fname_prefix_umap_QC, "_", "side_UMAP_QC_catcher.pdf"),
+     width = 20, height = 5)
+
+a
+ggsave(filename = paste0(fname_prefix_umap_QC, "_", "side_UMAP_QC_catcher_combined.pdf"),
+     width = 6, height = 5)
+b
+ggsave(filename = paste0(fname_prefix_umap_QC, "_", "side_UMAP_QC_catcher_RNA.pdf"),
+     width = 6, height = 5)
+c
+ggsave(filename = paste0(fname_prefix_umap_QC, "_", "side_UMAP_QC_catcher_ATAC.pdf"),
+     width = 6, height = 5)
+
+set.seed(seed = 873469223)
+filtered_seurat_catcher <- FindClusters(filtered_seurat_catcher, graph.name = "wsnn", algorithm = 3, verbose = FALSE)
+
+DimPlot(filtered_seurat_catcher,reduction = "wnn.umap") + ggtitle("clusters in combined")+theme_classic() 
+ggsave(filename = paste0(fname_prefix_umap_QC, "_", "clustering_UMAP_QC_catcher.pdf"),
+     width = 8, height = 5)
+
+filtered_seurat_catcher@meta.data[["seurat_clusters_combined"]]=ifelse(filtered_seurat_catcher@meta.data[["seurat_clusters"]]==3|filtered_seurat_catcher@meta.data[["seurat_clusters"]]==5|filtered_seurat_catcher@meta.data[["seurat_clusters"]]==6|filtered_seurat_catcher@meta.data[["seurat_clusters"]]==7,"sideA","sideB")
+
+DimPlot(filtered_seurat_catcher,reduction = "wnn.umap",group.by="seurat_clusters_combined") + ggtitle("clusters in combined")+theme_classic() 
+ggsave(filename = paste0(fname_prefix_umap_QC, "_", "clustering_combined_UMAP_QC_catcher.pdf"),
+     width = 8, height = 5)
+
+Rdata_filename = paste0(fname_prefix_R_QC, "_seurat_data_filtered_PREPROCESSED_catcher.RData")
+save(cell_metadata, counts_catcher, metadata_catcher,filtered_seurat_catcher,clone_side,shRNA_IDs,
+     file = Rdata_filename)
+
+
+c("#E69F00","#56B4E9","#009E73","#f0E442","#0072B2","#D55E00","#CC79A7","#000000")
+```
+
+####load data optional to speed up the workflow
+
+```{r}
+#load(file = paste0(getwd(),"/scratch/", "250605_seurat_data_filtered_PREPROCESSED_catcher.RData"))
+#load(file = paste0(getwd(),"/scratch/", "250605_seurat_data_filtered_PREPROCESSED.RData"))
+```
+
+#set up motif info in seurat assat ATAC
+
+```{r}
+DefaultAssay(filtered_seurat_catcher) <- "ATAC"
+
+filtered_seurat_catcher=subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro")
+####get motif information in order to match a gene or a TF with a genomic region
+# Scan the DNA sequence of each peak for the presence of each motif, and create a Motif object
+DefaultAssay(filtered_seurat_catcher) <- "ATAC"
+filtered_seurat_catcher_set <- getMatrixSet(x = JASPAR2020, opts = list(species = 9606, all_versions = FALSE))
+#filtered_seurat_catcher_set <- getMatrixSet(x = JASPAR2020, opts = list(species = "Homo sapiens", all_versions = FALSE))
+motif.matrix <- CreateMotifMatrix(features = granges(filtered_seurat_catcher), pwm = filtered_seurat_catcher_set, genome = 'hg38', use.counts = FALSE)
+motif.object <- CreateMotifObject(data = motif.matrix, pwm = filtered_seurat_catcher_set)
+filtered_seurat_catcher <- SetAssayData(filtered_seurat_catcher, assay = 'ATAC', slot = 'motifs', new.data = motif.object)
+
+pfm <- getMatrixSet(
+  x = JASPAR2020,
+  opts = list(collection = "CORE", tax_group = 'vertebrates', all_versions = FALSE)
+)
+
+# add motif information
+#https://stuartlab.org/signac/articles/motif_vignette
+filtered_seurat_catcher <- AddMotifs(
+  object = filtered_seurat_catcher,
+  genome = BSgenome.Hsapiens.UCSC.hg38,assay = "ATAC",
+  pfm = pfm
+)
+
+#build chromvar assay
+
+gr <- granges(filtered_seurat_catcher)###binning
+seq_keep <- seqnames(gr) %in% seqnames(BSgenome.Hsapiens.UCSC.hg38) 
+seq_keep <- as.vector(seq_keep)
+feat.keep <- GRangesToString(grange = gr[seq_keep])
+filtered_seurat_catcher[['ATAC']] <- subset(filtered_seurat_catcher[["ATAC"]], features = feat.keep) 
+
+
+filtered_seurat_catcher<- RunChromVAR(
+  object = filtered_seurat_catcher,
+  genome = BSgenome.Hsapiens.UCSC.hg38)
+
+Rdata_filename = paste0(fname_prefix_R_QC, "_seurat_data_filtered_PREPROCESSED_catcher.RData")
+save(cell_metadata, counts_catcher, metadata_catcher,filtered_seurat_catcher,clone_side,shRNA_IDs,
+     file = Rdata_filename) ###latest is 30/01/2025
+
+DimPlot(filtered_seurat_catcher, pt.size=2,label = F, group.by = "side_polished", repel = F, label.size=50,reduction = "wnn.umap") + ggtitle("combined")+theme_classic()+ scale_colour_manual(values =c("#818589", "#000000"))
+
+ggsave(filename = paste0(fname_prefix_ATAC_umap, "_", "side_UMAP_combined_catcher.pdf"),
+     width = 6, height = 4)
+
+```
+
+#####NOTE main analysis######
+####markers analysis
+#We aim to identify TFs whose expression is enriched in multiple cell types in the RNA measurements, but also have enriched accessibility for their motifs in the ATAC measurements
+
+```{r}
+
+####get RNA main markers (gene expression comparing side A vs side B)
+main.markers <- FindMarkers(filtered_seurat_catcher, group.by="seurat_clusters_combined", ident.1 = "sideA", ident.2 = "sideB",logfc.threshold=1, assay="RNA")
+main.markers$gene=rownames(main.markers)
+
+####get RNA main markers dividing by side (gene expression)
+markers_rna <- presto:::wilcoxauc.Seurat(X = filtered_seurat_catcher, group_by = 'seurat_clusters_combined', assay = 'data', seurat_assay = 'RNA')
+
+markers_rna_A=subset(markers_rna, markers_rna$group=="sideA")
+rownames(markers_rna_A)=markers_rna_A$feature
+markers_rna_A=markers_rna_A%>%dplyr::select(-group,-feature)
+colnames(markers_rna_A)=paste0("sideA_",colnames(markers_rna_A))
+markers_rna_A$gene=rownames(markers_rna_A)
+
+markers_rna_B=subset(markers_rna, markers_rna$group=="sideB")
+rownames(markers_rna_B)=markers_rna_B$feature
+markers_rna_B=markers_rna_B%>%dplyr::select(-group,-feature)
+colnames(markers_rna_B)=paste0("sideB_",colnames(markers_rna_B))
+markers_rna_B$gene=rownames(markers_rna_B)
+
+markers_rna=markers_rna_A%>%left_join(markers_rna_B, by="gene")
+rownames(markers_rna)=markers_rna$gene
+
+####get motif analysis to then compare with RNA markers
+#####get them with Seurat da_motif is getting the motifs that define sideA and side B (with this function you can also identify the one that are important for a specific cluster)
+#https://satijalab.org/seurat/articles/pbmc3k_tutorial
+da_motif <- FindMarkers(filtered_seurat_catcher, group.by="seurat_clusters_combined", ident.1 = "sideA", ident.2 = "sideB",logfc.threshold=1, test.use = 'LR',
+  min.pct = 0.05, latent.vars = 'nCount_ATAC',assay="ATAC")
+
+sig_peak <- rownames(da_motif[da_motif$p_val_adj <.05,])
+
+# find peaks open in cluster sidaA and sideB
+open.peaks <- AccessiblePeaks(filtered_seurat_catcher)
+
+# match the overall GC content in the peak set
+meta.feature <- GetAssayData(filtered_seurat_catcher, assay = "ATAC", slot = "meta.features")
+peaks.matched <- MatchRegionStats(
+  meta.feature = meta.feature[open.peaks, ],
+  query.feature = meta.feature[sig_peak, ],
+  n = 50000)
+
+# test enrichment and get motif and gene information
+main.motif <- FindMotifs(filtered_seurat_catcher, features = sig_peak, background = peaks.matched)
+
+da_motif=subset(da_motif,da_motif$p_val_adj<=0.05)###this show the enrichment of ATAC picks in the different regions
+da_motif$reagion=rownames(da_motif)
+
+#################################################################
+#############ANALYSIS DIVIDING SIDES STATS##############
+#get motif analysis by dividing the two sides. This is a wilkoxon test
+#https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis
+
+markers_motifs <- presto:::wilcoxauc.Seurat(X = filtered_seurat_catcher, group_by = 'seurat_clusters_combined', assay = 'data', seurat_assay = 'ATAC')
+
+markers_motifs_A=subset(markers_motifs, markers_motifs$group=="sideA")
+rownames(markers_motifs_A)=markers_motifs_A$feature
+markers_motifs_A=markers_motifs_A%>%dplyr::select(-group,-feature)
+colnames(markers_motifs_A)=paste0("motif_sideA_",colnames(markers_motifs_A))
+markers_motifs_A$feature=rownames(markers_motifs_A)
+
+
+markers_motifs_B=subset(markers_motifs, markers_motifs$group=="sideB")
+rownames(markers_motifs_B)=markers_motifs_B$feature
+markers_motifs_B=markers_motifs_B%>%dplyr::select(-group,-feature)
+colnames(markers_motifs_B)=paste0("motif_sideB_",colnames(markers_motifs_B))
+markers_motifs_B$feature=rownames(markers_motifs_B)
+
+motifs=markers_motifs_A%>%left_join(markers_motifs_B, by=c("feature"))
+
+sig_peak_2A <- rownames(markers_motifs_A[markers_motifs_A$motif_sideA_padj <0.05,])
+sig_peak_2B <- rownames(markers_motifs_B[markers_motifs_B$motif_sideB_padj <0.05,])
+
+# find peaks open in cluster sidaA and sideB
+open.peaks <- AccessiblePeaks(filtered_seurat_catcher)
+
+# match the overall GC content in the peak set
+#meta.feature <- GetAssayData(filtered_seurat_catcher, assay = "ATAC", slot = "meta.features")
+peaks.matched_2A <- MatchRegionStats(
+  meta.feature = meta.feature[open.peaks, ],
+  query.feature = meta.feature[sig_peak_2A, ],
+  n = 50000
+)
+
+peaks.matched_2B <- MatchRegionStats(
+  meta.feature = meta.feature[open.peaks, ],
+  query.feature = meta.feature[sig_peak_2B, ],
+  n = 50000
+)
+
+# test enrichment
+A <- FindMotifs(filtered_seurat_catcher, features = sig_peak_2A, background = peaks.matched_2A)
+B <- FindMotifs(filtered_seurat_catcher, features = sig_peak_2B, background = peaks.matched_2B)
+
+colnames(A)=c("motif","observed_A","background_A","percent.observed_A","percent.background_A","fold.enrichment_A","pvalue_A","motif.name","padj_A")
+#colnames(markers_motifs_B)=c("motif","observed_B","background_B","percent.observed_B","percent.background_B","fold.enrichment_B","pvalue_B","motif.name","padj_B")
+#motifs=markers_motifs_A%>%left_join(markers_motifs_B, by=c("motif","motif.name"))
+
+
+Rdata_filename = paste0(fname_prefix_R_QC, "_markers.RData")
+save(main.markers,da_motif,main.motif, markers_rna, motifs,sig_peak,sig_peak_2A,sig_peak_2B,filtered_seurat_catcher,A,B,
+     file = Rdata_filename)
+
+#use main.markers and da_motif and main.motif or markers_rna and motifs if want to consider them divided
+main.markers$to_show=ifelse(main.markers$p_val_adj<=0.01&abs(main.markers$avg_log2FC)>2,main.markers$gene,"")
+main.markers$sig=main.markers$p_val_adj<=0.05&abs(main.markers$avg_log2FC)>1
+main.markers$side_RNA=ifelse(main.markers$p_val_adj<=0.05&main.markers$avg_log2FC > 1, "sideA", 
+                              ifelse(main.markers$p_val_adj<=0.05&main.markers$avg_log2FC < (1*-1), "sideB","NS"))
+
+write.csv(main.markers, paste0(fname_prefix_csv_QC,"_DEG_RNA_EB003E1.csv",sep=""))
+
+####make a volcano plot of DEG by RNA expression
+ggplot(data=main.markers, aes(x=avg_log2FC, y=log10(p_val_adj)*-1)) +
+  geom_point(aes(colour = side_RNA, size=0.1)) +scale_colour_manual(values=c("gray","#CC79A7","#56B4E9"))+
+ggrepel::geom_text_repel(
+    #data = subset(motifs, motifs$fold.enrichment_A>3),
+    data = main.markers,
+    aes(label =to_show),
+    size = 3,
+    max.overlaps=20,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  geom_vline(xintercept = log2(2),linetype="dotted")+
+  geom_vline(xintercept = -log2(2),linetype="dotted")+
+  geom_hline(yintercept = -log10(0.05),linetype="dotted")+
+  ggtitle("DEG in iPSC-neuro hPSC")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2FC RNA transcripts enrichment in neuronal stem cell side",
+    y = "-Log10 adj p-value",
+    color = "significant"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_DEG_iPS_neuro_RNA.pdf"),
+       width = 8, height = 6)
+
+
+
+```
+
+####volcanoplot info markers
+
+```{r}
+
+iPSC_gene_clust_2D <- read_csv("scratch/iPSC_gene_clust_2D_FC.csv")
+RNA2D <- read_csv("scratch/iPSC_gene_clust_2D_FC.csv")
+RNA2D=RNA2D%>%dplyr::select(geneID, q_value_1, logFC_1, Log10pvalue_cl1, treshold_cl1, to_show_cl1)
+colnames(RNA2D)=c("geneID", "q_value_2D_neuro", "logFC_2D_neuro", "Log10pvalue_2D_neuro", "treshold_2D_neuro", "to_show_2D_neuro")
+RNA2D <- replace(RNA2D, is.na(RNA2D), "")
+
+
+
+iPSC_gene_clust_2D=iPSC_gene_clust_2D%>%dplyr::select(geneID, q_value_1, logFC_1, Log10pvalue_cl1, treshold_cl1, to_show_cl1)
+colnames(iPSC_gene_clust_2D)=c("geneID", "q_value_2D_neuro", "logFC_2D_neuro", "Log10pvalue_2D_neuro", "treshold_2D_neuro", "to_show_2D_neuro")
+
+
+#"#E69F00" "#56B4E9" "#009E73" "#f0E442" "#0072B2" "#D55E00" "#CC79A7" "#000000"
+
+A$sig_A=ifelse(A$padj_A<0.05,T,F)
+#motifs$sig_B=ifelse(motifs$padj_B<0.05,T,F)
+A$to_show=ifelse(A$padj_A<0.05&A$fold.enrichment_A>1.28,A$motif.name,"")
+A$s=ifelse(A$padj_A<0.05&A$fold.enrichment_A>1.50,A$motif.name,"")
+
+motif.name=A$motif.name
+library(stringr)
+A <- A %>% 
+  mutate(
+    gene_name_clean = motif.name %>%
+      str_remove("\\(var\\.\\d+\\)") %>%                           # Remove (var.X)
+      {str_split_fixed(., "::", n = 2)[, 1]} %>%                   # Extract left side of ::
+      str_to_upper()                                               # Make uppercase
+  )
+
+fc_level <- log2(1.5)
+fc_level2 <- (log2(1.5))*-1
+
+iPSC_gene_clust_2D=A%>%left_join(iPSC_gene_clust_2D, by=c("gene_name_clean"="geneID"))
+
+ggplot(data=A, aes(x=log2(as.numeric(fold.enrichment_A)), y=log10(padj_A)*-1)) +
+  geom_point(aes(colour = sig_A, size=0.2)) +scale_colour_manual(values=c("gray","#CC79A7"))+
+ggrepel::geom_text_repel(
+    #data = subset(motifs, motifs$fold.enrichment_A>3),
+    data = A,
+    aes(label =s),
+    size = 3,
+    max.overlaps=20,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  geom_vline(xintercept = log2(1.5),linetype="dotted")+
+  geom_vline(xintercept = -log2(1.5),linetype="dotted")+
+  geom_hline(yintercept = -log10(0.05),linetype="dotted")+
+  ggtitle("TF picks enriched in iPSC-neuro hPSC")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2FC enrichment in neuronal stem cell side",
+    y = "-Log10 adj p-value",
+    color = "significant picks"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_stats_iPS_neuro_side_TF_RNA.pdf"),
+       width = 8, height = 6)
+
+gene_list1 <- A$gene_name_clean[A$padj_A<= 0.05]
+motifs_df1=data.frame(TF_motifs=unique(gene_list1),gene=unique(gene_list1))
+
+#main.markers$gene=row.names(main.markers)#1438 genes
+main.markers=main.markers%>%left_join(motifs_df1, by=c("gene"))
+main.markers <- replace(main.markers, is.na(main.markers), "")
+
+
+main.markers$sig_A=ifelse(main.markers$p_val_adj<0.05&main.markers$avg_log2FC>0.58,T,
+                         ifelse(main.markers$p_val_adj<0.05&main.markers$avg_log2FC<0.58*-1,T,F))
+
+ggplot(data=main.markers, aes(x=avg_log2FC, y=log10(p_val_adj)*-1)) +
+  geom_point(aes(colour = side_RNA, size=0.2)) +scale_colour_manual(values=c("gray","#CC79A7","#56B4E9"))+
+ggrepel::geom_text_repel(
+    #data = subset(motifs, motifs$fold.enrichment_A>3),
+    data = main.markers,
+    aes(label =TF_motifs),
+    size = 3,
+    max.overlaps=200,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  geom_vline(xintercept = log2(1.5),linetype="dotted")+
+  geom_vline(xintercept = -log2(1.5),linetype="dotted")+
+  geom_hline(yintercept = -log10(0.05),linetype="dotted")+
+  ggtitle("TF picks RNA enriched in iPSC-neuro hPSC")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2FC enrichment in neuronal stem cell side",
+    y = "-Log10 adj p-value",
+    color = "significant transcripts"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_RNA_data_stats_iPS_neuro_side_TF.pdf"),
+       width = 8, height = 6)
+
+###add on old dataset
+
+#main.markers$gene=row.names(main.markers)#1438 genes
+RNA2D=RNA2D%>%left_join(motifs_df1, by=c("geneID"="gene"))
+RNA2D <- replace(RNA2D, is.na(RNA2D), "")
+RNA2D=subset(RNA2D,RNA2D$logFC_2D_neuro>10*-1&RNA2D$logFC_2D_neuro<10)
+
+ggplot(data=RNA2D, aes(x=logFC_2D_neuro, y=Log10pvalue_2D_neuro)) +
+  geom_point(aes(colour = treshold_2D_neuro, size=0.1)) +scale_colour_manual(values=c("blue","gray","#CC79A7"))+
+ggrepel::geom_text_repel(
+    #data = subset(motifs, motifs$fold.enrichment_A>3),
+    data = RNA2D,
+    aes(label =TF_motifs),
+    size = 3,
+    max.overlaps=50,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  geom_vline(xintercept = log2(1.5),linetype="dotted")+
+  geom_vline(xintercept = -log2(1.5),linetype="dotted")+
+  geom_hline(yintercept = -log10(0.05),linetype="dotted")+
+  ggtitle("TF picks RNA enriched in iPSC-neuro hPSC")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2FC enrichment in neuronal stem cell side",
+    y = "-Log10 adj p-value",
+    color = "significant transcripts"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_old_RNA_data_stats_iPS_neuro_side_TF.pdf"),
+       width = 8, height = 6)
+
+
+```
+
+####run GO analysis to define genes in side A (iPSneuro)
+
+```{r}
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(enrichplot)
+library(DOSE)
+
+genes_entrez <- clusterProfiler::bitr(A$gene_name_clean, fromType = "SYMBOL",
+                  toType = "ENTREZID",
+                  OrgDb = org.Hs.eg.db)
+
+A= A %>%
+  left_join(genes_entrez, by = c("gene_name_clean" = "SYMBOL")) %>%
+  filter(!is.na(ENTREZID))
+
+A$dup=duplicated(A$ENTREZID)
+
+# Filter genes
+#rank genes first by expression
+#A_side=subset(motifs,motifs$to_show!="")
+#genes = A_side$fold.enrichment_A
+#names(genes) = A_side$ENTREZID
+genes = A$fold.enrichment_A[A$padj_A <= 0.05]
+names(genes) = A$ENTREZID[A$padj_A <= 0.05]
+#genes = motifs$fold.enrichment_A
+#names(genes) = motifs$ENTREZID
+
+genes = sort(genes, decreasing = TRUE)
+
+###################################
+###### if you have duplications run the following
+###################################
+###check for duplication and average values
+###################################
+gene_df <- data.frame(entrez = names(genes), fold = genes)
+gene_df_unique <- gene_df %>%
+  group_by(entrez) %>%
+  summarise(fold = mean(fold, na.rm = TRUE), .groups = "drop")
+# Convert back to named vector and sort
+genes <- gene_df_unique$fold
+names(genes) <- gene_df_unique$entrez
+genes <- sort(genes, decreasing = TRUE)
+
+gse = gseGO(geneList = genes, 
+                ont = "BP", 
+                keyType = "ENTREZID",
+                OrgDb = org.Hs.eg.db, 
+            minGSSize    = 5,
+                 maxGSSize    = 500,
+                 pvalueCutoff = 0.5,
+                pAdjustMethod = "BH",
+                by = "fgsea")
+res_gsea = gse@result
+
+#gseaplot2(gse, geneSetID = gse@result$ID[12])#neuron migration
+#gseaplot2(gse, geneSetID = gse@result$ID[15])#anterior/posterior axis specification
+
+# Vector of target GO IDs for plotting
+go_ids <- c("GO:0021545","GO:0021675")#neuron migration
+
+# Loop over and plot
+for (go_id in go_ids) {
+  if (go_id %in% gse@result$ID) {
+    print(gseaplot2(gse, geneSetID = go_id, title = go_id))
+  } else {
+    message(paste("GO term", go_id, "not found in results."))
+  }
+}
+# Save GSEA results
+res_gsea = gse@result
+write.csv(res_gsea, file = paste0(fname_prefix_ATAC_GO, "_GSEA_results.csv"))
+
+
+### Plotting GSEA results
+dotplot(gse, showCategory = 10, split = ".sign",orderBy = "enrichmentScore") + facet_grid(.~.sign)
+ggsave(filename = paste0(fname_prefix_ATAC_GO, "_", "_GSE.pdf"),
+     width = 8, height = 8)
+
+####GO enrichment analysis with two lists of genes (list1 longer with all the genes sig in side A and list 2 shorter with genes sig and with higher fold change)
+
+gene_list1 <- A$gene_name_clean[A$padj_A<= 0.05]
+gene_list2 <- A$gene_name_clean[A$sig_A ==T]
+
+# Convert gene symbols to Entrez IDs
+gene_ids1 <- clusterProfiler::bitr(gene_list1, fromType = "SYMBOL",
+                  toType = "ENTREZID",
+                  OrgDb = org.Hs.eg.db)
+
+gene_ids2 <- clusterProfiler::bitr(gene_list2, fromType = "SYMBOL",
+                  toType = "ENTREZID",
+                  OrgDb = org.Hs.eg.db)
+
+# GO Enrichment
+ego1 <- enrichGO(gene         = gene_ids1$ENTREZID,
+                 OrgDb        = org.Hs.eg.db,
+                 ont          = "BP", # BP: Biological Process
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = 0.05,
+                 readable      = TRUE)
+
+GO_list1=as.data.frame(ego1@result)
+
+ego2 <- enrichGO(gene         = gene_ids2$ENTREZID,
+                 OrgDb        = org.Hs.eg.db,
+                 ont          = "BP", # BP: Biological Process
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = 0.05,
+                 readable      = TRUE)
+
+GO_list2=as.data.frame(ego2@result)
+# View results ###GO
+head(ego1)
+dotplot(ego1, showCategory = 15, orderBy = "FoldEnrichment", x="Count")
+ggsave(filename = paste0(fname_prefix_ATAC_GO, "_", "_dotplot_FE.pdf"),
+     width = 8, height = 8)
+dotplot(ego2, showCategory = 20, orderBy = "FoldEnrichment", x="Count")
+ggsave(filename = paste0(fname_prefix_ATAC_GO, "_", "_dotplot_FE_short_list.pdf"),
+     width = 8, height = 8)
+
+barplot(ego1,x="FoldEnrichment")
+ggsave(filename = paste0(fname_prefix_ATAC_GO, "_", "_bar_FE.pdf"),
+     width = 8, height = 4)
+
+edo <- pairwise_termsim(ego1)
+emapplot(edo)
+ggsave(filename = paste0(fname_prefix_ATAC_GO, "_", "_connection.pdf"),
+     width = 15, height = 15)
+edox <- setReadable(edo, 'org.Hs.eg.db', 'ENTREZID')
+heatplot(edox, showCategory=10)
+ggsave(filename = paste0(fname_prefix_ATAC_GO, "_", "_heatplot.pdf"),
+     width = 9, height = 4)
+
+res_go = ego1@result
+write.csv(res_go, file = paste0(fname_prefix_ATAC_GO, "_GO_results.csv"))
+
+Rdata_filename = paste0(fname_prefix_ATAC_GO, "_GO_analysis_RNA_ATAC.RData")
+save(motifs,gene_list1,gene_list2,ego1,ego2,res_go,res_gsea,gse,
+     file = Rdata_filename)
+
+
+```
+
+######show genes on UMAP (RNA)
+
+```{r}
+DefaultAssay(filtered_seurat) <- "RNA"
+DefaultAssay(filtered_seurat_catcher) <- "RNA"
+
+FeaturePlot(filtered_seurat_catcher, features = c("ZIC1","ZIC4","POU5F1","NANOG","RSAD2","CMPK2","MAST1","CDC42","KHDRBS2","UNC5D","ZNF528","PAX5","PTPRN2"), reduction = 'wnn.umap')#+ scale_color_viridis(option="E", discrete=F)
+ggsave(filename = paste0(fname_prefix_ATAC_umap, "_", "_group_1_UMAP.pdf"),
+     width = 15, height = 10)
+
+FeaturePlot(filtered_seurat_catcher, features = c("KLF15","KLF16","TFAP2A","ZBTB14","TFAP2C","SP9","EGR1","PLAG2","ZIC5","SP3","TFAP2E","EGR3","NRF1","TFDP1","VEZF1","EGR2","HES1","TCFL6","ZFP57","E2F1","SP4","TFAP2B","ZIC3"), reduction = 'wnn.umap')#+ scale_color_viridis(option="E", discrete=F)
+ggsave(filename = paste0(fname_prefix_ATAC_umap, "_", "_group_2_UMAP.pdf"),
+     width = 20, height = 15)
+
+plot_umap=c("ZIC1","PAX5","PTPRN2","CDC42","KHDRBS2","UNC5D","POU5F1","HES1","ZFP57","ZNF528","TFAP2C","ZNF138")
+
+# Loop over each gene and create the plot
+for (gene in plot_umap) {
+  
+  # Create the FeaturePlot
+  p <- FeaturePlot(filtered_seurat_catcher, 
+                   features = gene, 
+                   reduction = 'wnn.umap') +
+    scale_color_viridis(option = "E", discrete = FALSE) +
+    ggtitle(paste(gene, "RNA Expression"))
+  
+  # Save the plot
+  ggsave(
+    filename = paste0(fname_prefix_ATAC_umap, "_", gene, "_RNA_UMAP.pdf"),
+    plot = p,
+    width = 5,
+    height = 4
+  )
+}
+```
+
+
+
+####add cell cycle and proliferation signature
+
+```{r}
+DefaultAssay(filtered_seurat) <- "RNA"
+DefaultAssay(filtered_seurat_catcher) <- "RNA"
+#filtered_seurat[["percent.ribo"]] <- PercentageFeatureSet(filtered_seurat, pattern = "RPS")
+# A list of cell cycle markers, from Tirosh et al, 2015, is loaded with Seurat. and downloaded here
+exp.mat <- read.table(file = "scratch/cell_cicle_reg_genes/nestorawa_forcellcycle_expressionMatrix.txt", header = TRUE, 
+    as.is = TRUE, row.names = 1)
+# We can# segregate this list into markers of G2/M phase and markers of S phase
+s.genes <- cc.genes$s.genes #s phase genes
+g2m.genes <- cc.genes$g2m.genes #G2phase genes
+
+filtered_seurat <- CellCycleScoring(filtered_seurat, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+mdat=filtered_seurat@meta.data%>%dplyr::select(libID,S.Score, G2M.Score,Phase,old.ident)
+mdat_c=filtered_seurat_catcher@meta.data%>%dplyr::select(libID)%>%inner_join(mdat, by="libID")
+filtered_seurat_catcher[["S.Score"]]=mdat_c$S.Score
+filtered_seurat_catcher[["G2M.Score"]]=mdat_c$G2M.Score
+filtered_seurat_catcher[["Phase"]]=mdat_c$Phase
+
+#filtered_seurat_catcher <- CellCycleScoring(filtered_seurat_catcher, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE) #not working 
+
+Rdata_filename = paste0(fname_prefix_R_QC, "_seurat_data_filtered_PREPROCESSED_catcher.RData")
+save(cell_metadata, counts_catcher, metadata_catcher,filtered_seurat_catcher,clone_side,shRNA_IDs,
+     file = Rdata_filename) ###latest is 20/05/2025
+Rdata_filename = paste0(fname_prefix_R_QC, "_seurat_data_filtered_PREPROCESSED_catcher_complete.RData")
+save(cell_metadata, counts_catcher, metadata_catcher,filtered_seurat_catcher,clone_side,shRNA_IDs,A,main.markers,main.motif,
+     file = Rdata_filename)
+Rdata_filename = paste0(fname_prefix_R_QC, "_seurat_data_filtered_PREPROCESSED.RData")
+save(cell_metadata, counts, metadata,filtered_seurat,clone_side,shRNA_IDs,
+     file = Rdata_filename)###latest is 20/05/2025
+
+
+```
+
+
+######load data packed
+
+```{r}
+
+#load(paste0(getwd(),"/scratch/250605_seurat_data_filtered_PREPROCESSED_catcher2.RData"))
+#load(paste0(getwd(),"/scratch/250605_seurat_data_filtered_PREPROCESSED2.RData"))
+#load(paste0(getwd(),"/scratch/250130_markers.RData"))
+
+```
+
+####cell cycle by side
+
+```{r}
+a=FeaturePlot(filtered_seurat_catcher, features = "S.Score", reduction = 'wnn.umap')+ scale_color_viridis(option="E", discrete=F)
+b=FeaturePlot(filtered_seurat_catcher, features = "Phase", reduction = 'wnn.umap')+ scale_color_manual(values=c("#0072B2","grey","#CC79A7"))
+
+a | b
+
+ggsave(filename = paste0(fname_prefix_ATAC_umap, "_", "_cell_cycle_UMAP.pdf"),
+     width = 8, height = 4)
+
+```
+
+
+####calculate % of cell cycle phase 
+
+```{r}
+meta=filtered_seurat_catcher@meta.data#1518
+#meta=filtered_seurat@meta.data #all
+
+pal_sides=c("#b6dbff","#ff6db6","#004949")
+
+Phase_counts=meta %>%
+  dplyr::group_by(side,Phase) %>%
+  dplyr::summarise(count = n())
+
+tot=meta %>%
+  dplyr::group_by(side) %>%
+  dplyr::summarise(tot = n())
+
+
+Phase_counts=Phase_counts%>%left_join(tot,by=c("side"))
+Phase_counts$frxn=100*Phase_counts$count/Phase_counts$tot
+
+Phase_counts$side_polished=ifelse(Phase_counts$side=="Side1","iPSC-neuro",
+                                 ifelse(Phase_counts$side=="Side2","iPSC",
+                                        ifelse(Phase_counts$side=="mixed","iPSC-mixed",                                              ifelse(Phase_counts$side=="unknown","iPSC-unknown","other"))))
+Phase_counts$lable=paste0(Phase_counts$side_polished)
+
+ggplot(data=subset(Phase_counts,Phase_counts$side=="Side1"|Phase_counts$side=="Side2"), aes(x = lable, y = frxn, fill=Phase)) + geom_bar(stat = "identity") +
+  scale_fill_manual(values =pal_sides)
+  
+ylab = "% cells by cell cycle phase"
+xlab = "hiPSC phenotype"
+last_plot() + labs(x = xlab, y = ylab)
+output_file <- paste0(fname_prefix_mosaic, "_", "percent_by_phase.pdf")
+ggsave(filename = output_file, width = 5, height = 4)
+
+###KS test
+
+analysis=c("S.Score","G2M.Score")
+ks_stat = data.frame()
+for (analysis_type in analysis) {  
+iPSC_neuro = meta[meta$side_polished == "iPSC-neuro",analysis_type]
+iPSC = meta[meta$side_polished == "iPSC",analysis_type]
+
+ks_pval = ks.test(iPSC_neuro, iPSC)[["p.value"]]
+ks_k = ks.test(iPSC_neuro, iPSC)[["statistic"]][["D"]]
+    
+ks_stat = rbind(ks_stat,data.frame(pval = ks_pval,ks_k, analysis = analysis_type))
+}
+colnames(ks_stat) <- c("pval","ks_scoe","analysis")
+ks_stat$padj <- p.adjust(ks_stat$pval, method = "BH")
+ks_stat$sig <- ks_stat$padj <= 0.05
+
+ggplot(data=subset(meta,meta$side=="Side1"|meta$side=="Side2"), aes(S.Score, colour = side_polished)) + stat_ecdf(geom = "step")+ 
+  scale_color_manual(values =c("#818589","#000000"))+
+  theme_classic(base_size = 14)+
+  ylab("Cumulative frequency")+
+  xlab("S phase score")+
+  ggtitle("Cumulative frequency of S phase on sides",
+          subtitle = paste0("adj-pvalue=",ks_stat$padj[ks_stat$analysis=="S.Score"]))
+  
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "cumulative_frequency_sides_Sphase.pdf"),
+     width = 6, height = 5)
+
+ggplot(data=subset(meta,meta$side=="Side1"|meta$side=="Side2"), aes(G2M.Score, colour = side_polished)) + stat_ecdf(geom = "step")+ 
+  scale_color_manual(values =c("#818589","#000000"))+
+  theme_classic(base_size = 14)+
+  ylab("Cumulative frequency")+
+  xlab("G2M phase score")+
+  ggtitle("Cumulative frequency of G2M phase on sides",
+          subtitle = paste0("adj-pvalue=",ks_stat$padj[ks_stat$analysis=="G2M.Score"]))
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "cumulative_frequency_sides_G2Mphase.pdf"),
+     width = 6, height = 5)
+
+```
+
+
+
+####UMAP by top genes
+
+```{r}
+FeaturePlot(filtered_seurat_catcher, features = c("ZIC1","POU5F1"), reduction = 'wnn.umap')#+ scale_color_viridis(option="E", discrete=F)
+FeaturePlot(filtered_seurat_catcher, features = "ZIC1", reduction = 'wnn.umap')+ scale_color_viridis(option="E", discrete=F)
+ggsave(filename = paste0(fname_prefix_ATAC_umap, "_", "_ZIC1_UMAP.pdf"),
+     width = 4, height = 3)
+FeaturePlot(filtered_seurat_catcher, features = "ZIC4", reduction = 'wnn.umap')+ scale_color_viridis(option="E", discrete=F)
+ggsave(filename = paste0(fname_prefix_ATAC_umap, "_", "_ZIC4_UMAP.pdf"),
+     width = 4, height = 3)
+FeaturePlot(filtered_seurat_catcher, features = "ZNF528", reduction = 'wnn.umap')
+ggsave(filename = paste0(fname_prefix_ATAC_umap, "_", "_ZNF528_UMAP.pdf"),
+     width = 4, height = 3)
+FeaturePlot(filtered_seurat_catcher, features = "POU5F1", reduction = 'wnn.umap')+ scale_color_viridis(option="E", discrete=F)
+ggsave(filename = paste0(fname_prefix_ATAC_umap, "_", "_POU5F1_UMAP.pdf"),
+     width = 4, height = 3)
+
+FeaturePlot(filtered_seurat_catcher, features = c("CMPK2"), reduction = 'wnn.umap')+ scale_color_viridis(option="E", discrete=F)
+ggsave(filename = paste0(fname_prefix_ATAC_umap, "_", "_CMPK2_UMAP.pdf"),
+     width = 4, height = 3)
+FeaturePlot(filtered_seurat_catcher, features = c("MAST1"), reduction = 'wnn.umap')+ scale_color_viridis(option="E", discrete=F)
+ggsave(filename = paste0(fname_prefix_ATAC_umap, "_", "_MAST1_UMAP.pdf"),
+     width = 4, height = 3)
+FeaturePlot(filtered_seurat_catcher, features = c("UNC5D"), reduction = 'wnn.umap')+ scale_color_viridis(option="E", discrete=F)
+ggsave(filename = paste0(fname_prefix_ATAC_umap, "_", "_UNC5D_UMAP.pdf"),
+     width = 4, height = 3)
+FeaturePlot(filtered_seurat_catcher, features = c("KHDRBS2"), reduction = 'wnn.umap')+ scale_color_viridis(option="E", discrete=F)
+ggsave(filename = paste0(fname_prefix_ATAC_umap, "_", "_KHDRBS2_UMAP.pdf"),
+     width = 4, height = 3)
+FeaturePlot(filtered_seurat_catcher, features = c("SIX3"), reduction = 'wnn.umap')+ scale_color_viridis(option="E", discrete=F)
+ggsave(filename = paste0(fname_prefix_ATAC_umap, "_", "_SIX3_UMAP.pdf"),
+     width = 4, height = 3)
+FeaturePlot(filtered_seurat_catcher, features = c("LRRC75A"), reduction = 'wnn.umap')+ scale_color_viridis(option="E", discrete=F)
+ggsave(filename = paste0(fname_prefix_ATAC_umap, "_", "_LRRC75A_UMAP.pdf"),
+     width = 4, height = 3)
+
+FeaturePlot(filtered_seurat_catcher, features = c("PTPRN2"), reduction = 'wnn.umap')+ scale_color_viridis(option="E", discrete=F)
+ggsave(filename = paste0(fname_prefix_ATAC_umap, "_", "_PTPRN2_UMAP.pdf"),
+     width = 4, height = 3)
+```
+
+
+
+##########UMAP MOTIF
+
+```{r}
+#load latest to be quick
+
+#load("/Users/elisabalmaselisabalmas/Library/CloudStorage/GoogleDrive-elisa.balmas@unito.it/Shared drives/MBC-HEDGe_EB/EB003_CHD/EB003A_iKD-seq_optimization/Revision_iPS2seq/EB003AE2_MULTIOME/ANALYSIS_EB/Output/QC/250605/R_objects/250605_seurat_data_filtered_PREPROCESSED_catcher_complete.RData")
+
+#da_motif <- FindMarkers(filtered_seurat_catcher, group.by="seurat_clusters_combined", ident.1 = "sideA", ident.2 = "sideB",logfc.threshold=1, test.use = 'LR',
+#min.pct = 0.05, latent.vars = 'nCount_ATAC',assay="ATAC")
+#sig_peak <- rownames(da_motif[da_motif$p_val_adj <.05,])
+#da_motif=subset(da_motif,da_motif$p_val_adj<=0.05)###this show the enrichment of ATAC picks in the different regions
+#da_motif$reagion=rownames(da_motif)
+
+# sort by p-value and fold change
+enriched.motifs <- main.motif[order(main.motif[, 7], -main.motif[, 6]), ]
+top20_motif=head(enriched.motifs,20)
+enriched.markers <- main.markers[order(main.markers[, 1], -main.markers[, 2]), ]
+top20_markers=head(enriched.markers,20)
+enriched.picks <- da_motif[order(da_motif[, 1], -da_motif[, 2]), ]
+top20_picks=head(enriched.picks,20)
+
+DefaultAssay(filtered_seurat_catcher) <- "ATAC"
+
+MotifPlot(
+  object = filtered_seurat_catcher,
+  motifs = head(rownames(top20_motif))
+)
+
+gene.name <- ConvertMotifID(filtered_seurat_catcher, id = head(rownames(top20_motif),6))
+FeaturePlot(filtered_seurat_catcher, features = gene.name, reduction = 'wnn.umap')
+ggsave(filename = paste0(fname_prefix_ATAC_motifs, "_", "_top_motif_RNA.pdf"),
+     width = 8, height = 8)
+FeaturePlot(filtered_seurat_catcher, features = head(rownames(top20_motif),6), min.cutoff = 0, cols = c("lightgrey", "darkred"), slot="data", reduction = 'wnn.umap')
+ggsave(filename = paste0(fname_prefix_ATAC_motifs, "_", "_top_motif_ATAC.pdf"),
+     width = 8, height = 8)
+
+motif.name <- ConvertMotifID(filtered_seurat_catcher, name = 'ZIC1')
+gene_plot <- FeaturePlot(filtered_seurat_catcher, features = "ZIC1", reduction = 'wnn.umap')
+motif_plot <- FeaturePlot(filtered_seurat_catcher, features = motif.name, min.cutoff = 0, cols = c("lightgrey", "darkred"), slot="data", reduction = 'wnn.umap')
+motifplot=MotifPlot(
+  object = filtered_seurat_catcher,
+  motifs = motif.name)
+gene_plot | motif_plot | motifplot
+
+ggsave(filename = paste0(fname_prefix_ATAC_motifs, "_", "_ZIC1_motif.pdf"),
+     width = 8, height = 5)
+
+motif.name <- ConvertMotifID(filtered_seurat_catcher, name = 'ZIC4')
+gene_plot <- FeaturePlot(filtered_seurat_catcher, features = "ZIC4", reduction = 'wnn.umap')
+motif_plot <- FeaturePlot(filtered_seurat_catcher, features = motif.name, min.cutoff = 0, cols = c("lightgrey", "darkred"), slot="data", reduction = 'wnn.umap')
+motifplot=MotifPlot(
+  object = filtered_seurat_catcher,
+  motifs = motif.name)
+gene_plot | motif_plot | motifplot
+
+ggsave(filename = paste0(fname_prefix_ATAC_motifs, "_", "_ZIC4_motif.pdf"),
+     width = 8, height = 5)
+
+motif.name <- ConvertMotifID(filtered_seurat_catcher, name = 'ZNF528')
+gene_plot <- FeaturePlot(filtered_seurat_catcher, features = "ZNF528", reduction = 'wnn.umap')
+motif_plot <- FeaturePlot(filtered_seurat_catcher, features = motif.name, min.cutoff = 0, cols = c("lightgrey", "darkred"), slot="data", reduction = 'wnn.umap')
+motifplot=MotifPlot(
+  object = filtered_seurat_catcher,
+  motifs = motif.name)
+gene_plot | motif_plot | motifplot
+
+ggsave(filename = paste0(fname_prefix_ATAC_motifs, "_", "_ZNF528_motif.pdf"),
+     width = 8, height = 5)
+
+a=FeaturePlot(filtered_seurat_catcher, features = "ZIC1", reduction = 'wnn.umap')
+b=FeaturePlot(filtered_seurat_catcher, features = "ZIC4", reduction = 'wnn.umap')
+
+a|b
+
+ggsave(filename = paste0(fname_prefix_ATAC_umap, "_", "_ZIC_genes.pdf"),
+     width = 5, height = 3)
+
+
+motif.name <- ConvertMotifID(filtered_seurat_catcher, name = 'PAX5')
+gene_plot <- FeaturePlot(filtered_seurat_catcher, features = "PAX5", reduction = 'wnn.umap')
+motif_plot <- FeaturePlot(filtered_seurat_catcher, features = motif.name, min.cutoff = 0, cols = c("lightgrey", "darkred"), slot="data", reduction = 'wnn.umap')
+motifplot=MotifPlot(
+  object = filtered_seurat_catcher,
+  motifs = motif.name)
+gene_plot | motif_plot | motifplot
+
+ggsave(filename = paste0(fname_prefix_ATAC_motifs, "_", "_PAX5_motif.pdf"),
+     width = 8, height = 5)
+
+
+```
+
+#######coverage plots sig picks
+
+```{r}
+##########################
+#####make UNC5D coverage plots
+##########################
+#regions <- c('chr8-35234993-35796550')#UNC5D region significant top 20
+regions <- c('chr8-35234993-35235839','chr8-35717789-35718611','chr8-35376991-35377896')#UNC5D region significant top 20 #sig picks
+
+a=StringToGRanges(regions = regions)
+
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  #region = "chr8-35200000-35400000",#UNCD5 nerve growth
+  region = "UNC5D",#UNC5D nerve growth
+  #features="UNC5D",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "separate",ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_UNC5D_coverage.pdf"),
+     width = 8, height = 5)
+
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  region = "chr8-35200000-35400000",#UNCD5 nerve growth
+  #region = "UNC5D",#UNC5D nerve growth
+  #features="UNC5D",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "separate",ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_UNC5D_coverage_pick_1_2.pdf"),
+     width = 8, height = 5)
+
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  region = "chr8-35230000-35250000",#UNCD5 nerve growth
+  #region = "UNC5D",#UNC5D nerve growth
+  #features="UNC5D",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "separate",ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_UNC5D_coverage_pick_1.pdf"),
+     width = 8, height = 5)
+
+
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  region = "chr8-35350000-35400000",#UNCD5 nerve growth
+  #region = "UNC5D",#UNC5D nerve growth
+  #features="UNC5D",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "separate",ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_UNC5D_coverage_pick_2.pdf"),
+     width = 8, height = 5)
+
+
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  region = "chr8-35650000-35750000",#UNCD5 nerve growth
+  #region = "UNC5D",#UNC5D nerve growth
+  #features="UNC5D",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "separate",ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_UNC5D_coverage_pick_3.pdf"),
+     width = 8, height = 5)
+
+##########################
+#####make ZIC 1 and ZIC4 coverage plots
+##########################
+regions=unique(c("chr3-147354502-147355364",	"chr3-147388626-147389466","chr3-147412601-147413350","chr3-147388626-147389466","chr3-14121659-14122533","chr3-145333513-145334290", "chr3-147354502-147355364","chr3-147412601-147413350","chr3-141367982-141368840","chr3-149825078-149825935","chr3-14555550-14556459","chr3-14988702-14989574","chr3-147388626-147389466"))
+a=StringToGRanges(regions = regions)
+
+
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  #region = "chr6-31160000-31579047",#UNCD5 nerve growth
+  region = "ZIC1",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "common",ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_ZIC1_coverage.pdf"),
+     width = 8, height = 5)
+
+
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  #region = "chr6-31160000-31579047",#UNCD5 nerve growth
+  region = "ZIC4",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "common",ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_ZIC4_coverage.pdf"),
+     width = 8, height = 5)
+
+##########################
+#####make ZNF528 coverage plots
+##########################
+regions <- c('chr19-52397456-52398284')
+a=StringToGRanges(regions = regions)
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  region = "chr19-52377456-52418284",
+  #region = "ZNF528",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "common",ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_ZNF528_coverage.pdf"),
+     width = 8, height = 5)
+
+
+m=closest_genes_all%>%filter(picks_gene_name=="PTPRN2")
+##########################
+#####make PTPRN2 coverage plots
+##########################
+regions <- c("chr7-158325715-158326590","chr7-157690510-157691436","chr7-157568559-157569449","chr7-158317626-158318510","chr7-157693084-157693927","chr7-157875089-157875946","chr7-157794695-157795495","chr7-157684101-157684972","chr7-158228667-158229544","chr7-158353646-158354550","chr7-157851442-157852309","chr7-157905474-157906348")
+a=StringToGRanges(regions = regions)
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  #region = "chr6-31160000-31579047",#UNCD5 nerve growth
+  region = "PTPRN2",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "common",ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_PTPRN2_coverage.pdf"),
+     width = 8, height = 5)
+
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  region = "chr7-157500000-157800000",
+  #region = "PTPRN2",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "common",ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_PTPRN2_coverage_promoter_1.pdf"),
+     width = 8, height = 5)
+
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  region = "chr7-158200000-158400000",
+  #region = "PTPRN2",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "common",ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_PTPRN2_coverage_promoter_2.pdf"),
+     width = 8, height = 5)
+
+##########################
+#####make TFAP2C coverage plots
+##########################
+
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  #region = "chr6-31160000-31579047",#UNCD5 nerve growth
+  region = "TFAP2C",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "common",ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_TFAP2C_coverage.pdf"),
+     width = 8, height = 5)
+
+##########################
+#####make ZNF138 coverage plots
+##########################
+#m=closest_genes_all%>%filter(picks_gene_name=="ZNF138")
+#m=closest_genes_all%>%filter(picks_gene_name=="ZNF138")
+#m$picks_query_region
+regions <- c("chr7-64793966-64794861")
+a=StringToGRanges(regions = regions)
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  region = "chr7-64773966-64814861",
+  #region = "ZNF138",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "common",ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_ZNF138_coverage.pdf"),
+     width = 8, height = 5)
+
+##########################
+#####make KHDRBS2 coverage plots
+##########################
+
+regions <- c('chr6-62285790-62286712',"chr6-62393361-62394259")
+a=StringToGRanges(regions = regions)
+
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  #region = "chr6-62285790-62286712",#KHDRBS2 brain and retina synaptic dev
+  region = "KHDRBS2",#KHDRBS2 brain and retina synaptic dev
+  #features="UNC5D",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "separate",ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_KHDRBS2_coverage.pdf"),
+     width = 8, height = 5)
+
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  region = "chr6-62200000-62400000",#KHDRBS2 brain and retina synaptic dev
+  #region = "KHDRBS2",#KHDRBS2 brain and retina synaptic dev
+  #features="UNC5D",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "separate",ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_KHDRBS2_peak_region.pdf"),
+     width = 8, height = 5)
+
+regions <- c('chr19-12872764-12873652')
+a=StringToGRanges(regions = regions)
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  #region = "chr19-12872764-12873652",#MAST1 brain microtubules (cerebellum dev mainly)
+  region = "MAST1",#MAST1 brain microtubules (cerebellum dev mainly)
+  #features="MAST1",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC',peaks = T,assay.scale= "separate",ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_MAST1_coverage.pdf"),
+     width = 8, height = 5)
+
+regions <- c('chr2-6865358-6866274')
+a=StringToGRanges(regions = regions)
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  #region = "chr8-35234993-35796550",#UNCD5 nerve growth
+  region = "CMPK2",#CMPK2 brain microtubules (cerebellum dev mainly)
+  #features="CMPK2",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "separate",ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_CMPK2_coverage.pdf"),
+     width = 8, height = 5)
+
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  #region = "chr6-31160000-31579047",#UNCD5 nerve growth
+  region = "POU5F1",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "common",#ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_OCT4_coverage.pdf"),
+     width = 8, height = 5)
+
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  #region = "chr6-31160000-31579047",#UNCD5 nerve growth
+  region = "NANOG",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "common",#ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_NANOG_coverage.pdf"),
+     width = 8, height = 5)
+
+
+regions <- c('chr1-22092098-22093009')
+a=StringToGRanges(regions = regions)
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  #region = "chr6-31160000-31579047",#UNCD5 nerve growth
+  region = "CDC42",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "common",ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_CDC42_coverage.pdf"),
+     width = 8, height = 5)
+
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  #region = "chr3-147000000-147510000",#UNCD5 nerve growth
+  region = "ZIC2",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "common",#ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_ZIC2_coverage.pdf"),
+     width = 8, height = 5)
+
+
+CoveragePlot(
+  object = subset(filtered_seurat_catcher, subset = side_polished=="iPSC"|side_polished=="iPSC-neuro"),
+  #region = "chr6-31160000-31579047",#UNCD5 nerve growth
+  region = "KLF15",
+  peaks.group.by="seurat_clusters_combined",
+  #group.by="seurat_clusters_combined",
+  group.by="side_polished",
+  #region.highlight=a,
+  assay = 'ATAC', expression.assay = 'ATAC', peaks = T,assay.scale= "common",#ranges=a,ranges.group.by = "seurat_clusters_combined",ranges.title = "sig pick"
+)
+
+ggsave(filename = paste0(fname_prefix_ATAC_coverage, "_", "_KLF15_coverage.pdf"),
+     width = 8, height = 5)
+
+
+
+```
+
+
+####run clusterprofiler on the ClosestFeature genes
+#see https://stuartlab.org/signac/articles/pbmc_vignette.html
+
+```{r}
+DefaultAssay(filtered_seurat_catcher)="ATAC"
+da_peaks=FindMarkers(filtered_seurat_catcher, group.by="seurat_clusters_combined", ident.1 = "sideA", ident.2 = "sideB",logfc.threshold=1, test.use = 'LR',
+  min.pct = 0.1, latent.vars = 'nCount_ATAC',assay="ATAC")
+
+da_peaks$query_region=rownames(da_peaks)
+
+open_SIDEA <- rownames(da_peaks[da_peaks$avg_log2FC > 1.5, ])
+open_SIDEB <- rownames(da_peaks[da_peaks$avg_log2FC < -1.5, ])
+
+closest_genes_SIDEA <- ClosestFeature(filtered_seurat_catcher, regions = open_SIDEA)
+closest_genes_SIDEB <- ClosestFeature(filtered_seurat_catcher, regions = open_SIDEB)
+closest_genes_all <- ClosestFeature(filtered_seurat_catcher, regions = rownames(da_peaks))
+
+closest_genes_all=closest_genes_all%>%left_join(da_peaks, by="query_region")
+
+colnames(closest_genes_all)=paste0("picks_",colnames(closest_genes_all))#2200
+closest_genes_all$side=ifelse(closest_genes_all$picks_avg_log2FC > 1.2, "sideA", 
+                              ifelse(closest_genes_all$picks_avg_log2FC < (1.2*-1), "sideB","NS"))
+
+closest_genes_all=closest_genes_all%>%left_join(motifs_df1, by=c("picks_gene_name"="gene"))#2200
+closest_genes_all <- replace(closest_genes_all, is.na(closest_genes_all), "")
+
+
+RNA_backup=main.markers###save main.markers to come back later
+main.markers=closest_genes_all%>%left_join(main.markers, by=c("picks_gene_name"="gene","TF_motifs"))#now 2200
+main.markers=main.markers%>%mutate(sig_ATAC=main.markers$picks_p_val_adj<0.05&abs(main.markers$picks_avg_log2FC)>1,
+                                   to_show_ATAC=ifelse(main.markers$sig_ATAC==T,main.markers$picks_gene_name,""))
+
+main.markers$side_by_RNA=ifelse(main.markers$avg_log2FC > 1.2, "sideA", 
+                              ifelse(main.markers$avg_log2FC < (1.2*-1), "sideB","NS"))
+
+closest_genes_all$sig=closest_genes_all$picks_p_val_adj<0.05&abs(closest_genes_all$picks_avg_log2FC)>1
+closest_genes_all$to_show=ifelse(closest_genes_all$sig==T,closest_genes_all$picks_gene_name,"")
+
+###show data from main analysis on TF on atac seq
+
+ggplot(data=closest_genes_all, aes(x=picks_avg_log2FC, y=log10(picks_p_val_adj)*-1)) +
+  geom_point(aes(colour = picks_side, size=0.2)) +scale_colour_manual(values=c("gray","#CC79A7","#56B4E9"))+
+ggrepel::geom_text_repel(
+    #data = subset(motifs, motifs$fold.enrichment_A>3),
+    data = closest_genes_all,
+    aes(label =to_show),
+    size = 3,
+    max.overlaps=30,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  geom_vline(xintercept = log2(1.5),linetype="dotted")+
+  geom_vline(xintercept = -log2(1.5),linetype="dotted")+
+  geom_hline(yintercept = -log10(0.05),linetype="dotted")+
+  ggtitle("significant Picks ATAC enriched in iPSC-neuro hPSC")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2FC enrichment ATAC picks in neuronal stem cell side",
+    y = "-Log10 adj p-value",
+    color = "significant picks"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_ATAC_picks_data_stats_iPS_neuro_side.pdf"),
+       width = 8, height = 6)
+
+ggplot(data=closest_genes_all, aes(x=picks_avg_log2FC, y=log10(picks_p_val_adj)*-1)) +
+  geom_point(aes(colour = picks_side, size=0.2)) +scale_colour_manual(values=c("gray","#CC79A7","#56B4E9"))+
+ggrepel::geom_text_repel(
+    #data = subset(motifs, motifs$fold.enrichment_A>3),
+    data = closest_genes_all,
+    aes(label =TF_motifs),
+    size = 3,
+    max.overlaps=100,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  geom_vline(xintercept = log2(1.5),linetype="dotted")+
+  geom_vline(xintercept = -log2(1.5),linetype="dotted")+
+  geom_hline(yintercept = -log10(0.05),linetype="dotted")+
+  ggtitle("TF picks ATAC enriched in iPSC-neuro hPSC")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2FC enrichment ATAC picks in neuronal stem cell side",
+    y = "-Log10 adj p-value",
+    color = "significant picks"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_ATAC_picks_data_stats_iPS_neuro_side_TF.pdf"),
+       width = 8, height = 6)
+
+
+ggplot(data=main.markers, aes(x=avg_log2FC, y=log10(p_val_adj)*-1)) +
+  geom_point(aes(colour = side_by_RNA, size=0.2)) +scale_colour_manual(values=c("gray","#CC79A7","#56B4E9"))+
+ggrepel::geom_text_repel(
+    #data = subset(motifs, motifs$fold.enrichment_A>3),
+    data = main.markers,
+    aes(label =to_show_ATAC),
+    size = 3,
+    max.overlaps=30,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  geom_vline(xintercept = log2(1.5),linetype="dotted")+
+  geom_vline(xintercept = -log2(1.5),linetype="dotted")+
+  geom_hline(yintercept = -log10(0.05),linetype="dotted")+
+  ggtitle("picks ATAC enriched on gene expression")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2FC enrichment ATAC picks on RNA",
+    y = "-Log10 adj p-value",
+    color = "significant DEG"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_volcano_ATAC_picks_on_RNA_data_stats.pdf"),
+       width = 8, height = 6)
+
+
+write.csv(closest_genes_SIDEA, paste0(fname_prefix_ATAC_csv,"_closest_genes_SIDEA.csv",sep=""))
+write.csv(closest_genes_SIDEB, paste0(fname_prefix_ATAC_csv,"_closest_genes_SIDEB.csv",sep=""))
+write.csv(closest_genes_all, paste0(fname_prefix_ATAC_csv,"_closest_genes_all.csv",sep=""))
+write.csv(main.markers, paste0(fname_prefix_ATAC_csv,"_picks_DEG_sig.csv",sep=""))
+
+Rdata_filename = paste0(fname_prefix_R_QC, "_markers.RData")
+save(main.markers,da_motif,main.motif, markers_rna, motifs,sig_peak_2A,sig_peak_2B,filtered_seurat_catcher,da_peaks,closest_genes_SIDEA,closest_genes_SIDEB,picks_sig,iPSC_gene_clust_2D,
+     file = Rdata_filename)
+
+####make gene list to study
+closest_genes_all_A=subset(closest_genes_all,closest_genes_all$picks_side=="sideA")
+
+genes <- closest_genes_all_A$picks_avg_log2FC
+names(genes) <- closest_genes_all_A$picks_gene_name
+genes <- sort(genes, decreasing = TRUE)
+
+
+library(clusterProfiler)
+library(enrichplot)
+
+gene_ids_3 <- clusterProfiler::bitr(names(genes), fromType = "SYMBOL",
+                  toType = "ENTREZID",
+                  OrgDb = org.Hs.eg.db)
+
+SIDEA_ego <- enrichGO(gene         = gene_ids_3$ENTREZID,
+                 OrgDb        = org.Hs.eg.db,
+                 ont          = "BP", # BP: Biological Process
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = 1,
+                 readable      = TRUE)
+
+GO_A_picks=as.data.frame(SIDEA_ego@result)
+
+write.csv(GO_A_picks, paste0(fname_prefix_ATAC_csv,"_GO_picks_sideA.csv",sep=""))
+
+Rdata_filename = paste0(fname_prefix_ATAC_GO, "_GO_picks.RData")
+save(filtered_seurat_catcher,closest_genes_all,closest_genes_all_A,gene_ids_3,SIDEA_ego,GO_A_picks,
+     file = Rdata_filename)
+
+dotplot(SIDEA_ego, showCategory = 15, orderBy = "FoldEnrichment", x="Count")
+ggsave(filename = paste0(fname_prefix_ATAC_GO, "_", "_dotplot_FE_GO_picksA.pdf"),
+     width = 8, height = 8)
+
+barplot(SIDEA_ego,x="FoldEnrichment")
+ggsave(filename = paste0(fname_prefix_ATAC_GO, "_", "_bar_FE_GO_picksA.pdf"),
+     width = 8, height = 4)
+
+
+
+
+
+
+```
+####calculate clones
+
+```{r}
+meta=filtered_seurat_catcher@meta.data
+
+all_clones=read.csv(paste0(getwd(),"/scratch/all_clones.csv"), header = TRUE, sep = ";", quote = "\"", 
+                     dec = ".")
+all_clones=all_clones%>%dplyr::select(clone,shRNA_gene,shRNA_ID_unified,cl_ID,order.shRNA,order.genes)
+
+cl_info=meta%>%dplyr::select(clone,shRNA_gene,side_polished)
+cl_info=cl_info%>%left_join(all_clones,by=c("clone"="clone","shRNA_gene"="shRNA_gene"))%>%
+  dplyr::filter((clone!="empty_NA_empty"))
+cl_info=cl_info%>%mutate(name=paste0(shRNA_ID_unified,"_",cl_ID))
+
+clone_counts=cl_info %>%
+  dplyr::group_by(clone,shRNA_gene,name,side_polished) %>%
+  dplyr::summarise(count = n())
+
+stat_filename = paste0(fname_prefix_csv_QC, "_clone_counts_MULTIOME.csv")
+write.csv(clone_counts, stat_filename, quote = F, row.names = T, sep=",")
+
+```
+
+
+```
+

@@ -1,0 +1,3478 @@
+---
+title: "n1 2D analysis exp5 exp7 combined: QC and monocle analysis"
+author: "Elisa Balmas PhD"
+date: "2024-02-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set up environment
+
+```{r}
+library(pals)
+library(see)
+library(monocle3)
+library(tidyr)
+library(stringr)
+library(grid)
+library(viridis)
+library(viridisLite)
+library(ggthemes)
+library(dplyr)
+library(tidyverse)
+library(ggsignif)
+library(umap)
+library(heatmap3)
+library(plyr)
+library(edgeR)
+library(compareGroups)
+library(dbscan)
+library(MAST)
+library(geosphere)
+library(RColorBrewer)
+library(Seurat)
+library(htmlwidgets)
+library(Matrix)
+library(tidyseurat)
+library(SeuratWrappers)
+library(scMAGeCK)
+library(readxl)
+library(deepToolsUtils)
+library(R.utils)
+library(see)
+
+
+library(ggplot2); library(reshape2); theme_set(theme_bw(26) + theme(panel.grid.major = element_blank(), 
+                                                                    panel.grid.minor = element_blank()) +
+                                                 theme(legend.key = element_blank()))
+update_geom_defaults("point", aes(size = 4))
+
+#setwd("/home/ebalmas/scpHUB/projects/H001AS7_iKDseq_10X_4tp_monocle/analysis_EB")
+
+# Session options
+options(stringsAsFactors = FALSE)
+set.seed(12345)
+
+# Set up the ggplot default params
+theme_set(theme_bw(12) + 
+          theme(panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(),
+                plot.title = element_text(size=15, face="bold", margin = margin(10,0,10,0)),
+                axis.text.x = element_text(angle=45, hjust = 1)))
+
+
+# Set up filename prefixes and output folders with the data
+dir.create("Output")
+dir.create(file.path("Output","CARDIO"))
+
+dir.create(file.path("Output","CARDIO","monocle"))#create forders cardio MONOCLE
+dir.create(file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "dotplots"))
+dir.create(file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "dotplots","single"))
+dir.create(file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "stat"))
+dir.create(file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "csv"))
+dir.create(file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "UMAP"))
+dir.create(file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "mosaic"))
+
+dir.create(file.path("Output","monocle"))#create forders MONOCLE
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots","single"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "stat"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "csv"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "UMAP"))
+dir.create(file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "mosaic"))
+
+
+fname_scratch <- file.path("Output","scratch")
+
+#set up forder path MONOCLE
+fname_prefix_R <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot_single <- file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "dotplots", "single", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_csv<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "csv", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_stat<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "stat", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_UMAP<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "UMAP", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_mosaic<-file.path("Output","monocle", format(Sys.Date(), "%y%m%d"), "mosaic", 
+                               format(Sys.Date(), "%y%m%d"))
+
+#set up forder path MONOCLE CARDIO
+fname_prefix_R_c <- file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot_c <- file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "dotplots", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot_single_c <- file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "dotplots", "single", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_csv_c<-file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "csv", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_stat_c<-file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "stat", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_UMAP_c<-file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "UMAP", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_mosaic_c<-file.path("Output","CARDIO","monocle", format(Sys.Date(), "%y%m%d"), "mosaic", 
+                               format(Sys.Date(), "%y%m%d"))
+
+
+pal <- c("#000000","#004949","#009292","#ff6db6","#ffb6db",
+         "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+         "#920000","#924900","#db6d00","#24ff24","#ffff6d")
+
+okabe_pal=c("#E69F00","#56B4E9","#009E73","#F0E442","#0072B2","#D55E00","#CC79A7","#000000","#b6dbff","#004949")
+
+
+```
+#load data
+#######load only sub-clustered data
+
+```{r}
+load("Output/CARDIO/monocle/240313/R_objects/240313_monocle_cds_D6_D12_D23_renamed_pseudotime_FINAL.RData")
+
+ID_key=read_excel(paste0(fname_scratch,"/shRNA_IDs.xlsx"))
+ID_shRNA=ID_key%>%dplyr::select(shRNA_ID_unified, shRNA,shRNA_BC,shRNA_label,shRNA_copy_label,hex_distinct, col_name_distinct,hex,col_name)
+order_cell_types=c("CF","P-CP","CP","L-CP","E-CM","CM1","CM2","L-CM","P-CM")
+
+order_genes=c("empty","SCR","B2M","CHD7","GATA4","KMT2D","NKX2.5","SMAD2")
+order_genes_2=c("NA","SCR","B2M","CHD7","GATA4","KMT2D","NKX2.5","SMAD2")
+
+meta=as.data.frame(cds@colData@listData)
+meta <- replace(meta, is.na(meta), "empty")
+meta=meta%>%left_join(ID_shRNA, by=c("shRNA_ID_unified", "shRNA","shRNA_BC"))#36019
+cds@colData$shRNA_label=meta$shRNA_label
+cds@colData$shRNA_copy_label=meta$shRNA_copy_label
+cds@colData$hex_distinct=meta$hex_distinct
+cds@colData$col_name_distinct=meta$col_name_distinct
+cds@colData$hex=meta$hex
+cds@colData$col_name=meta$col_name
+
+meta_cardio <- replace(meta_cardio, is.na(meta_cardio), "empty")
+meta_cardio=meta_cardio%>%left_join(ID_shRNA, by=c("shRNA_ID_unified", "shRNA","shRNA_BC"))#15862
+cds_cardio@colData$shRNA_label=meta_cardio$shRNA_label
+cds_cardio@colData$shRNA_copy_label=meta_cardio$shRNA_copy_label
+cds_cardio@colData$hex_distinct=meta_cardio$hex_distinct
+cds_cardio@colData$col_name_distinct=meta_cardio$col_name_distinct
+cds_cardio@colData$hex=meta_cardio$hex
+cds_cardio@colData$col_name=meta_cardio$col_name
+
+###makea df for color code
+okabe_clust=c("#E69F00","#56B4E9","#009E73","#F0E442","#0072B2","#D55E00","#CC79A7","gray","#000000")
+
+cell_type_pal=data.frame(order_cell_types=order_cell_types,okabe_clust=okabe_clust)
+
+```
+
+
+## mosaic plots of the late timepoints
+####plots by gene (no distinction by shRNA)
+
+```{r}
+
+meta_cardio$gene_new
+meta_cardio$gene_new=ifelse(meta_cardio$shRNA_gene=="CHD7", "CHD7",
+                            ifelse(meta_cardio$shRNA_gene=="GATA4", "GATA4",
+                                   ifelse(meta_cardio$shRNA_gene=="KMT2D", "KMT2D",
+                                          ifelse(meta_cardio$shRNA_gene=="NKX2.5", "NKX2.5",
+                                                 ifelse(meta_cardio$shRNA_gene=="SMAD2", "SMAD2","control")))))
+
+
+colData(cds_cardio)$gene_polish=meta_cardio$gene_new
+cdsD6=cds_cardio[,cds_cardio$sample_ID=="Cardiac progenitors"]
+cdsD12=cds_cardio[,cds_cardio$sample_ID=="CM day 12"]
+cdsD23=cds_cardio[,cds_cardio$sample_ID=="CM day 23"]
+
+#####################Day 6 calculations
+########################################
+#tot=table(cdsD12$monocle_clusters) #total of the cluster
+tot=as.data.frame(table(cdsD6$shRNA_gene)) #total of the cluster
+colnames(tot)=c("gene","tot")
+df=table(cdsD6$monocle_clusters, cdsD6$shRNA_gene, cdsD6$sample_ID)
+df = as.data.frame(df)
+colnames(df)=c("monocle_cluster","gene","day","freq")
+
+
+#mdf2 = melt(df)
+mdf2=df
+mdf2=mdf2%>%left_join(tot, by="gene")
+
+mdf2$tot = as.numeric(mdf2$tot)
+mdf2$frxn = (mdf2$freq/mdf2$tot)*100
+m=subset(mdf2,mdf2$freq!=0)
+
+m6=m
+
+m6$assigned_cell_type <- as.character(m6$monocle_cluster)
+m6$cell_type_short <- as.character(m6$monocle_cluster)
+m6$assigned_cell_type <- dplyr::recode(m6$assigned_cell_type,
+                                                "1"="Mid cardiomyocytes 1",
+                                                 "2"="Proliferative cardiac progenitors",
+                                                 "3"="Cardiac progenitors",
+                                                 "4"="Mid cardiomyocytes 2",
+                                                 "5"="Cardiac fibroblasts",
+                                                 "6"="Late cardiac progenitors",
+                                                 "7"="Early stage cardiomyocytes",
+                                                 "8"="Late cardiomyocytes",
+                                                 "9"="Proliferative cardiomyocytes")
+m6$cell_type_short <- dplyr::recode(m6$cell_type_short,
+                                                 "1"="CM1",
+                                                 "2"="P-CP",
+                                                 "3"="CP",
+                                                 "4"="CM2",
+                                                 "5"="CF",
+                                                 "6"="L-CP",
+                                                 "7"="E-CM",
+                                                 "8"="L-CM",
+                                                 "9"="P-CM")
+
+ggplot(m6, aes(x = factor(cell_type_short, levels = order_cell_types), y = frxn, fill=factor(gene,levels=c(order_genes_2)))) + geom_bar(stat = "identity") +
+  scale_fill_okabeito(name="genes",order=c(9,8,7,1,2,3,4,5))+
+  geom_hline(yintercept = 5, linetype = "dashed", color = "red")+
+  labs(title = "Distribution Day 6")+
+  facet_wrap(~factor(gene, levels = order_genes_2), ncol=4)
+  
+ylab = "cluster % by gene"
+xlab = "cluster"
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D6percent_by_gene.pdf"),
+     width = 10, height = 8)
+
+stat_filename = paste0(fname_prefix_stat_c, "_nb_percent_by_gene_per_clusterD6.csv")
+write.csv(mdf2, stat_filename, quote = F, row.names = T, sep=",")
+
+#####################Day 12 calculations
+########################################
+#tot=table(cdsD12$monocle_clusters) #total of the cluster
+tot=as.data.frame(table(cdsD12$shRNA_gene)) #total of the cluster
+colnames(tot)=c("gene","tot")
+df=table(cdsD12$monocle_clusters, cdsD12$shRNA_gene, cdsD12$sample_ID)
+df = as.data.frame(df)
+colnames(df)=c("monocle_cluster","gene","day","freq")
+
+
+#mdf2 = melt(df)
+mdf2=df
+mdf2=mdf2%>%left_join(tot, by="gene")
+
+mdf2$tot = as.numeric(mdf2$tot)
+mdf2$frxn = (mdf2$freq/mdf2$tot)*100
+m=subset(mdf2,mdf2$freq!=0)
+
+m12=m
+
+m12$assigned_cell_type <- as.character(m12$monocle_cluster)
+m12$cell_type_short <- as.character(m12$monocle_cluster)
+m12$assigned_cell_type <- dplyr::recode(m12$assigned_cell_type,
+                                                "1"="Mid cardiomyocytes 1",
+                                                 "2"="Proliferative cardiac progenitors",
+                                                 "3"="Cardiac progenitors",
+                                                 "4"="Mid cardiomyocytes 2",
+                                                 "5"="Cardiac fibroblasts",
+                                                 "6"="Late cardiac progenitors",
+                                                 "7"="Early stage cardiomyocytes",
+                                                 "8"="Late cardiomyocytes",
+                                                 "9"="Proliferative cardiomyocytes")
+
+m12$cell_type_short <- dplyr::recode(m12$cell_type_short,
+                                                 "1"="CM1",
+                                                 "2"="P-CP",
+                                                 "3"="CP",
+                                                 "4"="CM2",
+                                                 "5"="CF",
+                                                 "6"="L-CP",
+                                                 "7"="E-CM",
+                                                 "8"="L-CM",
+                                                 "9"="P-CM")
+
+ggplot(m12, aes(x = factor(cell_type_short, levels = order_cell_types), y = frxn, fill=factor(gene,levels=c(order_genes_2)))) + geom_bar(stat = "identity") +
+  scale_fill_okabeito(name="genes",order=c(9,8,7,1,2,3,4,5))+
+  geom_hline(yintercept = 5, linetype = "dashed", color = "red")+
+  labs(title = "Distribution Day 12")+
+  facet_wrap(~factor(gene, levels = order_genes_2), ncol=4)
+  
+ylab = "cluster % by gene"
+xlab = "cluster"
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D12percent_by_gene.pdf"),
+     width = 10, height = 8)
+
+stat_filename = paste0(fname_prefix_stat_c, "_nb_percent_by_gene_per_clusterD12.csv")
+write.csv(mdf2, stat_filename, quote = F, row.names = T, sep=",")
+
+
+########################Day 23 calculations
+###########################################
+#tot=table(cdsD23$monocle_clusters) #total of the cluster
+tot=as.data.frame(table(cdsD23$shRNA_gene)) #total of the cluster
+colnames(tot)=c("gene","tot")
+df=table(cdsD23$monocle_clusters, cdsD23$shRNA_gene, cdsD23$sample_ID)
+df = as.data.frame(df)
+colnames(df)=c("monocle_cluster","gene","day","freq")
+
+
+#mdf2 = melt(df)
+mdf2=df
+mdf2=mdf2%>%left_join(tot, by="gene")
+
+mdf2$tot = as.numeric(mdf2$tot)
+mdf2$frxn = (mdf2$freq/mdf2$tot)*100
+m=subset(mdf2,mdf2$freq!=0)
+
+m23=m
+
+m23$assigned_cell_type <- as.character(m23$monocle_cluster)
+m23$cell_type_short <- as.character(m23$monocle_cluster)
+m23$assigned_cell_type <- dplyr::recode(m23$assigned_cell_type,
+                                                 "1"="Mid cardiomyocytes 1",
+                                                 "2"="Proliferative cardiac progenitors",
+                                                 "3"="Cardiac progenitors",
+                                                 "4"="Mid cardiomyocytes 2",
+                                                 "5"="Cardiac fibroblasts",
+                                                 "6"="Late cardiac progenitors",
+                                                 "7"="Early stage cardiomyocytes",
+                                                 "8"="Late cardiomyocytes",
+                                                 "9"="Proliferative cardiomyocytes")
+
+m23$cell_type_short <- dplyr::recode(m23$cell_type_short,
+                                                 "1"="CM1",
+                                                 "2"="P-CP",
+                                                 "3"="CP",
+                                                 "4"="CM2",
+                                                 "5"="CF",
+                                                 "6"="L-CP",
+                                                 "7"="E-CM",
+                                                 "8"="L-CM",
+                                                 "9"="P-CM")
+
+ggplot(m23, aes(x = factor(cell_type_short, levels = order_cell_types), y = frxn, fill=factor(gene,levels=c(order_genes_2)))) + geom_bar(stat = "identity") +
+  scale_fill_okabeito(name="genes",order=c(9,8,7,1,2,3,4,5))+
+  geom_hline(yintercept = 5, linetype = "dashed", color = "red")+
+  labs(title = "Distribution Day 23")+
+  facet_wrap(~factor(gene, levels = order_genes_2), ncol=4)
+  
+ylab = "cluster % by gene"
+xlab = "cluster"
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D23percent_by_gene.pdf"),
+     width = 10, height = 8)
+
+stat_filename = paste0(fname_prefix_stat_c, "_nb_percent_by_gene_per_clusterD23.csv")
+write.csv(mdf2, stat_filename, quote = F, row.names = T, sep=",")
+```
+##Assess frequency in clusters by gene
+##Identify if clusters are too small to be analyzed
+
+```{r}
+
+#assess populations to exclude because 5% below for all populations
+selection_m6=m6%>%select(cell_type_short,gene,freq)
+selection_m6=spread(selection_m6,key=gene,value=freq)
+selection_m6 <- replace(selection_m6, is.na(selection_m6), 0)
+selection_m6$has_20_counts <- apply(selection_m6[, -1] >= 70, 1, any)
+
+stat_filename = paste0(fname_prefix_stat_c, "_Freq_cells_by_gene_D6.csv")
+write.csv(selection_m6, stat_filename, quote = F, row.names = T, sep=",")
+
+selection_m12=m12%>%select(cell_type_short,gene,freq)
+selection_m12=spread(selection_m12,key=gene,value=freq)
+selection_m12 <- replace(selection_m12, is.na(selection_m12), 0)
+selection_m12$has_20_counts <- apply(selection_m12[, -1] >= 70, 1, any)
+
+stat_filename = paste0(fname_prefix_stat_c, "_Freq_cells_by_gene_D12.csv")
+write.csv(selection_m12, stat_filename, quote = F, row.names = T, sep=",")
+
+selection_m23=m23%>%select(cell_type_short,gene,freq)
+selection_m23=spread(selection_m23,key=gene,value=freq)
+selection_m23 <- replace(selection_m23, is.na(selection_m23), 0)
+selection_m23$has_20_counts <- apply(selection_m23[, -1] >=70, 1, any)
+
+stat_filename = paste0(fname_prefix_stat_c, "_Freq_cells_by_gene_D23.csv")
+write.csv(selection_m23, stat_filename, quote = F, row.names = T, sep=",")
+
+selD6=selection_m6%>%select(cell_type_short,has_20_counts)%>%dplyr::rename(keep_D6=has_20_counts)
+selD12=selection_m12%>%select(cell_type_short,has_20_counts)%>%dplyr::rename(keep_D12=has_20_counts)
+selD23=selection_m23%>%select(cell_type_short,has_20_counts)%>%dplyr::rename(keep_D23=has_20_counts)
+
+meta_cardio=meta_cardio%>%left_join(selD6,by="cell_type_short")
+meta_cardio=meta_cardio %>% mutate(keep_D6 = ifelse(is.na(keep_D6), FALSE, keep_D6))
+meta_cardio=meta_cardio%>%left_join(selD12,by="cell_type_short")
+meta_cardio=meta_cardio%>%left_join(selD23,by="cell_type_short")
+
+meta_cardio=meta_cardio%>%mutate(clust1=monocle_clusters=="1",
+                                   clust2=monocle_clusters=="2",
+                                   clust3=monocle_clusters=="3",
+                                   clust4=monocle_clusters=="4",
+                                   clust5=monocle_clusters=="5",
+                                   clust6=monocle_clusters=="6",
+                                   clust7=monocle_clusters=="7",
+                                   clust8=monocle_clusters=="8",
+                                   clust9=monocle_clusters=="9",
+                                   KD=ifelse(meta_cardio$shRNA_gene == "SCR"|meta_cardio$shRNA_gene =="B2M"|meta_cardio$shRNA_gene =="NA", "control", "gene"),
+                                   KD_B2M= ifelse(meta_cardio$shRNA_gene == "B2M", "control", "gene"),
+                                   KD_empty= ifelse(meta_cardio$shRNA_gene == "NA", "control", "gene"),
+                                   KD_SCR= ifelse(meta_cardio$shRNA_gene == "SCR", "control", "gene"))
+
+metaD6=meta_cardio[meta_cardio$sample_ID=="Cardiac progenitors",]
+metaD6=subset(metaD6,metaD6$keep_D6==T)
+metaD12=meta_cardio[meta_cardio$sample_ID=="CM day 12",]
+metaD12=subset(metaD12,metaD12$keep_D12==T)
+metaD23=meta_cardio[meta_cardio$sample_ID=="CM day 23",]
+metaD23=subset(metaD23,metaD23$keep_D23==T)
+```
+
+##fisher test per gene to assess frequency in clusters
+###fisher test DD6
+
+```{r}
+####run the test for D6
+meta=metaD6
+
+#loop seems not to subset correctly so I am running it for clust 4 first
+################## start without subsetting for cell populations
+
+gene_list <- c("CHD7", "NKX2.5", "KMT2D", "GATA4", "SMAD2", "SCR", "NA")
+clustersD6=unique(meta$monocle_clusters)
+
+clusters <- paste0("clust", clustersD6)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(gene_list))
+  
+  for (i in seq_along(gene_list)) {
+    gene <- gene_list[i]
+    subset_data <- meta[meta$shRNA_gene %in% c(gene, "B2M"), c("KD_B2M", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_B2M, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(gene = gene_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_b2m <- do.call(rbind, result_list)
+result_df_combined_b2m=result_df_combined_b2m%>%dplyr::rename(p_value_b2m=p_value,q_value_b2m=q_value)
+
+#################run for SCR
+
+gene_list <- c("CHD7", "NKX2.5", "KMT2D", "GATA4", "SMAD2", "B2M", "NA")
+clusters <- paste0("clust", clustersD6)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(gene_list))
+  
+  for (i in seq_along(gene_list)) {
+    gene <- gene_list[i]
+    subset_data <- meta[meta$shRNA_gene %in% c(gene, "SCR"), c("KD_SCR", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_SCR, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(gene = gene_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_SCR <- do.call(rbind, result_list)
+result_df_combined_SCR=result_df_combined_SCR%>%dplyr::rename(p_value_SCR=p_value,q_value_SCR=q_value)
+
+########run on empty
+
+gene_list <- c("CHD7", "NKX2.5", "KMT2D", "GATA4", "SMAD2", "B2M", "SCR")
+clusters <- paste0("clust", clustersD6)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(gene_list))
+  
+  for (i in seq_along(gene_list)) {
+    gene <- gene_list[i]
+    subset_data <- meta[meta$shRNA_gene %in% c(gene, "NA"), c("KD_empty", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_empty, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(gene = gene_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_empty <- do.call(rbind, result_list)
+result_df_combined_empty=result_df_combined_empty%>%dplyr::rename(p_value_empty=p_value,q_value_empty=q_value)
+
+D6_result_fisher_shRNA_gene= result_df_combined_SCR%>%full_join(result_df_combined_b2m,by=c("gene","cluster"))%>%full_join(result_df_combined_empty,by=c("gene","cluster"))
+D6_result_fisher_shRNA_gene <- replace(D6_result_fisher_shRNA_gene, is.na(D6_result_fisher_shRNA_gene), 1)
+D6_result_fisher_shRNA_gene=D6_result_fisher_shRNA_gene%>%mutate(sig_SCR=q_value_SCR<=0.05,
+                                                                   sig_b2m=q_value_b2m<=0.05,
+                                                                   sig_empty=q_value_empty<=0.05)
+
+D6_result_fisher_shRNA_gene$assigned_cell_type <- as.character(D6_result_fisher_shRNA_gene$cluster)
+D6_result_fisher_shRNA_gene$cell_type_short <- as.character(D6_result_fisher_shRNA_gene$cluster)
+D6_result_fisher_shRNA_gene$assigned_cell_type <- dplyr::recode(D6_result_fisher_shRNA_gene$assigned_cell_type,
+                                                  "clust1"="Mid cardiomyocytes 1",
+                                                 "clust2"="Proliferative cardiac progenitors",
+                                                 "clust3"="Cardiac progenitors",
+                                                 "clust4"="Mid cardiomyocytes 2",
+                                                 "clust5"="Cardiac fibroblasts",
+                                                 "clust6"="Late cardiac progenitors",
+                                                 "clust7"="Early stage cardiomyocytes",
+                                                 "clust8"="Late cardiomyocytes",
+                                                 "clust9"="Proliferative cardiomyocytes")
+
+D6_result_fisher_shRNA_gene$cell_type_short <- dplyr::recode(D6_result_fisher_shRNA_gene$cell_type_short,
+                                                  "clust1"="CM1",
+                                                 "clust2"="P-CP",
+                                                 "clust3"="CP",
+                                                 "clust4"="CM2",
+                                                 "clust5"="CF",
+                                                 "clust6"="L-CP",
+                                                 "clust7"="E-CM",
+                                                 "clust8"="L-CM",
+                                                 "clust9"="P-CM")
+
+```
+
+
+##fisher test per gene to assess frequency in clusters
+###fisher test DD12
+
+```{r}
+####run the test for D12
+meta=metaD12
+
+#loop seems not to subset correctly so I am running it for clust 4 first
+################## start without subsetting for cell populations
+
+gene_list <- c("CHD7", "NKX2.5", "KMT2D", "GATA4", "SMAD2", "SCR", "NA")
+clustersD12=unique(meta$monocle_clusters)
+
+clusters <- paste0("clust", clustersD12)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(gene_list))
+  
+  for (i in seq_along(gene_list)) {
+    gene <- gene_list[i]
+    subset_data <- meta[meta$shRNA_gene %in% c(gene, "B2M"), c("KD_B2M", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_B2M, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(gene = gene_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_b2m <- do.call(rbind, result_list)
+result_df_combined_b2m=result_df_combined_b2m%>%dplyr::rename(p_value_b2m=p_value,q_value_b2m=q_value)
+
+#################run for SCR
+
+gene_list <- c("CHD7", "NKX2.5", "KMT2D", "GATA4", "SMAD2", "B2M", "NA")
+clusters <- paste0("clust", clustersD12)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(gene_list))
+  
+  for (i in seq_along(gene_list)) {
+    gene <- gene_list[i]
+    subset_data <- meta[meta$shRNA_gene %in% c(gene, "SCR"), c("KD_SCR", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_SCR, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(gene = gene_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_SCR <- do.call(rbind, result_list)
+result_df_combined_SCR=result_df_combined_SCR%>%dplyr::rename(p_value_SCR=p_value,q_value_SCR=q_value)
+
+########run on empty
+
+gene_list <- c("CHD7", "NKX2.5", "KMT2D", "GATA4", "SMAD2", "B2M", "SCR")
+clusters <- paste0("clust", clustersD12)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(gene_list))
+  
+  for (i in seq_along(gene_list)) {
+    gene <- gene_list[i]
+    subset_data <- meta[meta$shRNA_gene %in% c(gene, "NA"), c("KD_empty", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_empty, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(gene = gene_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_empty <- do.call(rbind, result_list)
+result_df_combined_empty=result_df_combined_empty%>%dplyr::rename(p_value_empty=p_value,q_value_empty=q_value)
+
+D12_result_fisher_shRNA_gene= result_df_combined_SCR%>%full_join(result_df_combined_b2m,by=c("gene","cluster"))%>%full_join(result_df_combined_empty,by=c("gene","cluster"))
+D12_result_fisher_shRNA_gene <- replace(D12_result_fisher_shRNA_gene, is.na(D12_result_fisher_shRNA_gene), 1)
+D12_result_fisher_shRNA_gene=D12_result_fisher_shRNA_gene%>%mutate(sig_SCR=q_value_SCR<=0.05,
+                                                                   sig_b2m=q_value_b2m<=0.05,
+                                                                   sig_empty=q_value_empty<=0.05)
+
+D12_result_fisher_shRNA_gene$assigned_cell_type <- as.character(D12_result_fisher_shRNA_gene$cluster)
+D12_result_fisher_shRNA_gene$cell_type_short <- as.character(D12_result_fisher_shRNA_gene$cluster)
+D12_result_fisher_shRNA_gene$assigned_cell_type <- dplyr::recode(D12_result_fisher_shRNA_gene$assigned_cell_type,
+                                                  "clust1"="Mid cardiomyocytes 1",
+                                                 "clust2"="Proliferative cardiac progenitors",
+                                                 "clust3"="Cardiac progenitors",
+                                                 "clust4"="Mid cardiomyocytes 2",
+                                                 "clust5"="Cardiac fibroblasts",
+                                                 "clust6"="Late cardiac progenitors",
+                                                 "clust7"="Early stage cardiomyocytes",
+                                                 "clust8"="Late cardiomyocytes",
+                                                 "clust9"="Proliferative cardiomyocytes")
+
+D12_result_fisher_shRNA_gene$cell_type_short <- dplyr::recode(D12_result_fisher_shRNA_gene$cell_type_short,
+                                                  "clust1"="CM1",
+                                                 "clust2"="P-CP",
+                                                 "clust3"="CP",
+                                                 "clust4"="CM2",
+                                                 "clust5"="CF",
+                                                 "clust6"="L-CP",
+                                                 "clust7"="E-CM",
+                                                 "clust8"="L-CM",
+                                                 "clust9"="P-CM")
+
+```
+
+##fisher test per gene to assess frequency in clusters
+###fisher test DD23
+
+```{r}
+####run the test for D23
+meta=metaD23
+
+#loop seems not to subset correctly so I am running it for clust 4 first
+################## start without subsetting for cell populations
+
+gene_list <- c("CHD7", "NKX2.5", "KMT2D", "GATA4", "SMAD2", "SCR", "NA")
+clustersD23=unique(meta$monocle_clusters)
+clusters <- paste0("clust", clustersD23)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(gene_list))
+  
+  for (i in seq_along(gene_list)) {
+    gene <- gene_list[i]
+    subset_data <- meta[meta$shRNA_gene %in% c(gene, "B2M"), c("KD_B2M", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_B2M, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(gene = gene_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_b2m <- do.call(rbind, result_list)
+result_df_combined_b2m=result_df_combined_b2m%>%dplyr::rename(p_value_b2m=p_value,q_value_b2m=q_value)
+
+#################run for SCR
+
+gene_list <- c("CHD7", "NKX2.5", "KMT2D", "GATA4", "SMAD2", "B2M", "NA")
+clusters <- paste0("clust", clustersD23)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(gene_list))
+  
+  for (i in seq_along(gene_list)) {
+    gene <- gene_list[i]
+    subset_data <- meta[meta$shRNA_gene %in% c(gene, "SCR"), c("KD_SCR", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_SCR, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(gene = gene_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_SCR <- do.call(rbind, result_list)
+result_df_combined_SCR=result_df_combined_SCR%>%dplyr::rename(p_value_SCR=p_value,q_value_SCR=q_value)
+
+########run on empty
+
+gene_list <- c("CHD7", "NKX2.5", "KMT2D", "GATA4", "SMAD2", "B2M", "SCR")
+clusters <- paste0("clust", clustersD23)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(gene_list))
+  
+  for (i in seq_along(gene_list)) {
+    gene <- gene_list[i]
+    subset_data <- meta[meta$shRNA_gene %in% c(gene, "NA"), c("KD_empty", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_empty, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(gene = gene_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_empty <- do.call(rbind, result_list)
+result_df_combined_empty=result_df_combined_empty%>%dplyr::rename(p_value_empty=p_value,q_value_empty=q_value)
+
+D23_result_fisher_shRNA_gene= result_df_combined_SCR%>%full_join(result_df_combined_b2m,by=c("gene","cluster"))%>%full_join(result_df_combined_empty,by=c("gene","cluster"))
+D23_result_fisher_shRNA_gene <- replace(D23_result_fisher_shRNA_gene, is.na(D23_result_fisher_shRNA_gene), 1)
+D23_result_fisher_shRNA_gene=D23_result_fisher_shRNA_gene%>%mutate(sig_SCR=q_value_SCR<=0.05,
+                                                                   sig_b2m=q_value_b2m<=0.05,
+                                                                   sig_empty=q_value_empty<=0.05)
+
+D23_result_fisher_shRNA_gene$assigned_cell_type <- as.character(D23_result_fisher_shRNA_gene$cluster)
+D23_result_fisher_shRNA_gene$cell_type_short <- as.character(D23_result_fisher_shRNA_gene$cluster)
+D23_result_fisher_shRNA_gene$assigned_cell_type <- dplyr::recode(D23_result_fisher_shRNA_gene$assigned_cell_type,
+                                                 "clust1"="Mid cardiomyocytes 1",
+                                                 "clust2"="Proliferative cardiac progenitors",
+                                                 "clust3"="Cardiac progenitors",
+                                                 "clust4"="Mid cardiomyocytes 2",
+                                                 "clust5"="Cardiac fibroblasts",
+                                                 "clust6"="Late cardiac progenitors",
+                                                 "clust7"="Early stage cardiomyocytes",
+                                                 "clust8"="Late cardiomyocytes",
+                                                 "clust9"="Proliferative cardiomyocytes")
+
+D23_result_fisher_shRNA_gene$cell_type_short <- dplyr::recode(D23_result_fisher_shRNA_gene$cell_type_short,
+                                                  "clust1"="CM1",
+                                                 "clust2"="P-CP",
+                                                 "clust3"="CP",
+                                                 "clust4"="CM2",
+                                                 "clust5"="CF",
+                                                 "clust6"="L-CP",
+                                                 "clust7"="E-CM",
+                                                 "clust8"="L-CM",
+                                                 "clust9"="P-CM")
+
+
+```
+
+####add Fold changes on fisher test results (from mosaic plots data but divide controls)
+
+```{r}
+###########add D6 freq FC to fisher results
+tot=as.data.frame(table(metaD6$shRNA_gene)) #total of the cluster
+colnames(tot)=c("gene","tot")
+
+df=as.data.frame(table(metaD6$monocle_clusters, metaD6$shRNA_gene, metaD6$sample_ID))
+colnames(df)=c("monocle_cluster","gene","day","freq")
+df$gene_polish=df$gene
+df$gene_polish=dplyr::recode(df$gene_polish,
+                                     "B2M"="control",
+                                     "SCR"="control",
+                                     "NA"="control")
+
+df=df%>%left_join(tot,by="gene")
+
+control_df=df%>%filter(gene=="B2M"|gene=="SCR"|gene=="NA")%>%select(-tot,-day,-gene_polish)
+control_df=spread(control_df, key="gene",value = "freq" )
+colnames(control_df)=c("monocle_cluster","B2M_D6","empty_D6","SCR_D6")
+control_df$cluster=paste0("clust",control_df$monocle_cluster)
+control_df=control_df%>%select(-monocle_cluster)
+
+control_dfTOT=df%>%filter(gene=="B2M"|gene=="SCR"|gene=="NA")%>%select(-freq,-day,-gene_polish)
+control_dfTOT=spread(control_dfTOT, key="gene",value = "tot" )
+colnames(control_dfTOT)=c("monocle_cluster","B2M_totD6","empty_totD6","SCR_totD6")
+control_dfTOT$cluster=paste0("clust",control_dfTOT$monocle_cluster)
+control_dfTOT=control_dfTOT%>%select(-monocle_cluster)
+
+control_df=control_df%>%left_join(control_dfTOT,by="cluster")
+
+mdf2=df
+mdf2$tot = as.numeric(mdf2$tot)
+mdf2$frxn = (mdf2$freq/mdf2$tot)*100
+m=subset(mdf2,mdf2$freq!=0)
+
+freqD6=m%>%dplyr::rename(nb_cells_D6=freq,totalD6=tot,percent_gene_D6=frxn)
+freqD6$cluster=recode(freqD6$monocle_cluster,
+                                                 "1"="clust1",
+                                                 "2"="clust2",
+                                                 "3"="clust3",
+                                                 "4"="clust4",
+                                                 "5"="clust5",
+                                                 "6"="clust6",
+                                                 "7"="clust7",
+                                                  "8"="clust8",
+                                                 "9"="clust9")
+freqD6$cell_type_short=freqD6$cluster
+freqD6$cell_type_short <- dplyr::recode(freqD6$cell_type_short,
+                                                  "clust1"="CM1",
+                                                 "clust2"="P-CP",
+                                                 "clust3"="CP",
+                                                 "clust4"="CM2",
+                                                 "clust5"="CF",
+                                                 "clust6"="L-CP",
+                                                 "clust7"="E-CM",
+                                                 "clust8"="L-CM",
+                                                 "clust9"="P-CM")
+
+freqD6 <- replace(freqD6, is.na(freqD6), "empty")
+
+D6_result_fisher_shRNA_gene=D6_result_fisher_shRNA_gene%>%left_join(freqD6,by=c("gene","cluster"))%>%left_join(control_df,by="cluster")
+D6_result_fisher_shRNA_gene=D6_result_fisher_shRNA_gene%>%mutate(percent_B2M_D6=(B2M_D6/B2M_totD6)*100,
+                                                                   percent_SCR_D6=(SCR_D6/SCR_totD6)*100,
+                                                                   percent_empty_D6=(empty_D6/empty_totD6)*100)
+
+D6_result_fisher_shRNA_gene=D6_result_fisher_shRNA_gene%>%mutate(percent_over_B2M_D6=percent_gene_D6/percent_B2M_D6,
+                                                                   percent_over_SCR_D6=percent_gene_D6/percent_SCR_D6,
+                                                                   percent_over_empty_D6=percent_gene_D6/percent_empty_D6)
+D6_result_fisher_shRNA_gene=D6_result_fisher_shRNA_gene%>%select(-cell_type_short.y)%>%dplyr::rename(cell_type_short=cell_type_short.x)
+
+###########add D12 freq FC to fisher results
+tot=as.data.frame(table(metaD12$shRNA_gene)) #total of the cluster
+colnames(tot)=c("gene","tot")
+
+df=as.data.frame(table(metaD12$monocle_clusters, metaD12$shRNA_gene, metaD12$sample_ID))
+colnames(df)=c("monocle_cluster","gene","day","freq")
+df$gene_polish=df$gene
+df$gene_polish=dplyr::recode(df$gene_polish,
+                                     "B2M"="control",
+                                     "SCR"="control",
+                                     "NA"="control")
+
+df=df%>%left_join(tot,by="gene")
+
+control_df=df%>%filter(gene=="B2M"|gene=="SCR"|gene=="NA")%>%select(-tot,-day,-gene_polish)
+control_df=spread(control_df, key="gene",value = "freq" )
+colnames(control_df)=c("monocle_cluster","B2M_D12","empty_D12","SCR_D12")
+control_df$cluster=paste0("clust",control_df$monocle_cluster)
+control_df=control_df%>%select(-monocle_cluster)
+
+control_dfTOT=df%>%filter(gene=="B2M"|gene=="SCR"|gene=="NA")%>%select(-freq,-day,-gene_polish)
+control_dfTOT=spread(control_dfTOT, key="gene",value = "tot" )
+colnames(control_dfTOT)=c("monocle_cluster","B2M_totD12","empty_totD12","SCR_totD12")
+control_dfTOT$cluster=paste0("clust",control_dfTOT$monocle_cluster)
+control_dfTOT=control_dfTOT%>%select(-monocle_cluster)
+
+control_df=control_df%>%left_join(control_dfTOT,by="cluster")
+
+mdf2=df
+mdf2$tot = as.numeric(mdf2$tot)
+mdf2$frxn = (mdf2$freq/mdf2$tot)*100
+m=subset(mdf2,mdf2$freq!=0)
+
+freqD12=m%>%dplyr::rename(nb_cells_D12=freq,totalD12=tot,percent_gene_D12=frxn)
+freqD12$cluster=recode(freqD12$monocle_cluster,
+                                                 "1"="clust1",
+                                                 "2"="clust2",
+                                                 "3"="clust3",
+                                                 "4"="clust4",
+                                                 "5"="clust5",
+                                                 "6"="clust6",
+                                                 "7"="clust7",
+                                                  "8"="clust8",
+                                                 "9"="clust9")
+freqD12$cell_type_short=freqD12$cluster
+freqD12$cell_type_short <- dplyr::recode(freqD12$cell_type_short,
+                                                  "clust1"="CM1",
+                                                 "clust2"="P-CP",
+                                                 "clust3"="CP",
+                                                 "clust4"="CM2",
+                                                 "clust5"="CF",
+                                                 "clust6"="L-CP",
+                                                 "clust7"="E-CM",
+                                                 "clust8"="L-CM",
+                                                 "clust9"="P-CM")
+
+freqD12 <- replace(freqD12, is.na(freqD12), "empty")
+
+D12_result_fisher_shRNA_gene=D12_result_fisher_shRNA_gene%>%left_join(freqD12,by=c("gene","cluster"))%>%left_join(control_df,by="cluster")
+D12_result_fisher_shRNA_gene=D12_result_fisher_shRNA_gene%>%mutate(percent_B2M_D12=(B2M_D12/B2M_totD12)*100,
+                                                                   percent_SCR_D12=(SCR_D12/SCR_totD12)*100,
+                                                                   percent_empty_D12=(empty_D12/empty_totD12)*100)
+
+D12_result_fisher_shRNA_gene=D12_result_fisher_shRNA_gene%>%mutate(percent_over_B2M_D12=percent_gene_D12/percent_B2M_D12,
+                                                                   percent_over_SCR_D12=percent_gene_D12/percent_SCR_D12,
+                                                                   percent_over_empty_D12=percent_gene_D12/percent_empty_D12)
+D12_result_fisher_shRNA_gene=D12_result_fisher_shRNA_gene%>%select(-cell_type_short.y)%>%dplyr::rename(cell_type_short=cell_type_short.x)
+
+###########add D23 freq FC to fisher results
+tot=as.data.frame(table(metaD23$shRNA_gene)) #total of the cluster
+colnames(tot)=c("gene","tot")
+
+df=as.data.frame(table(metaD23$monocle_clusters, metaD23$shRNA_gene, metaD23$sample_ID))
+colnames(df)=c("monocle_cluster","gene","day","freq")
+df$gene_polish=df$gene
+df$gene_polish=dplyr::recode(df$gene_polish,
+                                     "B2M"="control",
+                                     "SCR"="control",
+                                     "NA"="control")
+
+df=df%>%left_join(tot,by="gene")
+
+control_df=df%>%filter(gene=="B2M"|gene=="SCR"|gene=="NA")%>%select(-tot,-day,-gene_polish)
+control_df=spread(control_df, key="gene",value = "freq" )
+colnames(control_df)=c("monocle_cluster","B2M_D23","empty_D23","SCR_D23")
+control_df$cluster=paste0("clust",control_df$monocle_cluster)
+control_df=control_df%>%select(-monocle_cluster)
+
+control_dfTOT=df%>%filter(gene=="B2M"|gene=="SCR"|gene=="NA")%>%select(-freq,-day,-gene_polish)
+control_dfTOT=spread(control_dfTOT, key="gene",value = "tot" )
+colnames(control_dfTOT)=c("monocle_cluster","B2M_totD23","empty_totD23","SCR_totD23")
+control_dfTOT$cluster=paste0("clust",control_dfTOT$monocle_cluster)
+control_dfTOT=control_dfTOT%>%select(-monocle_cluster)
+
+control_df=control_df%>%left_join(control_dfTOT,by="cluster")
+
+mdf2=df
+mdf2$tot = as.numeric(mdf2$tot)
+mdf2$frxn = (mdf2$freq/mdf2$tot)*100
+m=subset(mdf2,mdf2$freq!=0)
+
+freqD23=m%>%dplyr::rename(nb_cells_D23=freq,totalD23=tot,percent_gene_D23=frxn)
+freqD23$cluster=recode(freqD23$monocle_cluster,
+                                                 "1"="clust1",
+                                                 "2"="clust2",
+                                                 "3"="clust3",
+                                                 "4"="clust4",
+                                                 "5"="clust5",
+                                                 "6"="clust6",
+                                                 "7"="clust7",
+                                                  "8"="clust8",
+                                                 "9"="clust9")
+freqD23$cell_type_short=freqD23$cluster
+freqD23$cell_type_short <- dplyr::recode(freqD23$cell_type_short,
+                                                 "clust1"="CM1",
+                                                 "clust2"="P-CP",
+                                                 "clust3"="CP",
+                                                 "clust4"="CM2",
+                                                 "clust5"="CF",
+                                                 "clust6"="L-CP",
+                                                 "clust7"="E-CM",
+                                                 "clust8"="L-CM",
+                                                 "clust9"="P-CM")
+
+
+freqD23 <- replace(freqD23, is.na(freqD23), "empty")                                                  
+
+D23_result_fisher_shRNA_gene=D23_result_fisher_shRNA_gene%>%left_join(freqD23,by=c("gene","cluster"))%>%left_join(control_df,by="cluster")
+D23_result_fisher_shRNA_gene=D23_result_fisher_shRNA_gene%>%mutate(percent_B2M_D23=(B2M_D23/B2M_totD23)*100,
+                                                                   percent_SCR_D23=(SCR_D23/SCR_totD23)*100,
+                                                                   percent_empty_D23=(empty_D23/empty_totD23)*100)
+
+D23_result_fisher_shRNA_gene=D23_result_fisher_shRNA_gene%>%mutate(percent_over_B2M_D23=percent_gene_D23/percent_B2M_D23,
+                                                                   percent_over_SCR_D23=percent_gene_D23/percent_SCR_D23,
+                                                                   percent_over_empty_D23=percent_gene_D23/percent_empty_D23)
+
+D23_result_fisher_shRNA_gene=D23_result_fisher_shRNA_gene%>%select(-cell_type_short.y)%>%dplyr::rename(cell_type_short=cell_type_short.x)
+
+stat_filename = paste0(fname_prefix_stat_c, "_fisher_by_gene_D23.csv")
+write.csv(D23_result_fisher_shRNA_gene, stat_filename, quote = F, row.names = T, sep=",")
+stat_filename = paste0(fname_prefix_stat_c, "_fisher_by_gene_D12.csv")
+write.csv(D12_result_fisher_shRNA_gene, stat_filename, quote = F, row.names = T, sep=",")
+stat_filename = paste0(fname_prefix_stat_c, "_fisher_by_gene_D6.csv")
+write.csv(D6_result_fisher_shRNA_gene, stat_filename, quote = F, row.names = T, sep=",")
+stat_filename = paste0(fname_prefix_stat_c, "_cluster_composition_by_gene_D12.csv")
+write.csv(m12, stat_filename, quote = F, row.names = T, sep=",")
+stat_filename = paste0(fname_prefix_stat_c, "_cluster_composition_by_gene_D23.csv")
+write.csv(m23, stat_filename, quote = F, row.names = T, sep=",")
+stat_filename = paste0(fname_prefix_stat_c, "_cluster_composition_by_gene_D6.csv")
+write.csv(m6, stat_filename, quote = F, row.names = T, sep=",")
+
+Rdata_filename = paste0(fname_prefix_R_c, "_cluster_composition_cardio_by_gene.RData")
+save(metaD23,metaD12,metaD6,meta_cardio,cds_cardio,cds,m6,m12,m23,D6_result_fisher_shRNA_gene,D23_result_fisher_shRNA_gene,D12_result_fisher_shRNA_gene,
+     file = Rdata_filename)
+
+```
+
+####make plots polished with just the most meaninful clusters
+```{r}
+
+order_cell_types_D6=order_cell_types
+
+ggplot(freqD6, aes(x = factor(cell_type_short, levels = order_cell_types_D6), y = percent_gene_D6, fill=factor(gene,levels=order_genes_2))) + geom_bar(stat = "identity") +
+  scale_fill_okabeito(name="genes",order = c(9,8,7,1,2,3,4,5))+
+  labs(title = "Distribution Day 6")+
+  facet_wrap(~factor(gene, levels = order_genes_2), ncol=4)
+  
+ylab = "cluster % by gene"
+xlab = ""
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D6percent_by_gene_polished.pdf"),
+     width = 10, height = 8)
+
+order_cell_types_D12=order_cell_types
+
+ggplot(freqD12, aes(x = factor(cell_type_short, levels = order_cell_types_D12), y = percent_gene_D12, fill=factor(gene,levels=order_genes_2))) + geom_bar(stat = "identity") +
+  scale_fill_okabeito(name="genes",order = c(9,8,7,1,2,3,4,5))+
+  labs(title = "Distribution Day 12")+
+  facet_wrap(~factor(gene, levels = order_genes_2), ncol=4)
+  
+ylab = "cluster % by gene"
+xlab = ""
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D12percent_by_gene_polished.pdf"),
+     width = 10, height = 8)
+
+order_cell_types_D23=order_cell_types
+
+ggplot(freqD23, aes(x = factor(cell_type_short, levels = order_cell_types_D23), y = percent_gene_D23, fill=factor(gene,levels=order_genes_2))) + geom_bar(stat = "identity") +
+ scale_fill_okabeito(name="genes",order = c(9,8,7,1,2,3,4,5))+
+  labs(title = "Distribution Day 23")+
+  facet_wrap(~factor(gene, levels = order_genes_2), ncol=4)
+  
+ylab = "cluster % by gene"
+xlab = ""
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D23percent_by_gene_polished.pdf"),
+     width = 10, height = 8)
+
+
+ggplot(data=subset(D6_result_fisher_shRNA_gene,D6_result_fisher_shRNA_gene$gene!="SCR"&D6_result_fisher_shRNA_gene$gene!="B2M"&D6_result_fisher_shRNA_gene$gene!="NA"), aes(y = factor(gene,levels = order_genes_2), x = factor(cell_type_short,levels = order_cell_types), size = percent_over_SCR_D6)) + geom_point(aes(color = log10(q_value_SCR)*-1), alpha = 0.8) + 
+   scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F,limits=c(1.3, 8))+
+  ggtitle("Gene composition at D6")+
+  #theme_minimal() +  
+  labs(
+    x = "",
+    y = "",
+    size="FC over SCR" # Legend title
+  )
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D6_HM_genes.pdf"),
+     width = 5, height = 5)
+
+ggplot(data=subset(D12_result_fisher_shRNA_gene,D12_result_fisher_shRNA_gene$gene!="SCR"&D12_result_fisher_shRNA_gene$gene!="B2M"&D12_result_fisher_shRNA_gene$gene!="NA"), aes(y = factor(gene,levels = order_genes_2), x = factor(cell_type_short,levels = order_cell_types), size = percent_over_SCR_D12)) + geom_point(aes(color = log10(q_value_SCR)*-1), alpha = 0.8) + 
+   scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F,limits=c(1.3, 8))+
+  ggtitle("Gene composition at D12")+
+  #theme_minimal() +  
+  labs(
+    x = "",
+    y = "",
+    size="FC over SCR" # Legend title
+  )
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D12_HM_genes.pdf"),
+     width = 5, height = 5)
+
+ggplot(data=subset(D23_result_fisher_shRNA_gene,D23_result_fisher_shRNA_gene$gene!="SCR"&D23_result_fisher_shRNA_gene$gene!="B2M"&D23_result_fisher_shRNA_gene$gene!="NA"), aes(y = factor(gene,levels = order_genes_2), x = factor(cell_type_short,levels = order_cell_types), size = percent_over_SCR_D23)) + geom_point(aes(color = log10(q_value_SCR)*-1), alpha = 0.8) + 
+   scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F,limits=c(1.3, 8))+
+  ggtitle("Gene composition at D23")+
+  #theme_minimal() +  
+  labs(
+    x = "",
+    y = "",
+    size="FC over SCR" # Legend title
+  )
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D23_HM_genes.pdf"),
+     width = 5, height = 5)
+```
+
+####make volcano plots 
+###distribution of genes in the different clusters
+
+```{r}
+##########make volcano plots
+sig_level <- 0.05
+#Set a fold-change cutoff
+fc_level <- log2(1.5)
+fc_level2 <- (log2(1.5))*-1
+
+
+###D6
+ctD6=unique(D6_result_fisher_shRNA_gene$cell_type_short)
+ctD6=cell_type_pal[cell_type_pal$order_cell_types %in% ctD6,]
+
+
+ggplot(data=D6_result_fisher_shRNA_gene, aes(x=log2(percent_over_SCR_D6), y=(log10(q_value_SCR)*-1))) +
+  geom_point(aes(colour = factor(cell_type_short,levels=c(ctD6$order_cell_types)), size=1.5)) +
+  scale_color_manual(name="cell types",values=ctD6$okabe_clust)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(D6_result_fisher_shRNA_gene,D6_result_fisher_shRNA_gene$sig_SCR==T),
+    aes(label = gene),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #xlim(-2,2)+
+  #ylim(-1,10)+
+  #theme(legend.position = "none") +
+  geom_hline(yintercept = log10(sig_level)*-1,linetype="dotted", color="red")+
+  geom_vline(xintercept = 0,linetype="dotted")+
+  #geom_vline(xintercept = fc_level2,linetype="dotted")+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("gene distribution by clusters at D6")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 gene fraction over SCR",
+    y = "-log10(q value)",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_volcano_gene_in_clusters_D6.pdf"),
+       width = 5, height = 4)
+
+###D12
+
+ctD12=unique(D12_result_fisher_shRNA_gene$cell_type_short)
+ctD12=cell_type_pal[cell_type_pal$order_cell_types %in% ctD12,]
+
+
+ggplot(data=D12_result_fisher_shRNA_gene, aes(x=log2(percent_over_SCR_D12), y=(log10(q_value_SCR)*-1))) +
+  geom_point(aes(colour = factor(cell_type_short,levels=c(ctD12$order_cell_types)), size=1.5)) +
+  scale_color_manual(name="cell types",values=ctD12$okabe_clust)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(D12_result_fisher_shRNA_gene,D12_result_fisher_shRNA_gene$sig_SCR==T),
+    aes(label = gene),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #xlim(-2,2)+
+  #ylim(-1,10)+
+  #theme(legend.position = "none") +
+  geom_hline(yintercept = log10(sig_level)*-1,linetype="dotted", color="red")+
+  geom_vline(xintercept = 0,linetype="dotted")+
+  #geom_vline(xintercept = fc_level,)+
+  #geom_vline(xintercept = fc_level2)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("gene distribution by clusters at D12")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 gene fraction over SCR",
+    y = "-log10(q value)",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_volcano_gene_in_clusters_D12.pdf"),
+       width = 5, height = 4)
+
+###D23
+
+ctD23=unique(D23_result_fisher_shRNA_gene$cell_type_short)
+ctD23=cell_type_pal[cell_type_pal$order_cell_types %in% ctD23,]
+
+ggplot(data=D23_result_fisher_shRNA_gene, aes(x=log2(percent_over_SCR_D23), y=(log10(q_value_SCR)*-1))) +
+  geom_point(aes(colour = factor(cell_type_short,levels=c(ctD23$order_cell_types)), size=1.5)) +
+  scale_color_manual(name="cell types",values=ctD23$okabe_clust)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(D23_result_fisher_shRNA_gene,D23_result_fisher_shRNA_gene$sig_SCR==T),
+    aes(label = gene),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #xlim(-2,2)+
+  #ylim(-1,10)+
+  #theme(legend.position = "none") +
+  geom_hline(yintercept = log10(sig_level)*-1,linetype="dotted", color="red")+
+  geom_vline(xintercept = 0,linetype="dotted")+
+  #geom_vline(xintercept = fc_level2)+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("gene distribution by clusters at D23")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 gene fraction over SCR",
+    y = "-log10(q value)",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_volcano_gene_in_clusters_D23.pdf"),
+       width = 5, height = 4)
+```
+
+## mosaic plots of the late timepoints
+####plots by gene (distinction by shRNA)
+######select clones with more than 70 cells in D12
+
+```{r}
+######pre select clones
+###use metaD12 and metaD23 with selection of clusters 
+meta=as.data.frame(cds@colData@listData)
+tot_shRNA=as.data.frame(table(meta$shRNA_label))
+
+tot_shRNA_D6=as.data.frame(table(metaD6$shRNA_label))
+colnames(tot_shRNA_D6)=c("shRNA_label","tot_shRNA_D6")
+tot_shRNA_D6$select_D6=tot_shRNA_D6$tot_shRNA_D6>=70
+
+tot_shRNA_D12=as.data.frame(table(metaD12$shRNA_label))
+colnames(tot_shRNA_D12)=c("shRNA_label","tot_shRNA_D12")
+tot_shRNA_D12$select_D12=tot_shRNA_D12$tot_shRNA_D12>=70
+
+tot_shRNA_D23=as.data.frame(table(metaD23$shRNA_label))
+colnames(tot_shRNA_D23)=c("shRNA_label","tot_shRNA_D23")
+tot_shRNA=tot_shRNA_D23%>%left_join(tot_shRNA_D12, by="shRNA_label")%>%left_join(tot_shRNA_D6, by="shRNA_label")
+
+stat_filename = paste0(fname_prefix_stat, "_Freq_cells_by_shRNA_cardio.csv")
+write.csv(tot_shRNA, stat_filename, quote = F, row.names = T, sep=",")
+```
+
+#calculate percentages to make mosaic plots
+
+```{r}
+meta_cardio =meta_cardio %>%left_join(tot_shRNA,by="shRNA_label")#15862
+meta_cardio <- replace(meta_cardio, is.na(meta_cardio), "empty")
+meta_cardio$shRNA_polished=recode(meta_cardio$shRNA_label,"empty"="control",
+                                   "B2M"="control","SCR"="control")
+
+empty_T=data.frame(shRNA_label="empty","select_D6"=T)
+t=tot_shRNA%>%select(shRNA_label,select_D6)
+t=rbind(t,empty_T)
+
+meta_cardio=meta_cardio%>%left_join(t,by="shRNA_label")
+
+metaD6=meta_cardio[meta_cardio$sample_ID=="Cardiac progenitors",]#6495
+metaD6=subset(metaD6,metaD6$keep_D6==T)#6467
+metaD6=subset(metaD6,metaD6$select_D6.x==T)#6334
+metaD12=meta_cardio[meta_cardio$sample_ID=="CM day 12",]#6318
+metaD12=subset(metaD12,metaD12$keep_D12==T)#6055
+metaD12=subset(metaD12,metaD12$select_D6.x==T)#5946
+metaD23=meta_cardio[meta_cardio$sample_ID=="CM day 23",]#3049
+metaD23=subset(metaD23,metaD23$keep_D23==T)#2578
+metaD23=subset(metaD23,metaD23$select_D6.x==T)#2545
+
+#####################Day 6 calculations
+########################################
+#tot=table(cdsD12$monocle_clusters) #total of the cluster
+tot=as.data.frame(table(metaD6$shRNA_gene)) #total of the cluster
+colnames(tot)=c("gene","tot")
+tot$gene=recode(tot$gene,"NA"="empty")
+
+tot_sh=as.data.frame(table(metaD6$shRNA_label)) #total of the cluster
+colnames(tot_sh)=c("shRNA","tot_shRNA")
+
+df=as.data.frame(table(metaD6$monocle_clusters,metaD6$shRNA_label, metaD6$sample_ID))
+colnames(df)=c("monocle_cluster","shRNA","day","freq")
+df <- replace(df, is.na(df), "empty")
+ID=ID_key%>%select(shRNA_label,shRNA_gene)%>%dplyr::rename(shRNA=shRNA_label,gene=shRNA_gene)
+df=df%>%left_join(ID,by="shRNA")
+df <- replace(df, is.na(df), "empty")
+df=df%>%left_join(tot,by="gene")
+df=df%>%left_join(tot_sh,by="shRNA")
+
+control_df=df%>%filter(gene=="B2M"|gene=="SCR"|gene=="empty")%>%select(-tot,-day,-shRNA,-tot_shRNA)
+control_df=spread(control_df, key="gene",value = "freq" )
+colnames(control_df)=c("monocle_cluster","B2M_D6","empty_D6","SCR_D6")
+control_df$cluster=paste0("clust",control_df$monocle_cluster)
+control_df=control_df%>%select(-monocle_cluster)
+
+control_dfTOT=df%>%filter(gene=="B2M"|gene=="SCR"|gene=="empty")%>%select(-freq,-day,-shRNA,-tot_shRNA)
+control_dfTOT=spread(control_dfTOT, key="gene",value = "tot" )
+colnames(control_dfTOT)=c("monocle_cluster","B2M_totD6","empty_totD6","SCR_totD6")
+control_dfTOT$cluster=paste0("clust",control_dfTOT$monocle_cluster)
+control_dfTOT=control_dfTOT%>%select(-monocle_cluster)
+
+control_df=control_df%>%left_join(control_dfTOT,by="cluster")
+
+mdf2=df
+mdf2$tot = as.numeric(mdf2$tot)
+mdf2$frxn = (mdf2$freq/mdf2$tot)*100
+mdf2$frxn_shRNA = (mdf2$freq/mdf2$tot_shRNA)*100
+m=subset(mdf2,mdf2$freq!=0)
+
+freqD6_shRNA=m%>%dplyr::rename(nb_cells_D6=freq,totalD6=tot,percent_gene_D6=frxn,percent_shRNA_D6=frxn_shRNA,tot_shRNA_D6=tot_shRNA)#63 obs
+freqD6_shRNA$cluster=recode(freqD6_shRNA$monocle_cluster,
+                                                 "1"="clust1",
+                                                 "2"="clust2",
+                                                 "3"="clust3",
+                                                 "4"="clust4",
+                                                 "5"="clust5",
+                                                 "6"="clust6",
+                                                 "7"="clust7",
+                                                "8"="clust8",
+                                                "9"="clust9")
+
+freqD6_shRNA$cell_type_short <- dplyr::recode(freqD6_shRNA$cluster,
+                                                 "clust1"="CM1",
+                                                 "clust2"="P-CP",
+                                                 "clust3"="CP",
+                                                 "clust4"="CM2",
+                                                 "clust5"="CF",
+                                                 "clust6"="L-CP",
+                                                 "clust7"="E-CM",
+                                                 "clust8"="L-CM",
+                                                 "clust9"="P-CM")
+ID=ID_key%>%select(shRNA_label,shRNA_gene)%>%dplyr::rename(shRNA=shRNA_label,gene=shRNA_gene)
+
+freqD6_shRNA=freqD6_shRNA%>%left_join(control_df,by="cluster")
+freqD6_shRNA=freqD6_shRNA%>%mutate(percent_B2M_D6=(B2M_D6/B2M_totD6)*100,
+                                                                   percent_SCR_D6=(SCR_D6/SCR_totD6)*100,
+                                                                   percent_empty_D6=(empty_D6/empty_totD6)*100)
+
+freqD6_shRNA=freqD6_shRNA%>%mutate(percent_over_B2M_D6=(percent_shRNA_D6)/(percent_B2M_D6),
+                                                                   percent_over_SCR_D6=(percent_shRNA_D6)/(percent_SCR_D6),
+                                                                   percent_over_empty_D6=(percent_shRNA_D6)/(percent_empty_D6))
+ID=ID_key%>%select(shRNA_label,shRNA_gene,hex)%>%dplyr::rename(shRNA=shRNA_label,gene=shRNA_gene)
+ID=ID%>%distinct(shRNA, .keep_all = TRUE)
+freqD6_shRNA=freqD6_shRNA%>%left_join(ID, by=c("shRNA","gene"))
+
+palette_shRNA_D6=freqD6_shRNA%>%dplyr::select(shRNA,hex)%>%distinct(shRNA, .keep_all = TRUE)
+
+palette_shRNA_D6$order=ifelse(palette_shRNA_D6$shRNA=="empty",1,
+                             ifelse(palette_shRNA_D6$shRNA=="SCR",2,
+                                    ifelse(palette_shRNA_D6$shRNA=="B2M",3,4)))
+palette_shRNA_D6 <- palette_shRNA_D6[order(palette_shRNA_D6$order),]
+
+sh=palette_shRNA_D6$shRNA
+col=palette_shRNA_D6$hex
+
+ggplot(freqD6_shRNA, aes(x = factor(cell_type_short, levels = order_cell_types_D6), y = percent_gene_D6, fill= factor(shRNA,levels=c(sh)))) + geom_bar(stat = "identity") +
+  scale_fill_manual(values=col,name= "shRNA",)+
+  geom_hline(yintercept = 5, linetype = "dashed", color = "red")+
+  labs(title = "shRNA Distribution Day 6")+ 
+  facet_wrap(~factor(gene, levels = order_genes), ncol=4)
+
+
+ylab = "cluster % by shRNA gene"
+xlab = "cluster"
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D6percent_by_shRNA.pdf"),
+     width = 10, height = 8)
+
+stat_filename = paste0(fname_prefix_stat_c, "_nb_percent_by_shRNA_per_clusterD6.csv")
+write.csv(freqD6_shRNA, stat_filename, quote = F, row.names = T, sep=",")
+
+#####################Day 12 calculations
+########################################
+#tot=table(cdsD12$monocle_clusters) #total of the cluster
+tot=as.data.frame(table(metaD12$shRNA_gene)) #total of the cluster
+colnames(tot)=c("gene","tot")
+tot$gene=recode(tot$gene,"NA"="empty")
+
+tot_sh=as.data.frame(table(metaD12$shRNA_label)) #total of the cluster
+colnames(tot_sh)=c("shRNA","tot_shRNA")
+
+df=as.data.frame(table(metaD12$monocle_clusters,metaD12$shRNA_label, metaD12$sample_ID))
+colnames(df)=c("monocle_cluster","shRNA","day","freq")
+df <- replace(df, is.na(df), "empty")
+ID=ID_key%>%select(shRNA_label,shRNA_gene)%>%dplyr::rename(shRNA=shRNA_label,gene=shRNA_gene)
+df=df%>%left_join(ID,by="shRNA")
+df <- replace(df, is.na(df), "empty")
+df=df%>%left_join(tot,by="gene")
+df=df%>%left_join(tot_sh,by="shRNA")
+
+control_df=df%>%filter(gene=="B2M"|gene=="SCR"|gene=="empty")%>%select(-tot,-day,-shRNA,-tot_shRNA)
+control_df=spread(control_df, key="gene",value = "freq" )
+colnames(control_df)=c("monocle_cluster","B2M_D12","empty_D12","SCR_D12")
+control_df$cluster=paste0("clust",control_df$monocle_cluster)
+control_df=control_df%>%select(-monocle_cluster)
+
+control_dfTOT=df%>%filter(gene=="B2M"|gene=="SCR"|gene=="empty")%>%select(-freq,-day,-shRNA,-tot_shRNA)
+control_dfTOT=spread(control_dfTOT, key="gene",value = "tot" )
+colnames(control_dfTOT)=c("monocle_cluster","B2M_totD12","empty_totD12","SCR_totD12")
+control_dfTOT$cluster=paste0("clust",control_dfTOT$monocle_cluster)
+control_dfTOT=control_dfTOT%>%select(-monocle_cluster)
+
+control_df=control_df%>%left_join(control_dfTOT,by="cluster")
+
+mdf2=df
+mdf2$tot = as.numeric(mdf2$tot)
+mdf2$frxn = (mdf2$freq/mdf2$tot)*100
+mdf2$frxn_shRNA = (mdf2$freq/mdf2$tot_shRNA)*100
+m=subset(mdf2,mdf2$freq!=0)
+
+freqD12_shRNA=m%>%dplyr::rename(nb_cells_D12=freq,totalD12=tot,percent_gene_D12=frxn,percent_shRNA_D12=frxn_shRNA,tot_shRNA_D12=tot_shRNA)#95 obs
+freqD12_shRNA$cluster=recode(freqD12_shRNA$monocle_cluster,
+                                                 "1"="clust1",
+                                                 "2"="clust2",
+                                                 "3"="clust3",
+                                                 "4"="clust4",
+                                                 "5"="clust5",
+                                                 "6"="clust6",
+                                                 "7"="clust7",
+                                                "8"="clust8",
+                                                "9"="clust9")
+
+freqD12_shRNA$cell_type_short <- dplyr::recode(freqD12_shRNA$cluster,
+                                                 "clust1"="CM1",
+                                                 "clust2"="P-CP",
+                                                 "clust3"="CP",
+                                                 "clust4"="CM2",
+                                                 "clust5"="CF",
+                                                 "clust6"="L-CP",
+                                                 "clust7"="E-CM",
+                                                 "clust8"="L-CM",
+                                                 "clust9"="P-CM")
+ID=ID_key%>%select(shRNA_label,shRNA_gene)%>%dplyr::rename(shRNA=shRNA_label,gene=shRNA_gene)
+
+freqD12_shRNA=freqD12_shRNA%>%left_join(control_df,by="cluster")
+freqD12_shRNA=freqD12_shRNA%>%mutate(percent_B2M_D12=(B2M_D12/B2M_totD12)*100,
+                                                                   percent_SCR_D12=(SCR_D12/SCR_totD12)*100,
+                                                                   percent_empty_D12=(empty_D12/empty_totD12)*100)
+
+freqD12_shRNA=freqD12_shRNA%>%mutate(percent_over_B2M_D12=(percent_shRNA_D12)/(percent_B2M_D12),
+                                                                   percent_over_SCR_D12=(percent_shRNA_D12)/(percent_SCR_D12),
+                                                                   percent_over_empty_D12=(percent_shRNA_D12)/(percent_empty_D12))
+
+ID=ID_key%>%select(shRNA_label,shRNA_gene,hex)%>%dplyr::rename(shRNA=shRNA_label,gene=shRNA_gene)
+ID=ID%>%distinct(shRNA, .keep_all = TRUE)
+freqD12_shRNA=freqD12_shRNA%>%left_join(ID, by=c("shRNA","gene"))
+
+palette_shRNA_D12=freqD12_shRNA%>%dplyr::select(shRNA,hex)%>%distinct(shRNA, .keep_all = TRUE)
+palette_shRNA_D12$order=ifelse(palette_shRNA_D12$shRNA=="empty",1,
+                             ifelse(palette_shRNA_D12$shRNA=="SCR",2,
+                                    ifelse(palette_shRNA_D12$shRNA=="B2M",3,4)))
+palette_shRNA_D12 <- palette_shRNA_D12[order(palette_shRNA_D12$order),]
+
+sh=palette_shRNA_D12$shRNA
+col=palette_shRNA_D12$hex
+
+ggplot(freqD12_shRNA, aes(x = factor(cell_type_short, levels = order_cell_types_D12), y = percent_gene_D12, fill= factor(shRNA,levels=c(sh)))) + geom_bar(stat = "identity") +
+  scale_fill_manual(values=col,name= "shRNA",)+
+  geom_hline(yintercept = 5, linetype = "dashed", color = "red")+
+  labs(title = "shRNA Distribution Day 12")+ 
+  facet_wrap(~factor(gene, levels = order_genes), ncol=4)
+
+ylab = "cluster % by shRNA gene"
+xlab = "cluster"
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D12percent_by_shRNA.pdf"),
+     width = 10, height = 8)
+
+stat_filename = paste0(fname_prefix_stat_c, "_nb_percent_by_shRNA_per_clusterD12.csv")
+write.csv(freqD12_shRNA, stat_filename, quote = F, row.names = T, sep=",")
+
+
+########################Day 23 calculations
+###########################################
+#tot=table(cdsD23$monocle_clusters) #total of the cluster
+tot=as.data.frame(table(metaD23$shRNA_gene)) #total of the cluster
+colnames(tot)=c("gene","tot")
+tot$gene=recode(tot$gene,"NA"="empty")
+
+tot_sh=as.data.frame(table(metaD23$shRNA_label)) #total of the cluster
+colnames(tot_sh)=c("shRNA","tot_shRNA")
+
+df=as.data.frame(table(metaD23$monocle_clusters,metaD23$shRNA_label, metaD23$sample_ID))
+colnames(df)=c("monocle_cluster","shRNA","day","freq")
+df <- replace(df, is.na(df), "empty")
+ID=ID_key%>%select(shRNA_label,shRNA_gene)%>%dplyr::rename(shRNA=shRNA_label,gene=shRNA_gene)
+df=df%>%left_join(ID,by="shRNA")
+df <- replace(df, is.na(df), "empty")
+df=df%>%left_join(tot,by="gene")
+df=df%>%left_join(tot_sh,by="shRNA")
+
+control_df=df%>%filter(gene=="B2M"|gene=="SCR"|gene=="empty")%>%select(-tot,-day,-shRNA,-tot_shRNA)
+control_df=spread(control_df, key="gene",value = "freq" )
+colnames(control_df)=c("monocle_cluster","B2M_D23","empty_D23","SCR_D23")
+control_df$cluster=paste0("clust",control_df$monocle_cluster)
+control_df=control_df%>%select(-monocle_cluster)
+
+control_dfTOT=df%>%filter(gene=="B2M"|gene=="SCR"|gene=="empty")%>%select(-freq,-day,-shRNA,-tot_shRNA)
+control_dfTOT=spread(control_dfTOT, key="gene",value = "tot" )
+colnames(control_dfTOT)=c("monocle_cluster","B2M_totD23","empty_totD23","SCR_totD23")
+control_dfTOT$cluster=paste0("clust",control_dfTOT$monocle_cluster)
+control_dfTOT=control_dfTOT%>%select(-monocle_cluster)
+
+control_df=control_df%>%left_join(control_dfTOT,by="cluster")
+
+mdf2=df
+mdf2$tot = as.numeric(mdf2$tot)
+mdf2$frxn = (mdf2$freq/mdf2$tot)*100
+mdf2$frxn_shRNA = (mdf2$freq/mdf2$tot_shRNA)*100
+m=subset(mdf2,mdf2$freq!=0)
+
+freqD23_shRNA=m%>%dplyr::rename(nb_cells_D23=freq,totalD23=tot,percent_gene_D23=frxn,percent_shRNA_D23=frxn_shRNA,tot_shRNA_D23=tot_shRNA)#58 obs
+freqD23_shRNA$cluster=recode(freqD23_shRNA$monocle_cluster,
+                                                 "1"="clust1",
+                                                 "2"="clust2",
+                                                 "3"="clust3",
+                                                 "4"="clust4",
+                                                 "5"="clust5",
+                                                 "6"="clust6",
+                                                 "7"="clust7",
+                                                "8"="clust8",
+                                                "9"="clust9")
+
+freqD23_shRNA$cell_type_short <- dplyr::recode(freqD23_shRNA$cluster,
+                                                 "clust1"="CM1",
+                                                 "clust2"="P-CP",
+                                                 "clust3"="CP",
+                                                 "clust4"="CM2",
+                                                 "clust5"="CF",
+                                                 "clust6"="L-CP",
+                                                 "clust7"="E-CM",
+                                                 "clust8"="L-CM",
+                                                 "clust9"="P-CM")
+ID=ID_key%>%select(shRNA_label,shRNA_gene)%>%dplyr::rename(shRNA=shRNA_label,gene=shRNA_gene)
+
+
+freqD23_shRNA=freqD23_shRNA%>%left_join(control_df,by="cluster")
+freqD23_shRNA=freqD23_shRNA%>%mutate(percent_B2M_D23=(B2M_D23/B2M_totD23)*100,
+                                                                   percent_SCR_D23=(SCR_D23/SCR_totD23)*100,
+                                                                   percent_empty_D23=(empty_D23/empty_totD23)*100)
+
+freqD23_shRNA=freqD23_shRNA%>%mutate(percent_over_B2M_D23=(percent_shRNA_D23)/(percent_B2M_D23),
+                                                                   percent_over_SCR_D23=(percent_shRNA_D23)/(percent_SCR_D23),
+                                                                   percent_over_empty_D23=(percent_shRNA_D23)/(percent_empty_D23))
+
+ID=ID_key%>%select(shRNA_label,shRNA_gene,hex)%>%dplyr::rename(shRNA=shRNA_label,gene=shRNA_gene)
+ID=ID%>%distinct(shRNA, .keep_all = TRUE)
+freqD23_shRNA=freqD23_shRNA%>%left_join(ID, by=c("shRNA","gene"))
+
+palette_shRNA_D23=freqD23_shRNA%>%dplyr::select(shRNA,hex)%>%distinct(shRNA, .keep_all = TRUE)
+palette_shRNA_D23$order=ifelse(palette_shRNA_D23$shRNA=="empty",1,
+                             ifelse(palette_shRNA_D23$shRNA=="SCR",2,
+                                    ifelse(palette_shRNA_D23$shRNA=="B2M",3,4)))
+palette_shRNA_D23 <- palette_shRNA_D23[order(palette_shRNA_D23$order),]
+
+sh=palette_shRNA_D23$shRNA
+col=palette_shRNA_D23$hex
+
+ggplot(freqD23_shRNA, aes(x = factor(cell_type_short, levels = order_cell_types_D23), y = percent_gene_D23, fill= factor(shRNA,levels=c(sh)))) + geom_bar(stat = "identity") +
+  scale_fill_manual(values=col,name= "shRNA",)+
+  geom_hline(yintercept = 5, linetype = "dashed", color = "red")+
+  labs(title = "shRNA Distribution Day 23")+ 
+  facet_wrap(~factor(gene, levels = order_genes), ncol=4)
+  
+ylab = "cluster % by shRNA gene"
+xlab = "cluster"
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D23percent_by_shRNA.pdf"),
+     width = 10, height = 8)
+
+stat_filename = paste0(fname_prefix_stat_c, "_nb_percent_by_shRNA_per_clusterD23.csv")
+write.csv(freqD12_shRNA, stat_filename, quote = F, row.names = T, sep=",")
+
+
+
+```
+####calculate fisher test
+###test shRNA
+###D6
+
+```{r}
+
+####run the test for D6
+meta=metaD6
+
+#####create a meta to bypass the statistical block when one shRNA is not present
+#####B2M set
+D6_sh=meta%>%select(shRNA_label,KD_B2M,clust1,clust2,clust3,clust4,clust5,clust6,clust7,clust8,clust9)
+sh_list=unique(D6_sh$shRNA_label)
+
+c1c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=T,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c1g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=T,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c2c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=T,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c2g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=T,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c3c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=T,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c3g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=T,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c4c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=F,clust4=T,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c4g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=F,clust4=T,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c5c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=T,clust6=F,clust7=F,clust8=F,clust9=F)
+c5g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=T,clust6=F,clust7=F,clust8=F,clust9=F)
+c6c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=T,clust7=F,clust8=F,clust9=F)
+c6g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=T,clust7=F,clust8=F,clust9=F)
+c7c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=T,clust8=F,clust9=F)
+c7g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=T,clust8=F,clust9=F)
+c8c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=T,clust9=F)
+c8g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=T,clust9=F)
+c9c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=T)
+c9g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=T)
+
+
+D6_sh_B2M=rbind(D6_sh,c1c,c1g,c2c,c2g,c3c,c3g,c4c,c4g,c5c,c5g,c6c,c6g,c7c,c7g,c8c,c8g,c9c,c9g)
+
+#####SCR set
+D6_sh=meta%>%select(shRNA_label,KD_SCR,clust1,clust2,clust3,clust4,clust5,clust6,clust7,clust8,clust9)
+sh_list=unique(D6_sh$shRNA_label)
+
+c1c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=T,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c1g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=T,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c2c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=T,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c2g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=T,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c3c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=T,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c3g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=T,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c4c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=F,clust4=T,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c4g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=F,clust4=T,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c5c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=T,clust6=F,clust7=F,clust8=F,clust9=F)
+c5g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=T,clust6=F,clust7=F,clust8=F,clust9=F)
+c6c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=T,clust7=F,clust8=F,clust9=F)
+c6g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=T,clust7=F,clust8=F,clust9=F)
+c7c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=T,clust8=F,clust9=F)
+c7g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=T,clust8=F,clust9=F)
+c8c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=T,clust9=F)
+c8g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=T,clust9=F)
+c9c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=T)
+c9g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=T)
+
+
+D6_sh_SCR=rbind(D6_sh,c1c,c1g,c2c,c2g,c3c,c3g,c4c,c4g,c5c,c5g,c6c,c6g,c7c,c7g,c8c,c8g,c9c,c9g)
+
+#####empty set
+D6_sh=meta%>%select(shRNA_label,KD_empty,clust1,clust2,clust3,clust4,clust5,clust6,clust7,clust8,clust9)
+sh_list=unique(D6_sh$shRNA_label)
+
+c1c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=T,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c1g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=T,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c2c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=T,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c2g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=T,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c3c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=T,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c3g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=T,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c4c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=F,clust4=T,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c4g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=F,clust4=T,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c5c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=T,clust6=F,clust7=F,clust8=F,clust9=F)
+c5g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=T,clust6=F,clust7=F,clust8=F,clust9=F)
+c6c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=T,clust7=F,clust8=F,clust9=F)
+c6g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=T,clust7=F,clust8=F,clust9=F)
+c7c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=T,clust8=F,clust9=F)
+c7g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=T,clust8=F,clust9=F)
+c8c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=T,clust9=F)
+c8g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=T,clust9=F)
+c9c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=T)
+c9g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=T)
+
+
+D6_sh_empty=rbind(D6_sh,c1c,c1g,c2c,c2g,c3c,c3g,c4c,c4g,c5c,c5g,c6c,c6g,c7c,c7g,c8c,c8g,c9c,c9g)
+
+#loop seems not to subset correctly so I am running it for clust 4 first
+################## start without subsetting for cell populations
+
+shRNA_list <- unique(meta$shRNA_label)
+#clusters <- paste0("clust", 1:9)
+clusters <- paste0("clust", clustersD6)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(shRNA_list))
+  
+  for (i in seq_along(shRNA_list)) {
+    shRNA <- shRNA_list[i]
+    subset_data <- D6_sh_B2M[D6_sh_B2M$shRNA_label %in% c(shRNA, "B2M"), c("KD_B2M", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_B2M, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(shRNA = shRNA_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_b2m <- do.call(rbind, result_list)
+result_df_combined_b2m=result_df_combined_b2m%>%dplyr::rename(p_value_b2m=p_value,q_value_b2m=q_value)
+
+#################run for SCR
+
+shRNA_list <- unique(meta$shRNA_label)
+#clusters <- paste0("clust", 1:9)
+clusters <- paste0("clust", clustersD6)
+
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(shRNA_list))
+  
+  for (i in seq_along(shRNA_list)) {
+    shRNA <- shRNA_list[i]
+    subset_data <- D6_sh_SCR[D6_sh_SCR$shRNA_label %in% c(shRNA, "SCR"), c("KD_SCR", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_SCR, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(shRNA = shRNA_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_SCR <- do.call(rbind, result_list)
+result_df_combined_SCR=result_df_combined_SCR%>%dplyr::rename(p_value_SCR=p_value,q_value_SCR=q_value)
+
+########run on empty
+
+shRNA_list <- unique(meta$shRNA_label)
+#clusters <- paste0("clust", 1:7)
+clusters <- paste0("clust", clustersD6)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(shRNA_list))
+  
+  for (i in seq_along(shRNA_list)) {
+    shRNA <- shRNA_list[i]
+    subset_data <- D6_sh_empty[D6_sh_empty$shRNA_label %in% c(shRNA, "empty"), c("KD_empty", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_empty, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(shRNA = shRNA_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_empty <- do.call(rbind, result_list)
+result_df_combined_empty=result_df_combined_empty%>%dplyr::rename(p_value_empty=p_value,q_value_empty=q_value)
+
+D6_result_fisher_shRNA= result_df_combined_SCR%>%full_join(result_df_combined_b2m,by=c("shRNA","cluster"))%>%full_join(result_df_combined_empty,by=c("shRNA","cluster"))
+D6_result_fisher_shRNA <- replace(D6_result_fisher_shRNA, is.na(D6_result_fisher_shRNA), 1)
+D6_result_fisher_shRNA=D6_result_fisher_shRNA%>%mutate(sig_SCR=q_value_SCR<=0.05,
+                                                                   sig_b2m=q_value_b2m<=0.05,
+                                                                   sig_empty=q_value_empty<=0.05)
+
+D6_result_fisher_shRNA=D6_result_fisher_shRNA%>%left_join(freqD6_shRNA,by=c("shRNA","cluster"))
+
+D6_result_fisher_shRNA$assigned_cell_type <- as.character(D6_result_fisher_shRNA$cluster)
+D6_result_fisher_shRNA$cell_type_short <- as.character(D6_result_fisher_shRNA$cluster)
+D6_result_fisher_shRNA$monocle_cluster <- as.character(D6_result_fisher_shRNA$cluster)
+D6_result_fisher_shRNA$assigned_cell_type <- dplyr::recode(D6_result_fisher_shRNA$assigned_cell_type,
+                                                  "clust1"="Mid cardiomyocytes 1",
+                                                 "clust2"="Proliferative cardiac progenitors",
+                                                 "clust3"="Cardiac progenitors",
+                                                 "clust4"="Mid cardiomyocytes 2",
+                                                 "clust5"="Cardiac fibroblasts",
+                                                 "clust6"="Late cardiac progenitors",
+                                                 "clust7"="Early stage cardiomyocytes",
+                                                 "clust8"="Late cardiomyocytes",
+                                                 "clust9"="Proliferative cardiomyocytes")
+
+D6_result_fisher_shRNA$cell_type_short <- dplyr::recode(D6_result_fisher_shRNA$cell_type_short,
+                                                 "clust1"="CM1",
+                                                 "clust2"="P-CP",
+                                                 "clust3"="CP",
+                                                 "clust4"="CM2",
+                                                 "clust5"="CF",
+                                                 "clust6"="L-CP",
+                                                 "clust7"="E-CM",
+                                                 "clust8"="L-CM",
+                                                 "clust9"="P-CM")
+
+D6_result_fisher_shRNA$monocle_cluster <- dplyr::recode(D6_result_fisher_shRNA$monocle_cluster,
+                                                  "clust1"="1",
+                                                 "clust2"="2",
+                                                 "clust3"="3",
+                                                 "clust4"="4",
+                                                 "clust5"="5",
+                                                 "clust6"="6",
+                                                 "clust7"="7",
+                                                 "clust8"="8",
+                                                 "clust9"="9")
+
+#D6_result_fisher_shRNA=D6_result_fisher_shRNA%>%filter(shRNA!="SCR"&shRNA!="B2M"&shRNA!="empty")
+
+
+```
+
+####calculate fisher test
+###test shRNA
+###D12
+
+```{r}
+
+####run the test for D12
+meta=metaD12
+
+#####create a meta to bypass the statistical block when one shRNA is not present
+#####B2M set
+D12_sh=meta%>%select(shRNA_label,KD_B2M,clust1,clust2,clust3,clust4,clust5,clust6,clust7,clust8,clust9)
+sh_list=unique(D12_sh$shRNA_label)
+
+c1c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=T,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c1g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=T,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c2c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=T,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c2g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=T,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c3c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=T,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c3g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=T,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c4c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=F,clust4=T,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c4g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=F,clust4=T,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c5c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=T,clust6=F,clust7=F,clust8=F,clust9=F)
+c5g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=T,clust6=F,clust7=F,clust8=F,clust9=F)
+c6c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=T,clust7=F,clust8=F,clust9=F)
+c6g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=T,clust7=F,clust8=F,clust9=F)
+c7c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=T,clust8=F,clust9=F)
+c7g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=T,clust8=F,clust9=F)
+c8c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=T,clust9=F)
+c8g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=T,clust9=F)
+c9c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=T)
+c9g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=T)
+
+
+D12_sh_B2M=rbind(D12_sh,c1c,c1g,c2c,c2g,c3c,c3g,c4c,c4g,c5c,c5g,c6c,c6g,c7c,c7g,c8c,c8g,c9c,c9g)
+
+#####SCR set
+D12_sh=meta%>%select(shRNA_label,KD_SCR,clust1,clust2,clust3,clust4,clust5,clust6,clust7,clust8,clust9)
+sh_list=unique(D12_sh$shRNA_label)
+
+c1c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=T,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c1g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=T,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c2c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=T,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c2g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=T,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c3c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=T,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c3g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=T,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c4c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=F,clust4=T,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c4g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=F,clust4=T,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c5c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=T,clust6=F,clust7=F,clust8=F,clust9=F)
+c5g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=T,clust6=F,clust7=F,clust8=F,clust9=F)
+c6c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=T,clust7=F,clust8=F,clust9=F)
+c6g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=T,clust7=F,clust8=F,clust9=F)
+c7c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=T,clust8=F,clust9=F)
+c7g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=T,clust8=F,clust9=F)
+c8c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=T,clust9=F)
+c8g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=T,clust9=F)
+c9c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=T)
+c9g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=T)
+
+
+D12_sh_SCR=rbind(D12_sh,c1c,c1g,c2c,c2g,c3c,c3g,c4c,c4g,c5c,c5g,c6c,c6g,c7c,c7g,c8c,c8g,c9c,c9g)
+
+#####empty set
+D12_sh=meta%>%select(shRNA_label,KD_empty,clust1,clust2,clust3,clust4,clust5,clust6,clust7,clust8,clust9)
+sh_list=unique(D12_sh$shRNA_label)
+
+c1c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=T,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c1g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=T,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c2c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=T,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c2g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=T,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c3c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=T,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c3g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=T,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c4c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=F,clust4=T,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c4g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=F,clust4=T,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c5c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=T,clust6=F,clust7=F,clust8=F,clust9=F)
+c5g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=T,clust6=F,clust7=F,clust8=F,clust9=F)
+c6c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=T,clust7=F,clust8=F,clust9=F)
+c6g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=T,clust7=F,clust8=F,clust9=F)
+c7c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=T,clust8=F,clust9=F)
+c7g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=T,clust8=F,clust9=F)
+c8c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=T,clust9=F)
+c8g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=T,clust9=F)
+c9c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=T)
+c9g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=T)
+
+
+D12_sh_empty=rbind(D12_sh,c1c,c1g,c2c,c2g,c3c,c3g,c4c,c4g,c5c,c5g,c6c,c6g,c7c,c7g,c8c,c8g,c9c,c9g)
+
+#loop seems not to subset correctly so I am running it for clust 4 first
+################## start without subsetting for cell populations
+
+shRNA_list <- unique(meta$shRNA_label)
+#clusters <- paste0("clust", 1:9)
+clusters <- paste0("clust", clustersD12)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(shRNA_list))
+  
+  for (i in seq_along(shRNA_list)) {
+    shRNA <- shRNA_list[i]
+    subset_data <- D12_sh_B2M[D12_sh_B2M$shRNA_label %in% c(shRNA, "B2M"), c("KD_B2M", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_B2M, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(shRNA = shRNA_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_b2m <- do.call(rbind, result_list)
+result_df_combined_b2m=result_df_combined_b2m%>%dplyr::rename(p_value_b2m=p_value,q_value_b2m=q_value)
+
+#################run for SCR
+
+shRNA_list <- unique(meta$shRNA_label)
+#clusters <- paste0("clust", 1:9)
+clusters <- paste0("clust", clustersD12)
+
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(shRNA_list))
+  
+  for (i in seq_along(shRNA_list)) {
+    shRNA <- shRNA_list[i]
+    subset_data <- D12_sh_SCR[D12_sh_SCR$shRNA_label %in% c(shRNA, "SCR"), c("KD_SCR", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_SCR, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(shRNA = shRNA_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_SCR <- do.call(rbind, result_list)
+result_df_combined_SCR=result_df_combined_SCR%>%dplyr::rename(p_value_SCR=p_value,q_value_SCR=q_value)
+
+########run on empty
+
+shRNA_list <- unique(meta$shRNA_label)
+#clusters <- paste0("clust", 1:7)
+clusters <- paste0("clust", clustersD12)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(shRNA_list))
+  
+  for (i in seq_along(shRNA_list)) {
+    shRNA <- shRNA_list[i]
+    subset_data <- D12_sh_empty[D12_sh_empty$shRNA_label %in% c(shRNA, "empty"), c("KD_empty", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_empty, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(shRNA = shRNA_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_empty <- do.call(rbind, result_list)
+result_df_combined_empty=result_df_combined_empty%>%dplyr::rename(p_value_empty=p_value,q_value_empty=q_value)
+
+D12_result_fisher_shRNA= result_df_combined_SCR%>%full_join(result_df_combined_b2m,by=c("shRNA","cluster"))%>%full_join(result_df_combined_empty,by=c("shRNA","cluster"))
+D12_result_fisher_shRNA <- replace(D12_result_fisher_shRNA, is.na(D12_result_fisher_shRNA), 1)
+D12_result_fisher_shRNA=D12_result_fisher_shRNA%>%mutate(sig_SCR=q_value_SCR<=0.05,
+                                                                   sig_b2m=q_value_b2m<=0.05,
+                                                                   sig_empty=q_value_empty<=0.05)
+
+D12_result_fisher_shRNA=D12_result_fisher_shRNA%>%left_join(freqD12_shRNA,by=c("shRNA","cluster"))
+
+D12_result_fisher_shRNA$assigned_cell_type <- as.character(D12_result_fisher_shRNA$cluster)
+D12_result_fisher_shRNA$cell_type_short <- as.character(D12_result_fisher_shRNA$cluster)
+D12_result_fisher_shRNA$monocle_cluster <- as.character(D12_result_fisher_shRNA$cluster)
+D12_result_fisher_shRNA$assigned_cell_type <- dplyr::recode(D12_result_fisher_shRNA$assigned_cell_type,
+                                                  "clust1"="Mid cardiomyocytes 1",
+                                                 "clust2"="Proliferative cardiac progenitors",
+                                                 "clust3"="Cardiac progenitors",
+                                                 "clust4"="Mid cardiomyocytes 2",
+                                                 "clust5"="Cardiac fibroblasts",
+                                                 "clust6"="Late cardiac progenitors",
+                                                 "clust7"="Early stage cardiomyocytes",
+                                                 "clust8"="Late cardiomyocytes",
+                                                 "clust9"="Proliferative cardiomyocytes")
+
+D12_result_fisher_shRNA$cell_type_short <- dplyr::recode(D12_result_fisher_shRNA$cell_type_short,
+                                                 "clust1"="CM1",
+                                                 "clust2"="P-CP",
+                                                 "clust3"="CP",
+                                                 "clust4"="CM2",
+                                                 "clust5"="CF",
+                                                 "clust6"="L-CP",
+                                                 "clust7"="E-CM",
+                                                 "clust8"="L-CM",
+                                                 "clust9"="P-CM")
+
+D12_result_fisher_shRNA$monocle_cluster <- dplyr::recode(D12_result_fisher_shRNA$monocle_cluster,
+                                                  "clust1"="1",
+                                                 "clust2"="2",
+                                                 "clust3"="3",
+                                                 "clust4"="4",
+                                                 "clust5"="5",
+                                                 "clust6"="6",
+                                                 "clust7"="7",
+                                                 "clust8"="8",
+                                                 "clust9"="9")
+
+#D12_result_fisher_shRNA=D12_result_fisher_shRNA%>%filter(shRNA!="SCR"&shRNA!="B2M"&shRNA!="empty")
+
+
+```
+
+##fisher test per gene to assess frequency in clusters
+###test shRNA
+###fisher test DD23
+
+```{r}
+####run the test for D23
+meta=metaD23
+
+#####create a meta to bypass the statistical block when one shRNA is not present
+#####B2M set
+D23_sh=meta%>%select(shRNA_label,KD_B2M,clust1,clust2,clust3,clust4,clust5,clust6,clust7,clust8,clust9)
+sh_list=unique(D23_sh$shRNA_label)
+
+c1c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=T,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c1g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=T,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c2c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=T,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c2g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=T,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c3c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=T,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c3g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=T,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c4c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=F,clust4=T,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c4g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=F,clust4=T,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c5c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=T,clust6=F,clust7=F,clust8=F,clust9=F)
+c5g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=T,clust6=F,clust7=F,clust8=F,clust9=F)
+c6c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=T,clust7=F,clust8=F,clust9=F)
+c6g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=T,clust7=F,clust8=F,clust9=F)
+c7c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=T,clust8=F,clust9=F)
+c7g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=T,clust8=F,clust9=F)
+c8c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=T,clust9=F)
+c8g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=T,clust9=F)
+c9c=data.frame(shRNA_label=sh_list,KD_B2M="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=T)
+c9g=data.frame(shRNA_label=sh_list,KD_B2M="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=T)
+
+
+D23_sh_B2M=rbind(D23_sh,c1c,c1g,c2c,c2g,c3c,c3g,c4c,c4g,c5c,c5g,c6c,c6g,c7c,c7g,c8c,c8g,c9c,c9g)
+
+#####SCR set
+D23_sh=meta%>%select(shRNA_label,KD_SCR,clust1,clust2,clust3,clust4,clust5,clust6,clust7,clust8,clust9)
+sh_list=unique(D23_sh$shRNA_label)
+
+c1c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=T,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c1g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=T,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c2c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=T,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c2g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=T,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c3c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=T,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c3g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=T,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c4c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=F,clust4=T,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c4g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=F,clust4=T,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c5c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=T,clust6=F,clust7=F,clust8=F,clust9=F)
+c5g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=T,clust6=F,clust7=F,clust8=F,clust9=F)
+c6c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=T,clust7=F,clust8=F,clust9=F)
+c6g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=T,clust7=F,clust8=F,clust9=F)
+c7c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=T,clust8=F,clust9=F)
+c7g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=T,clust8=F,clust9=F)
+c8c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=T,clust9=F)
+c8g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=T,clust9=F)
+c9c=data.frame(shRNA_label=sh_list,KD_SCR="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=T)
+c9g=data.frame(shRNA_label=sh_list,KD_SCR="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=T)
+
+
+D23_sh_SCR=rbind(D23_sh,c1c,c1g,c2c,c2g,c3c,c3g,c4c,c4g,c5c,c5g,c6c,c6g,c7c,c7g,c8c,c8g,c9c,c9g)
+
+#####empty set
+D23_sh=meta%>%select(shRNA_label,KD_empty,clust1,clust2,clust3,clust4,clust5,clust6,clust7,clust8,clust9)
+sh_list=unique(D23_sh$shRNA_label)
+
+c1c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=T,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c1g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=T,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c2c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=T,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c2g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=T,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c3c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=T,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c3g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=T,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c4c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=F,clust4=T,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c4g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=F,clust4=T,clust5=F,clust6=F,clust7=F,clust8=F,clust9=F)
+c5c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=T,clust6=F,clust7=F,clust8=F,clust9=F)
+c5g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=T,clust6=F,clust7=F,clust8=F,clust9=F)
+c6c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=T,clust7=F,clust8=F,clust9=F)
+c6g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=T,clust7=F,clust8=F,clust9=F)
+c7c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=T,clust8=F,clust9=F)
+c7g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=T,clust8=F,clust9=F)
+c8c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=T,clust9=F)
+c8g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=T,clust9=F)
+c9c=data.frame(shRNA_label=sh_list,KD_empty="control",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=T)
+c9g=data.frame(shRNA_label=sh_list,KD_empty="gene",clust1=F,clust2=F,clust3=F,clust4=F,clust5=F,clust6=F,clust7=F,clust8=F,clust9=T)
+
+
+D23_sh_empty=rbind(D23_sh,c1c,c1g,c2c,c2g,c3c,c3g,c4c,c4g,c5c,c5g,c6c,c6g,c7c,c7g,c8c,c8g,c9c,c9g)
+
+#loop seems not to subset correctly so I am running it for clust 4 first
+################## start without subsetting for cell populations
+
+shRNA_list <- unique(meta$shRNA_label)
+#clusters <- paste0("clust", 1:9)
+clusters <- paste0("clust", clustersD23)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(shRNA_list))
+  
+  for (i in seq_along(shRNA_list)) {
+    shRNA <- shRNA_list[i]
+    subset_data <- D23_sh_B2M[D23_sh_B2M$shRNA_label %in% c(shRNA, "B2M"), c("KD_B2M", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_B2M, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(shRNA = shRNA_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_b2m <- do.call(rbind, result_list)
+result_df_combined_b2m=result_df_combined_b2m%>%dplyr::rename(p_value_b2m=p_value,q_value_b2m=q_value)
+
+#################run for SCR
+
+shRNA_list <- unique(meta$shRNA_label)
+#clusters <- paste0("clust", 1:9)
+clusters <- paste0("clust", clustersD23)
+
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(shRNA_list))
+  
+  for (i in seq_along(shRNA_list)) {
+    shRNA <- shRNA_list[i]
+    subset_data <- D23_sh_SCR[D23_sh_SCR$shRNA_label %in% c(shRNA, "SCR"), c("KD_SCR", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_SCR, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(shRNA = shRNA_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_SCR <- do.call(rbind, result_list)
+result_df_combined_SCR=result_df_combined_SCR%>%dplyr::rename(p_value_SCR=p_value,q_value_SCR=q_value)
+
+########run on empty
+
+shRNA_list <- unique(meta$shRNA_label)
+#clusters <- paste0("clust", 1:7)
+clusters <- paste0("clust", clustersD23)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(shRNA_list))
+  
+  for (i in seq_along(shRNA_list)) {
+    shRNA <- shRNA_list[i]
+    subset_data <- D23_sh_empty[D23_sh_empty$shRNA_label %in% c(shRNA, "empty"), c("KD_empty", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_empty, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(shRNA = shRNA_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_empty <- do.call(rbind, result_list)
+result_df_combined_empty=result_df_combined_empty%>%dplyr::rename(p_value_empty=p_value,q_value_empty=q_value)
+
+D23_result_fisher_shRNA= result_df_combined_SCR%>%full_join(result_df_combined_b2m,by=c("shRNA","cluster"))%>%full_join(result_df_combined_empty,by=c("shRNA","cluster"))
+D23_result_fisher_shRNA <- replace(D23_result_fisher_shRNA, is.na(D23_result_fisher_shRNA), 1)
+D23_result_fisher_shRNA=D23_result_fisher_shRNA%>%mutate(sig_SCR=q_value_SCR<=0.05,
+                                                                   sig_b2m=q_value_b2m<=0.05,
+                                                                   sig_empty=q_value_empty<=0.05)
+
+D23_result_fisher_shRNA=D23_result_fisher_shRNA%>%left_join(freqD23_shRNA,by=c("shRNA","cluster"))
+D23_result_fisher_shRNA=D23_result_fisher_shRNA%>%dplyr::filter(gene!= is.na(gene))
+
+D23_result_fisher_shRNA$assigned_cell_type <- as.character(D23_result_fisher_shRNA$cluster)
+D23_result_fisher_shRNA$cell_type_short <- as.character(D23_result_fisher_shRNA$cluster)
+D23_result_fisher_shRNA$monocle_cluster <- as.character(D23_result_fisher_shRNA$cluster)
+D23_result_fisher_shRNA$assigned_cell_type <- dplyr::recode(D23_result_fisher_shRNA$assigned_cell_type,
+                                                  "clust1"="Mid cardiomyocytes 1",
+                                                 "clust2"="Proliferative cardiac progenitors",
+                                                 "clust3"="Cardiac progenitors",
+                                                 "clust4"="Mid cardiomyocytes 2",
+                                                 "clust5"="Cardiac fibroblasts",
+                                                 "clust6"="Late cardiac progenitors",
+                                                 "clust7"="Early stage cardiomyocytes",
+                                                 "clust8"="Late cardiomyocytes",
+                                                 "clust9"="Proliferative cardiomyocytes")
+
+D23_result_fisher_shRNA$cell_type_short <- dplyr::recode(D23_result_fisher_shRNA$cell_type_short,
+                                                 "clust1"="CM1",
+                                                 "clust2"="P-CP",
+                                                 "clust3"="CP",
+                                                 "clust4"="CM2",
+                                                 "clust5"="CF",
+                                                 "clust6"="L-CP",
+                                                 "clust7"="E-CM",
+                                                 "clust8"="L-CM",
+                                                 "clust9"="P-CM")
+
+D23_result_fisher_shRNA$monocle_cluster <- dplyr::recode(D23_result_fisher_shRNA$monocle_cluster,
+                                                  "clust1"="1",
+                                                 "clust2"="2",
+                                                 "clust3"="3",
+                                                 "clust4"="4",
+                                                 "clust5"="5",
+                                                 "clust6"="6",
+                                                 "clust7"="7",
+                                                 "clust8"="8",
+                                                 "clust9"="9")
+
+#D23_result_fisher_shRNA=D23_result_fisher_shRNA%>%filter(shRNA!="SCR"&shRNA!="B2M"&shRNA!="empty")
+
+```
+
+#volcano plots for shRNA
+
+```{r}
+##########make volcano plots
+sig_level <- 0.05
+#Set a fold-change cutoff
+fc_level <- log2(1.5)
+fc_level2 <- (log2(1.5))*-1
+
+###D6
+
+ggplot(data=D6_result_fisher_shRNA, aes(x=log2(percent_over_SCR_D6), y=(log10(q_value_SCR)*-1))) +
+  geom_point(aes(colour = factor(cell_type_short,levels=c(ctD6$order_cell_types)), size=1.5)) +
+  scale_color_manual(name="cell types",values=ctD6$okabe_clust)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(D6_result_fisher_shRNA,D6_result_fisher_shRNA$sig_SCR==T),
+    aes(label = shRNA),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_hline(yintercept = log10(sig_level)*-1,linetype="dotted", color="red")+
+  geom_vline(xintercept = 0,linetype="dotted")+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("shRNA distribution by clusters at D6")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 gene fraction over SCR",
+    y = "-log10(q value)",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_volcano_shRNA_in_clusters_D6.pdf"),
+       width = 5, height = 4)
+
+###D12
+
+ggplot(data=D12_result_fisher_shRNA, aes(x=log2(percent_over_SCR_D12), y=(log10(q_value_SCR)*-1))) +
+  geom_point(aes(colour = factor(cell_type_short,levels=c(ctD12$order_cell_types)), size=1.5)) +
+  scale_color_manual(name="cell types",values=ctD12$okabe_clust)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(D12_result_fisher_shRNA,D12_result_fisher_shRNA$sig_SCR==T),
+    aes(label = shRNA),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_hline(yintercept = log10(sig_level)*-1,linetype="dotted", color="red")+
+  geom_vline(xintercept = 0,linetype="dotted")+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("shRNA distribution by clusters at D12")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 gene fraction over SCR",
+    y = "-log10(q value)",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_volcano_shRNA_in_clusters_D12.pdf"),
+       width = 5, height = 4)
+
+###D23
+
+ggplot(data=D23_result_fisher_shRNA, aes(x=log2(percent_over_SCR_D23), y=(log10(q_value_SCR)*-1))) +
+  geom_point(aes(colour = factor(cell_type_short,levels=c(ctD23$order_cell_types)), size=1.5)) +
+  scale_color_manual(name="cell types",values=ctD23$okabe_clust)+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(D23_result_fisher_shRNA,D23_result_fisher_shRNA$sig_SCR==T),
+    aes(label = shRNA),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines")
+  )+
+  #theme(legend.position = "none") +
+  geom_hline(yintercept = log10(sig_level)*-1,linetype="dotted", color="red")+
+  geom_vline(xintercept = 0,linetype="dotted")+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("shRNA distribution by clusters at D23")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 gene fraction over SCR",
+    y = "-log10(q value)",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_volcano_shRNA_in_clusters_D23.pdf"),
+       width = 5, height = 4)
+
+ggplot(data=subset(D6_result_fisher_shRNA,D6_result_fisher_shRNA$shRNA!="SCR"&D6_result_fisher_shRNA$shRNA!="B2M"&D6_result_fisher_shRNA$shRNA!="empty"), aes(y =shRNA, x = factor(cell_type_short,levels = order_cell_types), size = percent_over_SCR_D6)) + geom_point(aes(color = log10(q_value_SCR)*-1), alpha = 0.8) + 
+   scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  ggtitle("shRNA composition at D6")+
+  #theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "",
+    y = "",
+    size="FC over SCR" # Legend title
+  )
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D6_HM_shRNA.pdf"),
+     width = 5, height = 5)
+
+ggplot(data=subset(D12_result_fisher_shRNA,D12_result_fisher_shRNA$shRNA!="SCR"&D12_result_fisher_shRNA$shRNA!="B2M"&D12_result_fisher_shRNA$shRNA!="empty"), aes(y =shRNA, x = factor(cell_type_short,levels = order_cell_types), size = percent_over_SCR_D12)) + geom_point(aes(color = log10(q_value_SCR)*-1), alpha = 0.8) + 
+   scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  ggtitle("shRNA composition at D12")+
+  #theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "",
+    y = "",
+    size="FC over SCR" # Legend title
+  )
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D12_HM_shRNA.pdf"),
+     width = 5, height = 5)
+
+ggplot(data=subset(D23_result_fisher_shRNA,D23_result_fisher_shRNA$shRNA!="SCR"&D23_result_fisher_shRNA$shRNA!="B2M"&D23_result_fisher_shRNA$shRNA!="empty"), aes(y =shRNA, x = factor(cell_type_short,levels = order_cell_types), size = percent_over_SCR_D23)) + geom_point(aes(color = log10(q_value_SCR)*-1), alpha = 0.8) + 
+   scale_color_viridis(name = "-log10(adj p-value)",
+                         option="E", discrete=F)+
+  ggtitle("shRNA composition at D23")+
+  #theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "",
+    y = "",
+    size="FC over SCR" # Legend title
+  )
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D23_HM_shRNA.pdf"),
+     width = 5, height = 5)
+
+
+```
+########combine clusters to analyze clones
+
+```{r}
+
+meta=as.data.frame(cds@colData@listData)
+
+ggplot(meta, aes(x = UMAP_1_monocle, y = UMAP_2_monocle)) +
+    geom_point(aes(color = monocle_clusters),
+               size=0.8)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clusters")+
+  scale_color_okabeito(name = "Clusters")+facet_grid(~factor(sample_ID,levels=c("hPSC","hPSC primed","Mesoderm","Cardiac progenitors","CM day 12","CM day 23")))
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_clustered.pdf"),
+     width = 15, height = 4)
+
+ggplot(meta, aes(x = UMAP_1_monocle, y = UMAP_2_monocle)) +
+    geom_point(aes(color = monocle_clusters),
+               size=0.8)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clusters")+
+  scale_color_okabeito(name = "Clusters")
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_clustered_compact.pdf"),
+     width = 5, height = 4)
+
+ggplot(meta_cardio, aes(x = UMAP_1_monocle_cardio, y = UMAP_2_monocle_cardio)) +
+    geom_point(aes(color = cell_type_short),
+               size=0.8)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clusters")+
+  scale_color_okabeito(name = "sub-cluster")+facet_grid(~sample_ID)
+ggsave(filename = paste0(fname_prefix_UMAP_c, "_", "UMAP_cardio_subclustered_short.pdf"),
+     width = 18, height = 8)
+
+ggplot(meta_cardio, aes(x = UMAP_1_monocle_cardio, y = UMAP_2_monocle_cardio)) +
+    geom_point(aes(color = assigned_cell_type),
+               size=0.8)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clusters")+
+  scale_color_okabeito(name = "sub-cluster")+facet_grid(~sample_ID)
+ggsave(filename = paste0(fname_prefix_UMAP_c, "_", "UMAP_cardio_subclustered_full.pdf"),
+     width = 18, height = 8)
+
+meta_cardio$combined_clusters=ifelse(meta_cardio$cell_type_short=="CM1","4",
+                                     ifelse(meta_cardio$cell_type_short=="P-CP","1", 
+                                            ifelse(meta_cardio$cell_type_short=="CP","1",
+                                                   ifelse(meta_cardio$cell_type_short=="CM2","5",
+                                                          ifelse(meta_cardio$cell_type_short=="CF","2",
+                                                                 ifelse(meta_cardio$cell_type_short=="L-CP","3",
+                                                                    ifelse(meta_cardio$cell_type_short=="E-CM","3",
+                                                                    ifelse(meta_cardio$cell_type_short=="L-CM","5","6"))))))))
+meta_cardio$combined_cell_types_short=meta_cardio$combined_clusters
+meta_cardio$combined_cell_types_short=dplyr::recode(meta_cardio$combined_clusters,
+                                               "1"="CP",
+                                               "2"="CF",
+                                               "3"="L-CP",
+                                               "4"="E-CM",
+                                               "5"="L-CM",
+                                               "6"="P-CM")
+meta_cardio$combined_cell_types=meta_cardio$combined_clusters
+meta_cardio$combined_cell_types=dplyr::recode(meta_cardio$combined_clusters,
+                                               "1"="Cardiac progenitors",
+                                               "2"="Cardiac fibroblasts",
+                                               "3"="late cardiac progenitors",
+                                               "4"="Early cardiomyocites",
+                                               "5"="Late cardiomyocites",
+                                                "6"="Proliferative cardiomyocites")
+
+meta_cardio=meta_cardio%>%mutate(cc1=combined_clusters=="1",
+                                   cc2=combined_clusters=="2",
+                                   cc3=combined_clusters=="3",
+                                   cc4=combined_clusters=="4",
+                                   cc5=combined_clusters=="5",
+                                  cc6=combined_clusters=="6")
+
+metaD6=meta_cardio[meta_cardio$sample_ID=="Cardiac progenitors",]#6495
+metaD6=subset(metaD6,metaD6$keep_D6==T)#6467
+metaD6=subset(metaD6,metaD6$select_D6.x==T)#6334
+metaD12=meta_cardio[meta_cardio$sample_ID=="CM day 12",]#6328
+metaD12=subset(metaD12,metaD12$keep_D12==T)#6099
+metaD12=subset(metaD12,metaD12$select_D6.x==T)#5923
+metaD23=meta_cardio[meta_cardio$sample_ID=="CM day 23",]#3061
+metaD23=subset(metaD23,metaD23$keep_D23==T)#2217
+metaD23=subset(metaD23,metaD23$select_D6.x==T)#2184
+
+ggplot(meta_cardio, aes(x = UMAP_1_monocle_cardio, y = UMAP_2_monocle_cardio)) +
+    geom_point(aes(color = combined_cell_types),
+               size=0.8)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle sub-clusters combined")+
+  scale_color_okabeito(name = "combined sub-cluster")+facet_grid(~sample_ID)
+ggsave(filename = paste0(fname_prefix_UMAP_c, "_", "UMAP_cardio_subclustered_combined.pdf"),
+     width = 18, height = 8)
+
+```
+
+####calculate fisher test
+###test clones
+###D6
+
+```{r}
+#summary(as.factor(metaD6$combined_clusters))
+ #  2    3    4    5 
+ #789 1991 2278  865 
+
+####run the test for D6
+#meta D6 generated for shRNA analysis
+meta=metaD6
+
+#####create a meta to bypass the statistical block when one shRNA is not present
+#####B2M set
+D6_sh=meta%>%select(clone,KD_B2M,cc1,cc2,cc3,cc4,cc5,cc6)
+clone_list=unique(D6_sh$clone)
+
+c1c=data.frame(clone=clone_list,KD_B2M="control",cc1=T,cc2=F,cc3=F,cc4=F,cc5=F,cc6=F)
+c1g=data.frame(clone=clone_list,KD_B2M="gene",cc1=T,cc2=F,cc3=F,cc4=F,cc5=F,cc6=F)
+c2c=data.frame(clone=clone_list,KD_B2M="control",cc1=F,cc2=T,cc3=F,cc4=F,cc5=F,cc6=F)
+c2g=data.frame(clone=clone_list,KD_B2M="gene",cc1=F,cc2=T,cc3=F,cc4=F,cc5=F,cc6=F)
+c3c=data.frame(clone=clone_list,KD_B2M="control",cc1=F,cc2=F,cc3=T,cc4=F,cc5=F,cc6=F)
+c3g=data.frame(clone=clone_list,KD_B2M="gene",cc1=F,cc2=F,cc3=T,cc4=F,cc5=F,cc6=F)
+c4c=data.frame(clone=clone_list,KD_B2M="control",cc1=F,cc2=F,cc3=F,cc4=T,cc5=F,cc6=F)
+c4g=data.frame(clone=clone_list,KD_B2M="gene",cc1=F,cc2=F,cc3=F,cc4=T,cc5=F,cc6=F)
+c5c=data.frame(clone=clone_list,KD_B2M="control",cc1=F,cc2=F,cc3=F,cc4=F,cc5=T,cc6=F)
+c5g=data.frame(clone=clone_list,KD_B2M="gene",cc1=F,cc2=F,cc3=F,cc4=F,cc5=T,cc6=F)
+c6c=data.frame(clone=clone_list,KD_B2M="control",cc1=F,cc2=F,cc3=F,cc4=F,cc5=F,cc6=T)
+c6g=data.frame(clone=clone_list,KD_B2M="gene",cc1=F,cc2=F,cc3=F,cc4=F,cc5=F,cc6=T)
+
+
+D6_sh_B2M=rbind(D6_sh,c1c,c1g,c2c,c2g,c3c,c3g,c4c,c4g,c5c,c5g,c6c,c6g)
+
+#####SCR set
+D6_sh=meta%>%select(clone,KD_SCR,cc1,cc2,cc3,cc4,cc5,cc6)
+clone_list=unique(D6_sh$clone)
+
+c1c=data.frame(clone=clone_list,KD_SCR="control",cc1=T,cc2=F,cc3=F,cc4=F,cc5=F,cc6=F)
+c1g=data.frame(clone=clone_list,KD_SCR="gene",cc1=T,cc2=F,cc3=F,cc4=F,cc5=F,cc6=F)
+c2c=data.frame(clone=clone_list,KD_SCR="control",cc1=F,cc2=T,cc3=F,cc4=F,cc5=F,cc6=F)
+c2g=data.frame(clone=clone_list,KD_SCR="gene",cc1=F,cc2=T,cc3=F,cc4=F,cc5=F,cc6=F)
+c3c=data.frame(clone=clone_list,KD_SCR="control",cc1=F,cc2=F,cc3=T,cc4=F,cc5=F,cc6=F)
+c3g=data.frame(clone=clone_list,KD_SCR="gene",cc1=F,cc2=F,cc3=T,cc4=F,cc5=F,cc6=F)
+c4c=data.frame(clone=clone_list,KD_SCR="control",cc1=F,cc2=F,cc3=F,cc4=T,cc5=F,cc6=F)
+c4g=data.frame(clone=clone_list,KD_SCR="gene",cc1=F,cc2=F,cc3=F,cc4=T,cc5=F,cc6=F)
+c5c=data.frame(clone=clone_list,KD_SCR="control",cc1=F,cc2=F,cc3=F,cc4=F,cc5=T,cc6=F)
+c5g=data.frame(clone=clone_list,KD_SCR="gene",cc1=F,cc2=F,cc3=F,cc4=F,cc5=T,cc6=F)
+c6c=data.frame(clone=clone_list,KD_SCR="control",cc1=F,cc2=F,cc3=F,cc4=F,cc5=F,cc6=T)
+c6g=data.frame(clone=clone_list,KD_SCR="gene",cc1=F,cc2=F,cc3=F,cc4=F,cc5=F,cc6=T)
+
+
+D6_sh_SCR=rbind(D6_sh,c1c,c1g,c2c,c2g,c3c,c3g,c4c,c4g,c5c,c5g,c6c,c6g)
+
+#####empty set
+D6_sh=meta%>%select(clone,KD_empty,cc1,cc2,cc3,cc4,cc5,cc6)
+clone_list=unique(D6_sh$clone)
+
+c1c=data.frame(clone=clone_list,KD_empty="control",cc1=T,cc2=F,cc3=F,cc4=F,cc5=F,cc6=F)
+c1g=data.frame(clone=clone_list,KD_empty="gene",cc1=T,cc2=F,cc3=F,cc4=F,cc5=F,cc6=F)
+c2c=data.frame(clone=clone_list,KD_empty="control",cc1=F,cc2=T,cc3=F,cc4=F,cc5=F,cc6=F)
+c2g=data.frame(clone=clone_list,KD_empty="gene",cc1=F,cc2=T,cc3=F,cc4=F,cc5=F,cc6=F)
+c3c=data.frame(clone=clone_list,KD_empty="control",cc1=F,cc2=F,cc3=T,cc4=F,cc5=F,cc6=F)
+c3g=data.frame(clone=clone_list,KD_empty="gene",cc1=F,cc2=F,cc3=T,cc4=F,cc5=F,cc6=F)
+c4c=data.frame(clone=clone_list,KD_empty="control",cc1=F,cc2=F,cc3=F,cc4=T,cc5=F,cc6=F)
+c4g=data.frame(clone=clone_list,KD_empty="gene",cc1=F,cc2=F,cc3=F,cc4=T,cc5=F,cc6=F)
+c5c=data.frame(clone=clone_list,KD_empty="control",cc1=F,cc2=F,cc3=F,cc4=F,cc5=T,cc6=F)
+c5g=data.frame(clone=clone_list,KD_empty="gene",cc1=F,cc2=F,cc3=F,cc4=F,cc5=T,cc6=F)
+c6c=data.frame(clone=clone_list,KD_empty="control",cc1=F,cc2=F,cc3=F,cc4=F,cc5=F,cc6=T)
+c6g=data.frame(clone=clone_list,KD_empty="gene",cc1=F,cc2=F,cc3=F,cc4=F,cc5=F,cc6=T)
+
+
+D6_sh_empty=rbind(D6_sh,c1c,c1g,c2c,c2g,c3c,c3g,c4c,c4g,c5c,c5g,c6c,c6g)
+
+#loop seems not to subset correctly so I am running it for clust 4 first
+################## start without subsetting for cell populations
+ccD6=unique(meta$combined_clusters)
+
+clone_list <- unique(meta$clone)
+clusters <- paste0("cc", ccD6)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(clone_list))
+  
+  for (i in seq_along(clone_list)) {
+    clone <- clone_list[i]
+    subset_data <- D6_sh_B2M[D6_sh_B2M$clone %in% c(clone, "B2M"), c("KD_B2M", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_B2M, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(clone = clone_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_b2m <- do.call(rbind, result_list)
+result_df_combined_b2m=result_df_combined_b2m%>%dplyr::rename(p_value_b2m=p_value,q_value_b2m=q_value)
+
+#################run for SCR
+
+clone_list <- unique(meta$clone)
+clusters <- paste0("cc", ccD6)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(clone_list))
+  
+  for (i in seq_along(clone_list)) {
+    clone <- clone_list[i]
+    subset_data <- D6_sh_SCR[D6_sh_SCR$clone %in% c(clone, "SCR"), c("KD_SCR", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_SCR, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(clone = clone_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_SCR <- do.call(rbind, result_list)
+result_df_combined_SCR=result_df_combined_SCR%>%dplyr::rename(p_value_SCR=p_value,q_value_SCR=q_value)
+
+########run on empty
+
+clone_list <- unique(meta$clone)
+clusters <- paste0("cc", ccD6)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(clone_list))
+  
+  for (i in seq_along(clone_list)) {
+    clone <- clone_list[i]
+    subset_data <- D6_sh_empty[D6_sh_empty$clone %in% c(clone, "empty"), c("KD_empty", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_empty, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(clone = clone_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_empty <- do.call(rbind, result_list)
+result_df_combined_empty=result_df_combined_empty%>%dplyr::rename(p_value_empty=p_value,q_value_empty=q_value)
+
+D6_result_fisher_clone= result_df_combined_SCR%>%full_join(result_df_combined_b2m,by=c("clone","cluster"))%>%full_join(result_df_combined_empty,by=c("clone","cluster"))
+D6_result_fisher_clone <- replace(D6_result_fisher_clone, is.na(D6_result_fisher_clone), 1)
+D6_result_fisher_clone=D6_result_fisher_clone%>%mutate(sig_SCR=q_value_SCR<=0.05,
+                                                                   sig_b2m=q_value_b2m<=0.05,
+                                                                   sig_empty=q_value_empty<=0.05)
+
+
+#D6_result_fisher_clone=D6_result_fisher_clone%>%left_join(freqD6_clone,by=c("clone","cluster"))
+
+D6_result_fisher_clone$assigned_cell_type <- as.character(D6_result_fisher_clone$cluster)
+D6_result_fisher_clone$cell_type_short <- as.character(D6_result_fisher_clone$cluster)
+D6_result_fisher_clone$combined_cluster <- as.character(D6_result_fisher_clone$cluster)
+D6_result_fisher_clone$assigned_cell_type <- dplyr::recode(D6_result_fisher_clone$assigned_cell_type,
+                                              "cc1"="Cardiac progenitors",
+                                               "cc2"="Cardiac fibroblasts",
+                                               "cc3"="late cardiac progenitors",
+                                               "cc4"="Early cardiomyocites",
+                                               "cc5"="Late cardiomyocites",
+                                                "cc6"="Proliferative cardiomyocites")
+
+D6_result_fisher_clone$cell_type_short <- dplyr::recode(D6_result_fisher_clone$cell_type_short,
+                                                 "cc1"="CP",
+                                               "cc2"="CF",
+                                               "cc3"="L-CP",
+                                               "cc4"="E-CM",
+                                               "cc5"="L-CM",
+                                               "cc6"="P-CM")
+
+D6_result_fisher_clone$combined_cluster <- dplyr::recode(D6_result_fisher_clone$combined_cluster,
+                                                 "cc1"="1",
+                                               "cc2"="2",
+                                               "cc3"="3",
+                                               "cc4"="4",
+                                               "cc5"="5",
+                                                "cc6"="6")
+
+#calclulate totals to add
+
+tot=as.data.frame(table(metaD6$clone)) #total of the cluster
+colnames(tot)=c("clone","tot")
+#tot$gene=dplyr::recode(tot$gene,
+ #                     "NA"="empty")
+tot_gene=as.data.frame(table(metaD6$shRNA_gene)) #total of the cluster
+colnames(tot_gene)=c("gene","tot_gene")
+tot_gene$gene=dplyr::recode(tot_gene$gene,
+                      "NA"="empty")
+
+df=as.data.frame(table(metaD6$combined_clusters,metaD6$clone, metaD6$sample_ID))
+colnames(df)=c("combined_cluster","clone","day","freq")
+df <- replace(df, is.na(df), "empty")
+df=df%>%mutate(gene_full=sapply(strsplit(as.character(clone), "_"), "[[", 2))
+df <- replace(df, is.na(df), "empty")
+df$gene_full=dplyr::recode(df$gene_full,
+                      "NA"="empty")
+df$gene=df$gene_full
+
+df=df%>%left_join(tot,by="clone")
+df=df%>%left_join(tot_gene,by="gene")
+df$cluster=paste0("cc",df$combined_cluster)
+
+
+control_df=df%>%filter(gene_full=="B2M"|gene_full=="SCR"|gene_full=="empty")%>%select(-tot,-day,-gene,-clone)
+control_df=control_df %>% dplyr::group_by(gene_full,cluster,combined_cluster)%>%dplyr::summarise(freq = sum(freq))
+control_df=spread(control_df, key="gene_full",value = "freq" )
+#control_df=control_df%>%select(-cluster)
+colnames(control_df)=c("cluster","combined_cluster","B2M_D6","empty_D6","SCR_D6")
+control_df$cluster=paste0("cc",control_df$combined_cluster)
+control_df=control_df%>%dplyr::select(-combined_cluster)
+
+
+control_dfTOT=df%>%filter(gene_full=="B2M"|gene_full=="SCR"|gene_full=="empty")%>%select(-freq,-day,-gene,-clone)
+control_dfTOT=control_dfTOT %>% dplyr::group_by(gene_full,cluster,combined_cluster)%>%dplyr::summarise(tot = sum(tot))
+control_dfTOT=spread(control_dfTOT, key="gene_full",value = "tot" )
+colnames(control_dfTOT)=c("cluster","combined_cluster","B2M_totD6","empty_totD6","SCR_totD6")
+control_dfTOT$cluster=paste0("cc",control_dfTOT$combined_cluster)
+control_dfTOT=control_dfTOT%>%select(-combined_cluster)
+
+control_df=control_df%>%left_join(control_dfTOT,by="cluster")
+
+df=df%>%left_join(control_df,by="cluster")
+freqD6_clone=df
+
+D6_result_fisher_clone=D6_result_fisher_clone%>%left_join(freqD6_clone,by=c("clone","cluster","combined_cluster"))
+
+D6_result_fisher_clone=D6_result_fisher_clone%>%dplyr::rename(nb_cells_clone_D6=freq)
+D6_result_fisher_clone$percent_gene_D6=100*(D6_result_fisher_clone$nb_cells_clone_D6/D6_result_fisher_clone$tot_gene)
+D6_result_fisher_clone$percent_clone_D6=100*(D6_result_fisher_clone$nb_cells_clone_D6/D6_result_fisher_clone$tot)
+D6_result_fisher_clone=D6_result_fisher_clone%>%mutate(percent_B2M_D6=(B2M_D6/B2M_totD6)*100,
+                                                                   percent_SCR_D6=(SCR_D6/SCR_totD6)*100,
+                                                                   percent_empty_D6=(empty_D6/empty_totD6)*100)
+
+D6_result_fisher_clone=D6_result_fisher_clone%>%mutate(percent_over_B2M_D6=(percent_clone_D6)/(percent_B2M_D6),
+                                                                   percent_over_SCR_D6=(percent_clone_D6)/(percent_SCR_D6),
+                                                                   percent_over_empty_D6=(percent_clone_D6)/(percent_empty_D6))
+
+###add shRNA info
+df_sh=metaD6%>%select(clone,shRNA_label)%>%distinct(clone,shRNA_label) 
+D6_result_fisher_clone=D6_result_fisher_clone%>%left_join(df_sh,by="clone")
+
+###sig data
+```
+
+####calculate fisher test
+###test clones
+###D12
+
+```{r}
+
+#meta D12 generated for shRNA analysis
+meta=metaD12
+
+#####create a meta to bypass the statistical block when one shRNA is not present
+#####B2M set
+D12_sh=meta%>%select(clone,KD_B2M,cc2,cc3,cc4,cc5,cc6)
+clone_list=unique(D12_sh$clone)
+
+c2c=data.frame(clone=clone_list,KD_B2M="control",cc2=T,cc3=F,cc4=F,cc5=F,cc6=F)
+c2g=data.frame(clone=clone_list,KD_B2M="gene",cc2=T,cc3=F,cc4=F,cc5=F,cc6=F)
+c3c=data.frame(clone=clone_list,KD_B2M="control",cc2=F,cc3=T,cc4=F,cc5=F,cc6=F)
+c3g=data.frame(clone=clone_list,KD_B2M="gene",cc2=F,cc3=T,cc4=F,cc5=F,cc6=F)
+c4c=data.frame(clone=clone_list,KD_B2M="control",cc2=F,cc3=F,cc4=T,cc5=F,cc6=F)
+c4g=data.frame(clone=clone_list,KD_B2M="gene",cc2=F,cc3=F,cc4=T,cc5=F,cc6=F)
+c5c=data.frame(clone=clone_list,KD_B2M="control",cc2=F,cc3=F,cc4=F,cc5=T,cc6=F)
+c5g=data.frame(clone=clone_list,KD_B2M="gene",cc2=F,cc3=F,cc4=F,cc5=T,cc6=F)
+c6c=data.frame(clone=clone_list,KD_B2M="control",cc2=F,cc3=F,cc4=F,cc5=F,cc6=T)
+c6g=data.frame(clone=clone_list,KD_B2M="gene",cc2=F,cc3=F,cc4=F,cc5=F,cc6=T)
+
+
+D12_sh_B2M=rbind(D12_sh,c2c,c2g,c3c,c3g,c4c,c4g,c5c,c5g,c6c,c6g)
+
+#####SCR set
+D12_sh=meta%>%select(clone,KD_SCR,cc2,cc3,cc4,cc5,cc6)
+clone_list=unique(D12_sh$clone)
+
+c2c=data.frame(clone=clone_list,KD_SCR="control",cc2=T,cc3=F,cc4=F,cc5=F,cc6=F)
+c2g=data.frame(clone=clone_list,KD_SCR="gene",cc2=T,cc3=F,cc4=F,cc5=F,cc6=F)
+c3c=data.frame(clone=clone_list,KD_SCR="control",cc2=F,cc3=T,cc4=F,cc5=F,cc6=F)
+c3g=data.frame(clone=clone_list,KD_SCR="gene",cc2=F,cc3=T,cc4=F,cc5=F,cc6=F)
+c4c=data.frame(clone=clone_list,KD_SCR="control",cc2=F,cc3=F,cc4=T,cc5=F,cc6=F)
+c4g=data.frame(clone=clone_list,KD_SCR="gene",cc2=F,cc3=F,cc4=T,cc5=F,cc6=F)
+c5c=data.frame(clone=clone_list,KD_SCR="control",cc2=F,cc3=F,cc4=F,cc5=T,cc6=F)
+c5g=data.frame(clone=clone_list,KD_SCR="gene",cc2=F,cc3=F,cc4=F,cc5=T,cc6=F)
+c6c=data.frame(clone=clone_list,KD_SCR="control",cc2=F,cc3=F,cc4=F,cc5=F,cc6=T)
+c6g=data.frame(clone=clone_list,KD_SCR="gene",cc2=F,cc3=F,cc4=F,cc5=F,cc6=T)
+
+
+D12_sh_SCR=rbind(D12_sh,c2c,c2g,c3c,c3g,c4c,c4g,c5c,c5g,c6c,c6g)
+
+#####empty set
+D12_sh=meta%>%select(clone,KD_empty,cc2,cc3,cc4,cc5,cc6)
+clone_list=unique(D12_sh$clone)
+
+c2c=data.frame(clone=clone_list,KD_empty="control",cc2=T,cc3=F,cc4=F,cc5=F,cc6=F)
+c2g=data.frame(clone=clone_list,KD_empty="gene",cc2=T,cc3=F,cc4=F,cc5=F,cc6=F)
+c3c=data.frame(clone=clone_list,KD_empty="control",cc2=F,cc3=T,cc4=F,cc5=F,cc6=F)
+c3g=data.frame(clone=clone_list,KD_empty="gene",cc2=F,cc3=T,cc4=F,cc5=F,cc6=F)
+c4c=data.frame(clone=clone_list,KD_empty="control",cc2=F,cc3=F,cc4=T,cc5=F,cc6=F)
+c4g=data.frame(clone=clone_list,KD_empty="gene",cc2=F,cc3=F,cc4=T,cc5=F,cc6=F)
+c5c=data.frame(clone=clone_list,KD_empty="control",cc2=F,cc3=F,cc4=F,cc5=T,cc6=F)
+c5g=data.frame(clone=clone_list,KD_empty="gene",cc2=F,cc3=F,cc4=F,cc5=T,cc6=F)
+c6c=data.frame(clone=clone_list,KD_empty="control",cc2=F,cc3=F,cc4=F,cc5=F,cc6=T)
+c6g=data.frame(clone=clone_list,KD_empty="gene",cc2=F,cc3=F,cc4=F,cc5=F,cc6=T)
+
+
+D12_sh_empty=rbind(D12_sh,c2c,c2g,c3c,c3g,c4c,c4g,c5c,c5g,c6c,c6g)
+
+#loop seems not to subset correctly so I am running it for clust 4 first
+################## start without subsetting for cell populations
+ccD12=unique(meta$combined_clusters)
+
+clone_list <- unique(meta$clone)
+clusters <- paste0("cc", ccD12)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(clone_list))
+  
+  for (i in seq_along(clone_list)) {
+    clone <- clone_list[i]
+    subset_data <- D12_sh_B2M[D12_sh_B2M$clone %in% c(clone, "B2M"), c("KD_B2M", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_B2M, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(clone = clone_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_b2m <- do.call(rbind, result_list)
+result_df_combined_b2m=result_df_combined_b2m%>%dplyr::rename(p_value_b2m=p_value,q_value_b2m=q_value)
+
+#################run for SCR
+
+clone_list <- unique(meta$clone)
+clusters <- paste0("cc", ccD12)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(clone_list))
+  
+  for (i in seq_along(clone_list)) {
+    clone <- clone_list[i]
+    subset_data <- D12_sh_SCR[D12_sh_SCR$clone %in% c(clone, "SCR"), c("KD_SCR", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_SCR, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(clone = clone_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_SCR <- do.call(rbind, result_list)
+result_df_combined_SCR=result_df_combined_SCR%>%dplyr::rename(p_value_SCR=p_value,q_value_SCR=q_value)
+
+########run on empty
+
+clone_list <- unique(meta$clone)
+clusters <- paste0("cc", ccD12)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(clone_list))
+  
+  for (i in seq_along(clone_list)) {
+    clone <- clone_list[i]
+    subset_data <- D12_sh_empty[D12_sh_empty$clone %in% c(clone, "empty"), c("KD_empty", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_empty, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(clone = clone_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_empty <- do.call(rbind, result_list)
+result_df_combined_empty=result_df_combined_empty%>%dplyr::rename(p_value_empty=p_value,q_value_empty=q_value)
+
+D12_result_fisher_clone= result_df_combined_SCR%>%full_join(result_df_combined_b2m,by=c("clone","cluster"))%>%full_join(result_df_combined_empty,by=c("clone","cluster"))
+D12_result_fisher_clone <- replace(D12_result_fisher_clone, is.na(D12_result_fisher_clone), 1)
+D12_result_fisher_clone=D12_result_fisher_clone%>%mutate(sig_SCR=q_value_SCR<=0.05,
+                                                                   sig_b2m=q_value_b2m<=0.05,
+                                                                   sig_empty=q_value_empty<=0.05)
+
+
+#D12_result_fisher_clone=D12_result_fisher_clone%>%left_join(freqD12_clone,by=c("clone","cluster"))
+
+D12_result_fisher_clone$assigned_cell_type <- as.character(D12_result_fisher_clone$cluster)
+D12_result_fisher_clone$cell_type_short <- as.character(D12_result_fisher_clone$cluster)
+D12_result_fisher_clone$combined_cluster <- as.character(D12_result_fisher_clone$cluster)
+D12_result_fisher_clone$assigned_cell_type <- dplyr::recode(D12_result_fisher_clone$assigned_cell_type,
+                                              "cc1"="Cardiac progenitors",
+                                               "cc2"="Cardiac fibroblasts",
+                                               "cc3"="late cardiac progenitors",
+                                               "cc4"="Early cardiomyocites",
+                                               "cc5"="Late cardiomyocites",
+                                                "cc6"="Proliferative cardiomyocites")
+
+D12_result_fisher_clone$cell_type_short <- dplyr::recode(D12_result_fisher_clone$cell_type_short,
+                                                 "cc1"="CP",
+                                               "cc2"="CF",
+                                               "cc3"="L-CP",
+                                               "cc4"="E-CM",
+                                               "cc5"="L-CM",
+                                               "cc6"="P-CM")
+
+D12_result_fisher_clone$combined_cluster <- dplyr::recode(D12_result_fisher_clone$combined_cluster,
+                                                 "cc1"="1",
+                                               "cc2"="2",
+                                               "cc3"="3",
+                                               "cc4"="4",
+                                               "cc5"="5",
+                                                "cc6"="6")
+
+#calclulate totals to add
+
+tot=as.data.frame(table(metaD12$clone)) #total of the cluster
+colnames(tot)=c("clone","tot")
+#tot$gene=dplyr::recode(tot$gene,
+                    #  "NA"="empty")
+
+tot_gene=as.data.frame(table(metaD12$shRNA_gene)) #total of the cluster
+colnames(tot_gene)=c("gene","tot_gene")
+tot_gene$gene=dplyr::recode(tot_gene$gene,
+                      "NA"="empty")
+
+
+df=as.data.frame(table(metaD12$combined_clusters,metaD12$clone, metaD12$sample_ID))
+colnames(df)=c("combined_cluster","clone","day","freq")
+df <- replace(df, is.na(df), "empty")
+df=df%>%mutate(gene_full=sapply(strsplit(as.character(clone), "_"), "[[", 2))
+df <- replace(df, is.na(df), "empty")
+df$gene_full=dplyr::recode(df$gene_full,
+                      "NA"="empty")
+df$gene=df$gene_full
+
+df=df%>%left_join(tot,by="clone")
+df=df%>%left_join(tot_gene,by="gene")
+df$cluster=paste0("cc",df$combined_cluster)
+
+
+control_df=df%>%filter(gene_full=="B2M"|gene_full=="SCR"|gene_full=="empty")%>%select(-tot,-day,-gene,-clone)
+control_df=control_df %>% dplyr::group_by(gene_full,cluster,combined_cluster)%>%dplyr::summarise(freq = sum(freq))
+control_df=spread(control_df, key="gene_full",value = "freq" )
+#control_df=control_df%>%select(-cluster)
+colnames(control_df)=c("cluster","combined_cluster","B2M_D12","empty_D12","SCR_D12")
+control_df$cluster=paste0("cc",control_df$combined_cluster)
+control_df=control_df%>%dplyr::select(-combined_cluster)
+
+
+control_dfTOT=df%>%filter(gene_full=="B2M"|gene_full=="SCR"|gene_full=="empty")%>%select(-freq,-day,-gene,-clone)
+control_dfTOT=control_dfTOT %>% dplyr::group_by(gene_full,cluster,combined_cluster)%>%dplyr::summarise(tot = sum(tot))
+control_dfTOT=spread(control_dfTOT, key="gene_full",value = "tot" )
+colnames(control_dfTOT)=c("cluster","combined_cluster","B2M_totD12","empty_totD12","SCR_totD12")
+control_dfTOT$cluster=paste0("cc",control_dfTOT$combined_cluster)
+control_dfTOT=control_dfTOT%>%select(-combined_cluster)
+
+control_df=control_df%>%left_join(control_dfTOT,by="cluster")
+
+
+df=df%>%left_join(control_df,by="cluster")
+freqD12_clone=df
+
+D12_result_fisher_clone=D12_result_fisher_clone%>%left_join(freqD12_clone,by=c("clone","cluster","combined_cluster"))
+
+D12_result_fisher_clone=D12_result_fisher_clone%>%dplyr::rename(nb_cells_clone_D12=freq)
+D12_result_fisher_clone$percent_gene_D12=100*(D12_result_fisher_clone$nb_cells_clone_D12/D12_result_fisher_clone$tot_gene)
+D12_result_fisher_clone$percent_clone_D12=100*(D12_result_fisher_clone$nb_cells_clone_D12/D12_result_fisher_clone$tot)
+D12_result_fisher_clone=D12_result_fisher_clone%>%mutate(percent_B2M_D12=(B2M_D12/B2M_totD12)*100,
+                                                                   percent_SCR_D12=(SCR_D12/SCR_totD12)*100,
+                                                                   percent_empty_D12=(empty_D12/empty_totD12)*100)
+
+D12_result_fisher_clone=D12_result_fisher_clone%>%mutate(percent_over_B2M_D12=(percent_clone_D12)/(percent_B2M_D12),
+                                                                   percent_over_SCR_D12=(percent_clone_D12)/(percent_SCR_D12),
+                                                                   percent_over_empty_D12=(percent_clone_D12)/(percent_empty_D12))
+
+###add shRNA info
+df_sh=metaD12%>%select(clone,shRNA_label)%>%distinct(clone,shRNA_label) 
+D12_result_fisher_clone=D12_result_fisher_clone%>%left_join(df_sh,by="clone")
+
+###no sig data
+
+```
+
+##fisher test per gene to assess frequency in clusters
+###test clones
+###fisher test DD23
+
+```{r}
+#summary(as.factor(metaD23$combined_clusters))
+  # 2    5 
+# 220 1964
+
+####run the test for D12
+#meta D12 generated for shRNA analysis
+meta=metaD23
+
+
+#####create a meta to bypass the statistical block when one shRNA is not present
+#####B2M set
+D23_sh=meta%>%select(clone,KD_B2M,cc2,cc3,cc4,cc5,cc6)
+clone_list=unique(D23_sh$clone)
+
+c2c=data.frame(clone=clone_list,KD_B2M="control",cc2=T,cc3=F,cc4=F,cc5=F,cc6=F)
+c2g=data.frame(clone=clone_list,KD_B2M="gene",cc2=T,cc3=F,cc4=F,cc5=F,cc6=F)
+c3c=data.frame(clone=clone_list,KD_B2M="control",cc2=F,cc3=T,cc4=F,cc5=F,cc6=F)
+c3g=data.frame(clone=clone_list,KD_B2M="gene",cc2=F,cc3=T,cc4=F,cc5=F,cc6=F)
+c4c=data.frame(clone=clone_list,KD_B2M="control",cc2=F,cc3=F,cc4=T,cc5=F,cc6=F)
+c4g=data.frame(clone=clone_list,KD_B2M="gene",cc2=F,cc3=F,cc4=T,cc5=F,cc6=F)
+c5c=data.frame(clone=clone_list,KD_B2M="control",cc2=F,cc3=F,cc4=F,cc5=T,cc6=F)
+c5g=data.frame(clone=clone_list,KD_B2M="gene",cc2=F,cc3=F,cc4=F,cc5=T,cc6=F)
+c6c=data.frame(clone=clone_list,KD_B2M="control",cc2=F,cc3=F,cc4=F,cc5=F,cc6=T)
+c6g=data.frame(clone=clone_list,KD_B2M="gene",cc2=F,cc3=F,cc4=F,cc5=F,cc6=T)
+
+
+D23_sh_B2M=rbind(D23_sh,c2c,c2g,c3c,c3g,c4c,c4g,c5c,c5g,c6c,c6g)
+
+#####SCR set
+D23_sh=meta%>%select(clone,KD_SCR,cc2,cc3,cc4,cc5,cc6)
+clone_list=unique(D23_sh$clone)
+
+c2c=data.frame(clone=clone_list,KD_SCR="control",cc2=T,cc3=F,cc4=F,cc5=F,cc6=F)
+c2g=data.frame(clone=clone_list,KD_SCR="gene",cc2=T,cc3=F,cc4=F,cc5=F,cc6=F)
+c3c=data.frame(clone=clone_list,KD_SCR="control",cc2=F,cc3=T,cc4=F,cc5=F,cc6=F)
+c3g=data.frame(clone=clone_list,KD_SCR="gene",cc2=F,cc3=T,cc4=F,cc5=F,cc6=F)
+c4c=data.frame(clone=clone_list,KD_SCR="control",cc2=F,cc3=F,cc4=T,cc5=F,cc6=F)
+c4g=data.frame(clone=clone_list,KD_SCR="gene",cc2=F,cc3=F,cc4=T,cc5=F,cc6=F)
+c5c=data.frame(clone=clone_list,KD_SCR="control",cc2=F,cc3=F,cc4=F,cc5=T,cc6=F)
+c5g=data.frame(clone=clone_list,KD_SCR="gene",cc2=F,cc3=F,cc4=F,cc5=T,cc6=F)
+c6c=data.frame(clone=clone_list,KD_SCR="control",cc2=F,cc3=F,cc4=F,cc5=F,cc6=T)
+c6g=data.frame(clone=clone_list,KD_SCR="gene",cc2=F,cc3=F,cc4=F,cc5=F,cc6=T)
+
+
+D23_sh_SCR=rbind(D23_sh,c2c,c2g,c3c,c3g,c4c,c4g,c5c,c5g,c6c,c6g)
+
+#####empty set
+D23_sh=meta%>%select(clone,KD_empty,cc2,cc3,cc4,cc5,cc6)
+clone_list=unique(D23_sh$clone)
+
+c2c=data.frame(clone=clone_list,KD_empty="control",cc2=T,cc3=F,cc4=F,cc5=F,cc6=F)
+c2g=data.frame(clone=clone_list,KD_empty="gene",cc2=T,cc3=F,cc4=F,cc5=F,cc6=F)
+c3c=data.frame(clone=clone_list,KD_empty="control",cc2=F,cc3=T,cc4=F,cc5=F,cc6=F)
+c3g=data.frame(clone=clone_list,KD_empty="gene",cc2=F,cc3=T,cc4=F,cc5=F,cc6=F)
+c4c=data.frame(clone=clone_list,KD_empty="control",cc2=F,cc3=F,cc4=T,cc5=F,cc6=F)
+c4g=data.frame(clone=clone_list,KD_empty="gene",cc2=F,cc3=F,cc4=T,cc5=F,cc6=F)
+c5c=data.frame(clone=clone_list,KD_empty="control",cc2=F,cc3=F,cc4=F,cc5=T,cc6=F)
+c5g=data.frame(clone=clone_list,KD_empty="gene",cc2=F,cc3=F,cc4=F,cc5=T,cc6=F)
+c6c=data.frame(clone=clone_list,KD_empty="control",cc2=F,cc3=F,cc4=F,cc5=F,cc6=T)
+c6g=data.frame(clone=clone_list,KD_empty="gene",cc2=F,cc3=F,cc4=F,cc5=F,cc6=T)
+
+
+D23_sh_empty=rbind(D23_sh,c2c,c2g,c3c,c3g,c4c,c4g,c5c,c5g,c6c,c6g)
+
+#loop seems not to subset correctly so I am running it for clust 4 first
+################## start without subsetting for cell populations
+ccD23=unique(meta$combined_clusters)
+
+clone_list <- unique(meta$clone)
+clusters <- paste0("cc", ccD23)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(clone_list))
+  
+  for (i in seq_along(clone_list)) {
+    clone <- clone_list[i]
+    subset_data <- D23_sh_B2M[D23_sh_B2M$clone %in% c(clone, "B2M"), c("KD_B2M", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_B2M, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(clone = clone_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_b2m <- do.call(rbind, result_list)
+result_df_combined_b2m=result_df_combined_b2m%>%dplyr::rename(p_value_b2m=p_value,q_value_b2m=q_value)
+
+#################run for SCR
+
+clone_list <- unique(meta$clone)
+clusters <- paste0("cc", ccD23)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(clone_list))
+  
+  for (i in seq_along(clone_list)) {
+    clone <- clone_list[i]
+    subset_data <- D23_sh_SCR[D23_sh_SCR$clone %in% c(clone, "SCR"), c("KD_SCR", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_SCR, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(clone = clone_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_SCR <- do.call(rbind, result_list)
+result_df_combined_SCR=result_df_combined_SCR%>%dplyr::rename(p_value_SCR=p_value,q_value_SCR=q_value)
+
+########run on empty
+
+clone_list <- unique(meta$clone)
+clusters <- paste0("cc", ccD23)
+
+result_list <- list()
+
+for (cluster_name in clusters) {
+  p_values <- numeric(length(clone_list))
+  
+  for (i in seq_along(clone_list)) {
+    clone <- clone_list[i]
+    subset_data <- D23_sh_empty[D23_sh_empty$clone %in% c(clone, "empty"), c("KD_empty", cluster_name)]
+    fisher_result <- fisher.test(subset_data$KD_empty, subset_data[[cluster_name]], simulate.p.value = FALSE)
+    p_values[i] <- fisher_result[["p.value"]]
+  }
+  
+  q_values <- p.adjust(p_values, method = "BH")
+  
+  result_df <- data.frame(clone = clone_list, cluster = cluster_name, p_value = p_values, q_value = q_values, stringsAsFactors = FALSE)
+  result_list[[cluster_name]] <- result_df
+}
+
+# Combine the results into a single data frame if needed
+result_df_combined_empty <- do.call(rbind, result_list)
+result_df_combined_empty=result_df_combined_empty%>%dplyr::rename(p_value_empty=p_value,q_value_empty=q_value)
+
+D23_result_fisher_clone= result_df_combined_SCR%>%full_join(result_df_combined_b2m,by=c("clone","cluster"))%>%full_join(result_df_combined_empty,by=c("clone","cluster"))
+D23_result_fisher_clone <- replace(D23_result_fisher_clone, is.na(D23_result_fisher_clone), 1)
+D23_result_fisher_clone=D23_result_fisher_clone%>%mutate(sig_SCR=q_value_SCR<=0.05,
+                                                                   sig_b2m=q_value_b2m<=0.05,
+                                                                   sig_empty=q_value_empty<=0.05)
+
+
+#D23_result_fisher_clone=D23_result_fisher_clone%>%left_join(freqD23_clone,by=c("clone","cluster"))
+
+D23_result_fisher_clone$assigned_cell_type <- as.character(D23_result_fisher_clone$cluster)
+D23_result_fisher_clone$cell_type_short <- as.character(D23_result_fisher_clone$cluster)
+D23_result_fisher_clone$combined_cluster <- as.character(D23_result_fisher_clone$cluster)
+D23_result_fisher_clone$assigned_cell_type <- dplyr::recode(D23_result_fisher_clone$assigned_cell_type,
+                                              "cc1"="Cardiac progenitors",
+                                               "cc2"="Cardiac fibroblasts",
+                                               "cc3"="late cardiac progenitors",
+                                               "cc4"="Early cardiomyocites",
+                                               "cc5"="Late cardiomyocites",
+                                                "cc6"="Proliferative cardiomyocites")
+
+D23_result_fisher_clone$cell_type_short <- dplyr::recode(D23_result_fisher_clone$cell_type_short,
+                                                 "cc1"="CP",
+                                               "cc2"="CF",
+                                               "cc3"="L-CP",
+                                               "cc4"="E-CM",
+                                               "cc5"="L-CM",
+                                               "cc6"="P-CM")
+
+D23_result_fisher_clone$combined_cluster <- dplyr::recode(D23_result_fisher_clone$combined_cluster,
+                                                 "cc1"="1",
+                                               "cc2"="2",
+                                               "cc3"="3",
+                                               "cc4"="4",
+                                               "cc5"="5",
+                                                "cc6"="6")
+
+#calclulate totals to add
+
+tot=as.data.frame(table(metaD23$clone)) #total of the cluster
+colnames(tot)=c("clone","tot")
+#tot$gene=dplyr::recode(tot$gene,
+                    #  "NA"="empty")
+
+tot_gene=as.data.frame(table(metaD23$shRNA_gene)) #total of the cluster
+colnames(tot_gene)=c("gene","tot_gene")
+tot_gene$gene=dplyr::recode(tot_gene$gene,
+                      "NA"="empty")
+
+df=as.data.frame(table(metaD23$combined_clusters,metaD23$clone, metaD23$sample_ID))
+colnames(df)=c("combined_cluster","clone","day","freq")
+df <- replace(df, is.na(df), "empty")
+df=df%>%mutate(gene_full=sapply(strsplit(as.character(clone), "_"), "[[", 2))
+df <- replace(df, is.na(df), "empty")
+df$gene_full=dplyr::recode(df$gene_full,
+                      "NA"="empty")
+df$gene=df$gene_full
+#df$gene=dplyr::recode(df$gene,
+                 #     "B2M"="control",
+                  #    "SCR"="control",
+                   #   "empty"="control")
+
+df=df%>%left_join(tot,by="clone")
+df=df%>%left_join(tot_gene,by="gene")
+df$cluster=paste0("cc",df$combined_cluster)
+
+
+control_df=df%>%filter(gene_full=="B2M"|gene_full=="SCR"|gene_full=="empty")%>%select(-tot,-day,-gene,-clone)
+control_df=control_df %>% dplyr::group_by(gene_full,cluster,combined_cluster)%>%dplyr::summarise(freq = sum(freq))
+control_df=spread(control_df, key="gene_full",value = "freq" )
+#control_df=control_df%>%select(-cluster)
+colnames(control_df)=c("cluster","combined_cluster","B2M_D23","empty_D23","SCR_D23")
+control_df$cluster=paste0("cc",control_df$combined_cluster)
+control_df=control_df%>%dplyr::select(-combined_cluster)
+
+control_dfTOT=df%>%filter(gene_full=="B2M"|gene_full=="SCR"|gene_full=="empty")%>%select(-freq,-day,-gene,-clone)
+control_dfTOT=control_dfTOT %>% dplyr::group_by(gene_full,cluster,combined_cluster)%>%dplyr::summarise(tot = sum(tot))
+control_dfTOT=spread(control_dfTOT, key="gene_full",value = "tot" )
+colnames(control_dfTOT)=c("cluster","combined_cluster","B2M_totD23","empty_totD23","SCR_totD23")
+control_dfTOT$cluster=paste0("cc",control_dfTOT$combined_cluster)
+control_dfTOT=control_dfTOT%>%select(-combined_cluster)
+
+control_df=control_df%>%left_join(control_dfTOT,by="cluster")
+df=df%>%left_join(control_df,by="cluster")
+freqD23_clone=df
+
+D23_result_fisher_clone=D23_result_fisher_clone%>%left_join(freqD23_clone,by=c("clone","cluster","combined_cluster"))
+
+D23_result_fisher_clone=D23_result_fisher_clone%>%dplyr::rename(nb_cells_clone_D23=freq)
+D23_result_fisher_clone$percent_gene_D23=(D23_result_fisher_clone$nb_cells_clone_D23/D23_result_fisher_clone$tot_gene)*100
+D23_result_fisher_clone$percent_clone_D23=100*(D23_result_fisher_clone$nb_cells_clone_D23/D23_result_fisher_clone$tot)
+D23_result_fisher_clone=D23_result_fisher_clone%>%mutate(percent_B2M_D23=(B2M_D23/B2M_totD23)*100,
+                                                                   percent_SCR_D23=(SCR_D23/SCR_totD23)*100,
+                                                                   percent_empty_D23=(empty_D23/empty_totD23)*100)
+
+D23_result_fisher_clone=D23_result_fisher_clone%>%mutate(percent_over_B2M_D23=(percent_clone_D23)/(percent_B2M_D23),
+                                                                   percent_over_SCR_D23=(percent_clone_D23)/(percent_SCR_D23),
+                                                                   percent_over_empty_D23=(percent_clone_D23)/(percent_empty_D23))
+
+###add shRNA info
+df_sh=metaD23%>%select(clone,shRNA_label)%>%distinct(clone,shRNA_label) 
+D23_result_fisher_clone=D23_result_fisher_clone%>%left_join(df_sh,by="clone")
+
+#no significative data
+```
+
+###show clones %
+
+```{r}
+
+D6_result_fisher_clone$gene=recode(D6_result_fisher_clone$gene,is.na="empty")
+D12_result_fisher_clone$gene=recode(D12_result_fisher_clone$gene,is.na="empty")
+D23_result_fisher_clone$gene=recode(D23_result_fisher_clone$gene,is.na="empty")
+
+
+ggplot(D6_result_fisher_clone, aes(x = cell_type_short, y = percent_gene_D6, fill=clone)) + geom_bar(stat = "identity") +
+  scale_color_viridis(name = "cell type",
+                         option="H", discrete=T)+
+  geom_hline(yintercept = 5, linetype = "dashed", color = "red")+
+  labs(title = "Clones Distribution Day 6")+
+  facet_wrap(~factor(gene, levels = order_genes), ncol=4)
+  
+ylab = "cluster % by gene"
+xlab = "cluster"
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D6percent_by_clone.pdf"),
+     width = 15, height = 10)
+
+ggplot(D12_result_fisher_clone, aes(x = cell_type_short, y = percent_gene_D12, fill=clone)) + geom_bar(stat = "identity") +
+  scale_color_viridis(name = "cell type",
+                         option="H", discrete=T)+
+  geom_hline(yintercept = 5, linetype = "dashed", color = "red")+
+  labs(title = "Clones Distribution Day 12")+
+  facet_wrap(~factor(gene, levels = order_genes), ncol=4)
+  
+ylab = "cluster % by gene"
+xlab = "cluster"
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D12percent_by_clone.pdf"),
+     width = 15, height = 10)
+
+ggplot(D23_result_fisher_clone, aes(x = cell_type_short, y = percent_gene_D23, fill=clone)) + geom_bar(stat = "identity") +
+  scale_color_viridis(name = "cell type",
+                         option="H", discrete=T)+
+  geom_hline(yintercept = 5, linetype = "dashed", color = "red")+
+  labs(title = "Clones Distribution Day 23")+
+  facet_wrap(~factor(gene, levels = order_genes), ncol=4)
+  
+ylab = "cluster % by gene"
+xlab = "cluster"
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D23percent_by_clone.pdf"),
+     width = 15, height = 10)
+
+####GATA4
+ID_sh=ID_shRNA%>%select(shRNA_label,hex)%>%distinct(shRNA_label,hex)
+data_clones_pal=D6_result_fisher_clone%>%filter(gene=="SCR"|gene=="B2M"|gene=="empty"|gene=="GATA4")%>%select(clone,shRNA_label)%>%distinct(clone,shRNA_label)%>%inner_join(ID_sh, by="shRNA_label")
+
+data_clones_pal$order=ifelse(data_clones_pal$shRNA_label=="empty",1,
+                             ifelse(data_clones_pal$shRNA_label=="SCR",2,
+                                    ifelse(data_clones_pal$shRNA_label=="B2M",3,
+                                                  ifelse(data_clones_pal$shRNA_label=="GATA4.1",4,
+                                                                ifelse(data_clones_pal$shRNA_label=="GATA4.2",5,6)))))
+data_clones_pal <- data_clones_pal[order(data_clones_pal$order),]
+order_shGATA=unique(data_clones_pal$shRNA_label)
+hex_gata=unique(data_clones_pal$hex)
+
+ggplot(data=D6_result_fisher_clone%>%filter(gene=="SCR"|gene=="B2M"|gene=="empty"|gene=="GATA4"), aes(x = cell_type_short, y = percent_clone_D6, fill=factor(shRNA_label,levels=c(order_shGATA)))) + geom_bar(stat = "identity") +
+  scale_fill_manual(name ="shRNA",values=c(hex_gata))+
+  #geom_hline(yintercept = 5, linetype = "dashed", color = "red")+
+  labs(title = "GATA4 clones Distribution Day 6")+
+  facet_wrap(~factor(clone,levels=c(data_clones_pal$clone)), ncol=9)
+  
+ylab = "cluster % by clone"
+xlab = "cluster"
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D6percent_by_GATA4_CLONES.pdf"),
+     width = 15, height = 10)
+
+####NKX2.5
+ID_sh=ID_shRNA%>%select(shRNA_label,hex)%>%distinct(shRNA_label,hex)
+data_clones_pal=D6_result_fisher_clone%>%filter(gene=="SCR"|gene=="B2M"|gene=="empty"|gene=="NKX2.5")%>%select(clone,shRNA_label)%>%distinct(clone,shRNA_label)%>%inner_join(ID_sh, by="shRNA_label")
+
+data_clones_pal$order=ifelse(data_clones_pal$shRNA_label=="empty",1,
+                             ifelse(data_clones_pal$shRNA_label=="SCR",2,
+                                    ifelse(data_clones_pal$shRNA_label=="B2M",3,
+                                                  ifelse(data_clones_pal$shRNA_label=="NKX2.5.2",4,5))))
+data_clones_pal <- data_clones_pal[order(data_clones_pal$order),]
+order_shNKX=unique(data_clones_pal$shRNA_label)
+hex_NKX=unique(data_clones_pal$hex)
+
+ggplot(data=D6_result_fisher_clone%>%filter(gene=="SCR"|gene=="B2M"|gene=="empty"|gene=="NKX2.5"), aes(x = cell_type_short, y = percent_clone_D6, fill=factor(shRNA_label,levels=c(order_shNKX)))) + geom_bar(stat = "identity") +
+  scale_fill_manual(name ="shRNA",values=c(hex_NKX))+
+  #geom_hline(yintercept = 5, linetype = "dashed", color = "red")+
+  labs(title = "NKX2.5 clones Distribution Day 6")+
+  facet_wrap(~factor(clone,levels=c(data_clones_pal$clone)), ncol=4)
+  
+ylab = "cluster % by clone"
+xlab = "cluster"
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D6percent_by_NKX25_CLONES.pdf"),
+     width = 15, height = 10)
+
+####KMT2D
+ID_sh=ID_shRNA%>%select(shRNA_label,hex)%>%distinct(shRNA_label,hex)
+data_clones_pal=D6_result_fisher_clone%>%filter(gene=="SCR"|gene=="B2M"|gene=="empty"|gene=="KMT2D")%>%select(clone,shRNA_label)%>%distinct(clone,shRNA_label)%>%inner_join(ID_sh, by="shRNA_label")
+
+data_clones_pal$order=ifelse(data_clones_pal$shRNA_label=="empty",1,
+                             ifelse(data_clones_pal$shRNA_label=="SCR",2,
+                                    ifelse(data_clones_pal$shRNA_label=="B2M",3,
+                                                  ifelse(data_clones_pal$shRNA_label=="KMT2D.1",4,
+                                                         ifelse(data_clones_pal$shRNA_label=="KMT2D.2",5,6)))))
+data_clones_pal <- data_clones_pal[order(data_clones_pal$order),]
+order_shKMT2D=unique(data_clones_pal$shRNA_label)
+hex_KMT2D=unique(data_clones_pal$hex)
+
+ggplot(data=D6_result_fisher_clone%>%filter(gene=="SCR"|gene=="B2M"|gene=="empty"|gene=="KMT2D"), aes(x = cell_type_short, y = percent_clone_D6, fill=factor(shRNA_label,levels=c(order_shKMT2D)))) + geom_bar(stat = "identity") +
+  scale_fill_manual(name ="shRNA",values=c(hex_KMT2D))+
+  #geom_hline(yintercept = 5, linetype = "dashed", color = "red")+
+  labs(title = "KMT2D clones Distribution Day 6")+
+  facet_wrap(~factor(clone,levels=c(data_clones_pal$clone)), ncol=5)
+  
+ylab = "cluster % by clone"
+xlab = "cluster"
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D6percent_by_KMT2D_CLONES.pdf"),
+     width = 15, height = 10)
+
+####SMAD2
+ID_sh=ID_shRNA%>%select(shRNA_label,hex)%>%distinct(shRNA_label,hex)
+data_clones_pal=D6_result_fisher_clone%>%filter(gene=="SCR"|gene=="B2M"|gene=="empty"|gene=="SMAD2")%>%select(clone,shRNA_label)%>%distinct(clone,shRNA_label)%>%inner_join(ID_sh, by="shRNA_label")
+
+data_clones_pal$order=ifelse(data_clones_pal$shRNA_label=="empty",1,
+                             ifelse(data_clones_pal$shRNA_label=="SCR",2,
+                                    ifelse(data_clones_pal$shRNA_label=="B2M",3,
+                                                  ifelse(data_clones_pal$shRNA_label=="SMAD2.1",4,
+                                                         ifelse(data_clones_pal$shRNA_label=="SMAD2.2",5,6)))))
+data_clones_pal <- data_clones_pal[order(data_clones_pal$order),]
+order_shSMAD2=unique(data_clones_pal$shRNA_label)
+hex_SMAD2=unique(data_clones_pal$hex)
+
+ggplot(data=D6_result_fisher_clone%>%filter(gene=="SCR"|gene=="B2M"|gene=="empty"|gene=="SMAD2"), aes(x = cell_type_short, y = percent_clone_D6, fill=factor(shRNA_label,levels=c(order_shSMAD2)))) + geom_bar(stat = "identity") +
+  scale_fill_manual(name ="shRNA",values=c(hex_SMAD2))+
+  #geom_hline(yintercept = 5, linetype = "dashed", color = "red")+
+  labs(title = "SMAD2 clones Distribution Day 6")+
+  facet_wrap(~factor(clone,levels=c(data_clones_pal$clone)), ncol=4)
+  
+ylab = "cluster % by clone"
+xlab = "cluster"
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D6percent_by_SMAD2_CLONES.pdf"),
+     width = 15, height = 10)
+
+####CHD7
+ID_sh=ID_shRNA%>%select(shRNA_label,hex)%>%distinct(shRNA_label,hex)
+data_clones_pal=D6_result_fisher_clone%>%filter(gene=="SCR"|gene=="B2M"|gene=="empty"|gene=="CHD7")%>%select(clone,shRNA_label)%>%distinct(clone,shRNA_label)%>%inner_join(ID_sh, by="shRNA_label")
+
+data_clones_pal$order=ifelse(data_clones_pal$shRNA_label=="empty",1,
+                             ifelse(data_clones_pal$shRNA_label=="SCR",2,
+                                    ifelse(data_clones_pal$shRNA_label=="B2M",3,
+                                                  ifelse(data_clones_pal$shRNA_label=="CHD7.1",4,
+                                                         ifelse(data_clones_pal$shRNA_label=="CHD7.2",5,6)))))
+data_clones_pal <- data_clones_pal[order(data_clones_pal$order),]
+order_shCHD7=unique(data_clones_pal$shRNA_label)
+hex_CHD7=unique(data_clones_pal$hex)
+
+ggplot(data=D6_result_fisher_clone%>%filter(gene=="SCR"|gene=="B2M"|gene=="empty"|gene=="CHD7"), aes(x = cell_type_short, y = percent_clone_D6, fill=factor(shRNA_label,levels=c(order_shCHD7)))) + geom_bar(stat = "identity") +
+  scale_fill_manual(name ="shRNA",values=hex_CHD7)+
+  #geom_hline(yintercept = 5, linetype = "dashed", color = "red")+
+  labs(title = "CHD7 clones Distribution Day 6")+
+  facet_wrap(~factor(clone,levels=c(data_clones_pal$clone)), ncol=4)
+  
+ylab = "cluster % by clone"
+xlab = "cluster"
+last_plot() + labs(x = xlab, y = ylab)
+ggsave(filename = paste0(fname_prefix_mosaic_c, "_", "D6percent_by_CHD7_CLONES.pdf"),
+     width = 15, height = 10)
+
+
+```
+####volcano plot fisher clones
+```{r}
+##########make volcano plots
+sig_level <- 0.05
+#Set a fold-change cutoff
+fc_level <- log2(1.5)
+fc_level2 <- (log2(1.5))*-1
+
+###D6
+
+#D6_result_fisher_clone=subset(D6_result_fisher_clone,D6_result_fisher_clone$gene!="SCR"&D6_result_fisher_clone$gene!="B2M"&D6_result_fisher_clone$gene!="empty")
+
+ggplot(data=subset(D6_result_fisher_clone,D6_result_fisher_clone$gene!="SCR"&D6_result_fisher_clone$gene!="B2M"&D6_result_fisher_clone$gene!="empty"), aes(x=log2(percent_over_SCR_D6), y=(log10(q_value_SCR)*-1))) +
+  geom_point(aes(colour = factor(cell_type_short,levels=c(ctD6$order_cell_types)), size=1.5)) +
+  scale_color_okabeito(name="cell types",order = c(3,4))+
+  #scale_colour_manual(values = pal)+
+  #geom_text(aes(label=to_show_2vsother), size=4, hjust=1.2)+
+  ggrepel::geom_text_repel(
+    data = subset(D6_result_fisher_clone,D6_result_fisher_clone$gene!="SCR"&D6_result_fisher_clone$gene!="B2M"&D6_result_fisher_clone$gene!="empty"&D6_result_fisher_clone$sig_SCR==T),
+    aes(label = shRNA_label),
+    size = 3,
+    box.padding = unit(0.35, "lines"),
+    point.padding = unit(0.3, "lines"),
+    max.overlaps=50
+  )+
+  #theme(legend.position = "none") +
+  xlim(-1,1)+
+  geom_hline(yintercept = log10(sig_level)*-1,linetype="dotted", color="red")+
+  geom_vline(xintercept = 0,linetype="dotted")+
+ # geom_vline(xintercept = c(fc_level, fc_level2))
+  ggtitle("clone distribution by clusters at D6")+
+  theme_minimal() +  # You can change the theme as needed
+  labs(
+    x = "Log2 gene fraction over SCR",
+    y = "-log10(q value)",
+    color = "cell type"  # Legend title
+  ) 
+
+ggsave(filename = paste0(fname_prefix_dotplot_c, "_volcano_clones_in_clusters_D6.pdf"),
+       width = 8, height = 5)
+
+
+
+
+```
+
+####save all fisher stats
+
+```{r}
+Rdata_filename = paste0(fname_prefix_R_c, "_fisher_stats.RData")
+save(D6_result_fisher_shRNA_gene,D6_result_fisher_shRNA,D6_result_fisher_clone,D12_result_fisher_shRNA_gene,D12_result_fisher_shRNA,D12_result_fisher_clone,D23_result_fisher_shRNA_gene,D23_result_fisher_shRNA,D23_result_fisher_clone,
+     file = Rdata_filename)
+```
+

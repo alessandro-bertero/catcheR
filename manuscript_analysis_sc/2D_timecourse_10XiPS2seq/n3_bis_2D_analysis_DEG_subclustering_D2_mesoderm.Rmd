@@ -1,0 +1,690 @@
+---
+title: "n1 2D analysis exp5 exp7 combined: QC and monocle analysis"
+author: "Elisa Balmas PhD"
+date: "2024-02-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set up environment
+
+```{r}
+library(monocle3)
+library(see)
+library(tidyr)
+library(stringr)
+library(grid)
+library(viridis)
+library(viridisLite)
+library(ggthemes)
+library(dplyr)
+library(tidyverse)
+library(ggsignif)
+library(umap)
+library(heatmap3)
+library(plyr)
+library(edgeR)
+library(compareGroups)
+library(dbscan)
+library(MAST)
+library(geosphere)
+library(RColorBrewer)
+library(Seurat)
+library(htmlwidgets)
+library(Matrix)
+library(tidyseurat)
+library(SeuratWrappers)
+library(scMAGeCK)
+library(readxl)
+library(rCASC)
+library(deepToolsUtils)
+library(R.utils)
+
+
+library(ggplot2); library(reshape2); theme_set(theme_bw(26) + theme(panel.grid.major = element_blank(), 
+                                                                    panel.grid.minor = element_blank()) +
+                                                 theme(legend.key = element_blank()))
+update_geom_defaults("point", aes(size = 4))
+
+#setwd("/home/ebalmas/scpHUB/projects/H001AS7_iKDseq_10X_4tp_monocle/analysis_EB")
+
+# Session options
+options(stringsAsFactors = FALSE)
+set.seed(12345)
+
+# Set up the ggplot default params
+theme_set(theme_bw(12) + 
+          theme(panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(),
+                plot.title = element_text(size=15, face="bold", margin = margin(10,0,10,0)),
+                axis.text.x = element_text(angle=45, hjust = 1)))
+
+
+# Set up filename prefixes and output folders with the data
+dir.create("Output")
+dir.create(file.path("Output","scratch"))
+dir.create(file.path("Output","Meso"))
+
+dir.create(file.path("Output","Meso","monocle"))#create forders MONOCLE
+dir.create(file.path("Output","Meso","monocle", format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","Meso","monocle", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","Meso","monocle", format(Sys.Date(), "%y%m%d"), "dotplots"))
+dir.create(file.path("Output","Meso","monocle", format(Sys.Date(), "%y%m%d"), "dotplots","single"))
+dir.create(file.path("Output","Meso","monocle", format(Sys.Date(), "%y%m%d"), "stat"))
+dir.create(file.path("Output","Meso","monocle", format(Sys.Date(), "%y%m%d"), "csv"))
+dir.create(file.path("Output","Meso","monocle", format(Sys.Date(), "%y%m%d"), "UMAP"))
+dir.create(file.path("Output","Meso","monocle", format(Sys.Date(), "%y%m%d"), "mosaic"))
+
+dir.create(file.path("Output","Meso","Seurat"))#create forders Seurat
+dir.create(file.path("Output","Meso","Seurat", format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","Meso","Seurat", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","Meso","Seurat", format(Sys.Date(), "%y%m%d"), "dotplots"))
+dir.create(file.path("Output","Meso","Seurat", format(Sys.Date(), "%y%m%d"), "PCA"))
+dir.create(file.path("Output","Meso","Seurat", format(Sys.Date(), "%y%m%d"), "UMAP"))
+
+fname_scratch <- file.path("Output","scratch")
+
+#set up forder path MONOCLE
+fname_prefix_R <- file.path("Output","Meso","monocle", format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot <- file.path("Output","Meso","monocle", format(Sys.Date(), "%y%m%d"), "dotplots", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot_single <- file.path("Output","Meso","monocle", format(Sys.Date(), "%y%m%d"), "dotplots", "single", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_csv<-file.path("Output","Meso","monocle", format(Sys.Date(), "%y%m%d"), "csv", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_stat<-file.path("Output","Meso","monocle", format(Sys.Date(), "%y%m%d"), "stat", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_UMAP<-file.path("Output","Meso","monocle", format(Sys.Date(), "%y%m%d"), "UMAP", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_mosaic<-file.path("Output","Meso","monocle", format(Sys.Date(), "%y%m%d"), "mosaic", 
+                               format(Sys.Date(), "%y%m%d"))
+
+
+#set up forder path Seurat
+fname_prefix_R_Seurat <- file.path("Output","Meso","Seurat", format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot_Seurat <- file.path("Output","Meso","Seurat", format(Sys.Date(), "%y%m%d"), "dotplots", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_PCA_Seurat<-file.path("Output","Meso","Seurat", format(Sys.Date(), "%y%m%d"), "PCA", 
+                               format(Sys.Date(), "%y%m%d"))
+
+fname_prefix_UMAP_Seurat<-file.path("Output","Meso","Seurat", format(Sys.Date(), "%y%m%d"), "UMAP", 
+                               format(Sys.Date(), "%y%m%d"))
+
+#okabe_tab=read_excel("Output/scratch/color_scale.xlsx")
+#okabe_pal=okabe_tab$hex
+okabe_pal=c("#E69F00","#56B4E9","#009E73","#F0E442","#0072B2","#D55E00","#CC79A7","#000000")
+
+pal <- c("#000000","#004949","#009292","#ff6db6","#ffb6db",
+         "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+         "#920000","#924900","#db6d00","#24ff24","#ffff6d")
+```
+
+######Load data
+####load gene lists
+
+```{r}
+load(paste0(getwd(),"/Output/monocle/240313/R_objects/240313_monocle_cds_clone_selected.RData")) 
+ID_key=read_excel(paste0(fname_scratch,"/shRNA_IDs.xlsx"))
+
+cds_meso=cds[,cds$sample_ID=="Mesoderm"]
+meta_meso=as.data.frame(cds_meso@colData@listData)
+
+
+#load gene lists
+file=paste0(fname_scratch,"/cardiac_markers_full_gene_list.xlsx")
+library(readxl)
+cardiac_markers_full_gene_list <- read_excel(file, 
+    sheet = "C", col_types = c("text", "numeric", 
+         "numeric", "text", "numeric", "numeric", 
+         "numeric", "text"))
+cell_type_info= read_excel(file, 
+    sheet = "B")
+file_ks=paste0(fname_scratch,"/gene_list_homemade.xlsx")
+cardiac_markers_KS_list <- read_excel(file_ks, na = " ")
+
+gene_lists=list()
+
+for (c in unique(cardiac_markers_full_gene_list$celltype)) {
+ 
+tmp=subset(cardiac_markers_full_gene_list, cardiac_markers_full_gene_list$celltype==c)
+gene_list=tmp$`Gene name`
+
+gene_lists[[c]]=gene_list
+
+}
+
+gene_lists_hm=list()
+
+for (c in unique(cardiac_markers_KS_list$cell_type)) {
+ 
+tmp=subset(cardiac_markers_KS_list, cardiac_markers_KS_list$cell_type==c)
+gene_list=tmp$gene_name
+
+gene_lists_hm[[c]]=gene_list
+
+}
+
+```
+
+#####subclustering Mesoderm
+
+```{r}
+#cds_hpsc <- preprocess_cds(cds_hpsc, num_dim = 20)
+#cds <- align_cds(cds, alignment_group = "experiment")
+cds_meso = reduce_dimension(cds_meso,reduction_method="UMAP",umap.n_neighbors = 35L)
+
+#monocle.object = order_cells(monocle.object, reduction_method = "UMAP")
+set.seed(123457)
+cds_1 = cluster_cells(cds_meso, resolution = 1e-2)
+colData(cds_1)$monocle_clusters = as.character(monocle3::clusters(cds_1))
+set.seed(1234798707)
+cds_2 = cluster_cells(cds_meso, resolution = 1e-4)
+colData(cds_2)$monocle_clusters = as.character(monocle3::clusters(cds_2))
+set.seed(1234577687)
+cds_3 = cluster_cells(cds_meso, resolution = 8e-4)
+colData(cds_3)$monocle_clusters = as.character(monocle3::clusters(cds_3))
+set.seed(1234589807)
+cds_4 = cluster_cells(cds_meso, resolution = 2e-4)
+colData(cds_4)$monocle_clusters = as.character(monocle3::clusters(cds_4))
+set.seed(1345976987)
+cds_5 = cluster_cells(cds_meso, resolution = 5e-4)
+colData(cds_5)$monocle_clusters = as.character(monocle3::clusters(cds_5))
+set.seed(1234580917)
+cds_6 = cluster_cells(cds_meso, resolution = 9e-5)
+colData(cds_6)$monocle_clusters = as.character(monocle3::clusters(cds_6))
+
+##run trajectory
+cds_2 <- learn_graph(cds_2)#pochi ma ok
+cds_4 <- learn_graph(cds_4)#pochi ma ok
+cds_5 <- learn_graph(cds_5)#pochi ma ok
+
+plot_cells(cds_1, color_cells_by="cluster", group_cells_by="cluster",group_label_size = 7, cell_size=0.8)
+last_plot()+facet_grid(~sample)
+plot_cells(cds_2, color_cells_by="cluster", group_cells_by="cluster",group_label_size = 7, cell_size=0.8)
+last_plot()+facet_grid(~sample)
+plot_cells(cds_3, color_cells_by="cluster", group_cells_by="cluster",group_label_size = 7, cell_size=0.8)
+last_plot()+facet_grid(~sample)
+plot_cells(cds_4, color_cells_by="cluster", group_cells_by="cluster",group_label_size = 7, cell_size=0.8)
+last_plot()+facet_grid(~sample)
+plot_cells(cds_5, color_cells_by="cluster", group_cells_by="cluster",group_label_size = 7, cell_size=0.8)
+last_plot()+facet_grid(~sample)
+plot_cells(cds_6, color_cells_by="cluster", group_cells_by="cluster",group_label_size = 7, cell_size=0.8)
+last_plot()+facet_grid(~sample)
+
+Rdata_filename = paste0(fname_prefix_R, "_monocle_cds_meso_subclustered.RData")
+save(cds_meso, cds_1,
+     cds_2, cds_3, cds_4, cds_5,cds_6,
+     file = Rdata_filename)
+
+sample_order=c("hiPSC","hiPSC primed","Mesoderm","Cardiac progenitors","CM day 12","CM day 23")
+#map by seurat clusters generated
+cds_meso=cds_5#this is the iteration we decided to use
+
+
+plot_cells(cds_meso, color_cells_by="cluster", group_cells_by="cluster",group_label_size = 7, cell_size=0.8)+
+  scale_color_okabeito()
+last_plot()+facet_grid(~factor(sample_ID, levels = sample_order))
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP.pdf"),
+     width = 18, height = 8)
+
+
+MES=c("KDR","NODAL","DKK1","MESP1","GSC","EOMES","TBXT","MESP2","PDGFRA")
+plot_cells(cds_meso,
+           genes=MES,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "Mes_meso_subclust.pdf"),
+     width = 6, height = 4)
+
+primitive_meso=c("TBXT","MIXL1","EOMES","IRX3","IRX4","FOXF1","TBX1","TBX2","TBX3","PRDX1","FGR1","SMC22","NR2F1","OSR","WT1","LPM","MXL1")
+
+plot_cells(cds_meso,
+           genes=primitive_meso,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "primitive_meso_subclust.pdf"),
+     width = 6, height = 4)
+
+hPSC=c("POU5F1","NANOG","SOX2","PODXL","FUT1","MKI67")
+plot_cells(cds_meso,
+           genes=hPSC,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "plurip_meso_subclust.pdf"),
+     width = 6, height = 4)
+
+LPM=c("FOXF1", "BMP4", "HOXB6", "HAND1", "HAND2", "GATA4","PRRX1","PDGFRA","KDR","SOX2","TBX6","MSGN1")
+
+plot_cells(cds_meso,
+           genes=LPM,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "LPM_meso_subclust.pdf"),
+     width = 6, height = 4)
+
+
+Rdata_filename = paste0(fname_prefix_R, "_monocle_cds_meso_subclustered_FINAL.RData")
+save(cds_meso, cds,
+     file = Rdata_filename)
+
+```
+####top 25
+
+```{r}
+marker_test_res <- top_markers(cds_meso, group_cells_by="monocle_clusters", 
+                               reference_cells=10000, cores=8)
+
+top_specific_markers <- marker_test_res %>%
+                            filter(fraction_expressing >= 0.10, marker_test_p_value <=0.05) %>%
+                            group_by(cell_group) %>%
+                            top_n(25, pseudo_R2)
+
+top_specific_marker_ids <- unique(top_specific_markers %>% pull(gene_id))
+t25=data.frame(top_specific_markers$gene_id, top_specific_markers$cell_group, stringsAsFactors = F)
+colnames(t25)=c("ids", "cluster")
+
+top25=unique(t25$ids)
+plot_cells(cds_meso,
+           genes=t25,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "top_25_cardio_exp.png"),
+     width = 15, height = 20)
+
+
+plot_genes_by_group(cds_meso,
+                    top_specific_marker_ids,
+                    group_cells_by="monocle_clusters",
+                    #ordering_type="cluster_row_col",
+                    ordering_type="maximal_on_diag",
+                    max.size=10,
+                    scale_max=10)
+last_plot() + scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "top_25genes_per_cluster.png"),
+     width = 8, height = 8)
+
+write.csv(t25, file= paste0(fname_prefix_csv, "_", "top_25genes_per_D12_D23_subclusters.csv"), row.names=FALSE)
+
+####top 10
+
+marker_test_res <- top_markers(cds_meso, group_cells_by="monocle_clusters", 
+                               reference_cells=10000, cores=8)
+
+top_specific_markers <- marker_test_res %>%
+                            filter(fraction_expressing >= 0.10, marker_test_p_value <=0.05) %>%
+                            group_by(cell_group) %>%
+                            top_n(10, pseudo_R2)
+
+top_specific_marker_ids <- unique(top_specific_markers %>% pull(gene_id))
+t10=data.frame(top_specific_markers$gene_id, top_specific_markers$cell_group, stringsAsFactors = F)
+colnames(t10)=c("ids", "cluster")
+
+top25=unique(t10$ids)
+
+plot_genes_by_group(cds_meso,
+                    top_specific_marker_ids,
+                    group_cells_by="monocle_clusters",
+                    #ordering_type="cluster_row_col",
+                    ordering_type="maximal_on_diag",
+                    max.size=10,
+                    scale_max=10)
+last_plot() + scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "top_10genes_per_cluster.png"),
+     width = 8, height = 8)
+
+write.csv(t10, file= paste0(fname_prefix_csv, "_", "top_10genes_per_D12_D23_subclusters.csv"), row.names=FALSE)
+
+```
+
+###rename clusters
+
+```{r}
+colData(cds_meso)$cell_type_short <- as.character(clusters(cds_meso))
+colData(cds_meso)$assigned_cell_type <- as.character(clusters(cds_meso))
+
+colData(cds_meso)$cell_type_short <- dplyr::recode(colData(cds_meso)$cell_type_short,
+                                                 "1"="P-PS",
+                                                 "2"="PS",
+                                                 "3"="P-PE",
+                                                 "4"="PE-1",
+                                                 "5"="PE-2")
+colData(cds_meso)$assigned_cell_type <- dplyr::recode(colData(cds_meso)$assigned_cell_type,
+                                                 "1"="Proliferating Primitive streak",
+                                                 "2"="Primitive streak",
+                                                 "3"="Proliferating posterior epiblast",
+                                                 "4"="Posterior epiblast 1",
+                                                 "5"="Posterior epiblast 2")
+
+pbuild <- plot_cells(cds_meso, color_cells_by = "monocle_clusters", label_cell_groups=T, show_trajectory_graph = F, label_leaves=F, label_branch_points=F, graph_label_size=3, group_label_size = 4, cell_size = 1) 
+UmapCDS <- data.frame(pbuild$data$sample_name,UMAP1_monocle = pbuild$data$data_dim_1, UMAP2_monocle = pbuild$data$data_dim_2, row.names = 1) 
+colData(cds_meso)$UMAP_1_monocle_meso=pbuild$data$data_dim_1 #add umap data for further analysis outside monocle
+colData(cds_meso)$UMAP_2_monocle_meso=pbuild$data$data_dim_2 #add umap data for further analysis outside monocle
+
+
+#counts=as.data.frame(exprs(cds))
+counts=as.data.frame(normalized_counts(cds))
+meta=as.data.frame(cds@colData@listData)
+counts_meso=as.data.frame(normalized_counts(cds_meso))
+meta_meso=as.data.frame(cds_meso@colData@listData)
+
+cds_meso<- order_cells(cds_meso,reduction_method = "UMAP")
+
+plot_cells(cds_meso,
+           color_cells_by = "pseudotime",
+           label_cell_groups=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE,
+           graph_label_size=1.5)
+last_plot()+facet_grid(~factor(sample_ID,levels =sample_order))
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_pseudotime_meso.pdf"),
+     width = 8, height = 8)
+
+
+Rdata_filename = paste0(fname_prefix_R, "_monocle_cds_meso_subclustered_FINAL.RData")
+save(cds_meso, cds,counts,meta,sample_order,meta_meso,
+     file = Rdata_filename)
+
+```
+
+####add regression analysis
+
+```{r}
+
+load("Output/Meso/monocle/240314/R_objects/240314_monocle_cds_meso_subclustered_FINAL.RData")
+
+colData(cds_meso)$clust1 = cds_meso$monocle_clusters=="1"
+colData(cds_meso)$clust2 = cds_meso$monocle_clusters=="2"
+colData(cds_meso)$clust3 = cds_meso$monocle_clusters=="3"
+colData(cds_meso)$clust4 = cds_meso$monocle_clusters=="4"
+colData(cds_meso)$clust5 = cds_meso$monocle_clusters=="5"
+
+
+# clust1 to clust5 are the cluster names, make a list with it
+cluster_names <- paste0("clust", 1:5)
+
+# Initialize empty lists to store results
+gene_fits_list <- list()
+fit_coefs_list <- list()
+fit_coefs_sig_list <- list()
+
+# Loop through each cluster
+for (cluster_name in cluster_names) {
+  # Fit models
+  gene_fits <- fit_models(cds_meso, model_formula_str = paste0("~", cluster_name))
+  gene_fits_list[[cluster_name]] <- gene_fits
+  
+  # Extract coefficient tables
+  fit_coefs <- coefficient_table(gene_fits)
+  fit_coefs_list[[cluster_name]] <- fit_coefs
+  
+  # Filter significant coefficients
+  fit_coefs_sig <- fit_coefs %>%
+    filter(term == paste0(cluster_name, "TRUE")) %>%
+    filter(q_value < 0.05) %>%
+    select(gene_short_name, term, q_value, estimate, num_cells_expressed)
+  
+  fit_coefs_sig_list[[cluster_name]] <- fit_coefs_sig
+}
+
+# assign cluster names to a vector
+cluster_names <- paste0("clust", 1:5)
+
+# Initialize an empty list to store fit_coefs_renamed for each cluster
+fit_coefs_list_renamed <- list()
+
+# Loop through each cluster and rename the fit_coef dataframes for each cluster in order to then merge them into a single dataframe
+for (i in 1:5) {
+  cluster_name <- cluster_names[i]
+  
+  # Perform operations for each cluster
+  fit_coefs <- fit_coefs_list[[cluster_name]] %>%
+    dplyr::rename(logFC = estimate, q_value = q_value) %>%
+    filter(term == paste0(cluster_name, "TRUE")) %>%
+    select(gene_short_name, q_value, logFC, num_cells_expressed)
+  
+  # Rename columns consistently
+  col_rename <- c("geneID", paste0("q_value_", i), paste0("logFC_", i), "num_cells_expressed")
+  
+  # Rename columns in fit_coefs
+  fit_coefs_renamed <- fit_coefs %>%
+    setNames(col_rename)
+  
+  # Store fit_coefs_renamed in the list
+  fit_coefs_list_renamed[[cluster_name]] <- fit_coefs_renamed
+}
+
+de_stats<-fit_coefs_list_renamed[["clust1"]]%>%
+  left_join(fit_coefs_list_renamed[["clust2"]], by =c("geneID","num_cells_expressed"))%>%
+  left_join(fit_coefs_list_renamed[["clust3"]], by =c("geneID","num_cells_expressed"))%>%
+  left_join(fit_coefs_list_renamed[["clust4"]], by =c("geneID","num_cells_expressed"))%>%
+  left_join(fit_coefs_list_renamed[["clust5"]], by =c("geneID","num_cells_expressed"))
+
+de_stats$dup=duplicated(de_stats$geneID)
+de_stats=subset(de_stats,de_stats$dup!=T)%>%dplyr::select(-dup)
+
+analysis_clusters=de_stats
+
+stat_filename = paste0(fname_prefix_csv, "_complete_gene_reg_by_clusters.csv")
+write.csv(analysis_clusters, stat_filename, quote = F, row.names = T, sep=",")
+```
+
+#######add direction
+
+```{r}
+#Set the significance level cutoff
+sig_level <- 0.05
+#Set a fold-change cutoff
+fc_level <- log2(1.5)
+fc_level2 <- (log2(1.5))*-1
+###################################
+
+# add thresholds (up= upregulated; down= downregulated, other= neighter)
+for (i in 1:9) {
+  cluster_name <- paste0("clust", i)
+  
+  # Create column names dynamically
+  logFC_col <- paste0("logFC_", i)
+  q_value_col <- paste0("q_value_", i)
+  treshold_col <- paste0("treshold_cl", i)
+  Log10pvalue_col <- paste0("Log10pvalue_cl", i)
+  
+  # Apply thresholding logic
+  de_stats[[treshold_col]] <- ifelse(de_stats[[logFC_col]] >= fc_level & de_stats[[q_value_col]] <= sig_level, "up",
+                                      ifelse(de_stats[[logFC_col]] <= fc_level2 & de_stats[[q_value_col]] <= sig_level, "down", "other"))
+  
+  de_stats[[Log10pvalue_col]] <- -log10(de_stats[[q_value_col]])
+}
+
+####create to_show columns
+####here are the specific upregulated genes for each cluster and not by others
+# Loop through each cluster
+for (i in 1:9) {
+  cluster_name <- paste0("clust", i)
+  
+  # Create column names dynamically
+  treshold_col <- paste0("treshold_cl", i)
+  to_show_col <- paste0("to_show_cl", i)
+  
+  # Create condition dynamically
+  condition <- paste0(
+    "de_stats$", to_show_col, "<-ifelse(",
+    paste(
+      sprintf("de_stats$treshold_cl%d == 'up' & (", i),
+      paste(sprintf("de_stats$treshold_cl%d == 'down' | de_stats$treshold_cl%d == 'other'", 1:9, 1:9), collapse = " | "),
+      ")"
+    ),
+    ", de_stats$geneID, \"\")"
+  )
+  
+  # Evaluate the condition
+  eval(parse(text = condition))
+}
+
+stat_filename = paste0(fname_prefix_csv, "_gene_reg_with_directions.csv")
+write.csv(de_stats, stat_filename, quote = F, row.names = T, sep=",")
+
+Rdata_filename = paste0(fname_prefix_csv, "_gene_regression_every_clust_against_eachother.RData")
+save(de_stats,
+     file = Rdata_filename)
+```
+
+####make volcano plots
+
+```{r}
+###########
+de_stats=de_stats%>% distinct(geneID, .keep_all = TRUE)#eliminate duplicates
+
+# Loop through clusters to make all the volcano plots in bulk than use the one below to make specific ones
+for (i in 1:5) {
+  logFC_col <- paste0("logFC_", i)
+  treshold_col <- paste0("treshold_cl", i)
+  Log10pvalue_col <- paste0("Log10pvalue_cl", i)
+  q_value_col <- paste0("q_value_", i)
+  to_show_col <- paste0("to_show_cl", i)
+
+  volcano_plot <- ggplot(data = de_stats, aes(x = !!rlang::sym(logFC_col), y = !!rlang::sym(Log10pvalue_col))) +
+    geom_point(aes(colour = as.factor(!!rlang::sym(treshold_col))), size = 1.5) +
+    scale_colour_manual(values = c("up" = "red", "down" = "blue", "other" = "grey")) +
+     ggrepel::geom_text_repel(
+  data = de_stats %>%
+    filter(!!rlang::sym(q_value_col) < 0.05),
+  aes(label = !!rlang::sym(to_show_col)),
+  size = 3,
+  box.padding = unit(0.2, "lines"),
+  point.padding = unit(0.2, "lines"),
+  segment.color = "grey",
+  segment.size = 0.2
+)+
+    theme(legend.position = "none") +
+    geom_hline(yintercept = (log10(sig_level) * -1)) +
+    geom_vline(xintercept = c(fc_level, fc_level2)) +
+    xlim(c(-4, 4)) + ylim(c(0, 200)) +
+    xlab("log2 fold change") + ylab("-Log10 adj p-value")+
+  annotate("text", x = 4, y = 200, label = paste("Cluster ", i), col = "black", size = 4, hjust = 1, vjust = 1) +
+    # Add "other clusters" on the top left for clusters other than the current one
+    annotate("text", x = -4, y = 200, label = "Other Clusters", col = "black", size = 4, hjust = 0, vjust = 1)
+
+
+  ggsave(
+    filename = paste0(fname_prefix_dotplot, "_cl", i, ".png"),
+    plot = volcano_plot,
+    width = 8,
+    height = 6
+  )
+}
+```
+
+#####make pretty UMAPS
+```{r}
+
+order_cell_types_long=c("Proliferating posterior epiblast", "Posterior epiblast 1","Posterior epiblast 2","Primitive streak","Proliferating Primitive streak")
+order_cell_types=c("P-PE","PE-1","PE-2","PS","P-PS")
+order_monocle_short=c(1,3,4,5,2)
+order_monocle_long=c(4,1,2,3,5)
+
+okabe_clust=c("#E69F00","#56B4E9","#009E73","#0072B2","#D55E00")
+cell_type_pal=data.frame(order_cell_types=order_cell_types,order_cell_types_long=order_cell_types_long,okabe_clust=okabe_clust,order_monocle_short=order_monocle_short,order_monocle_long=order_monocle_long)
+
+cell_type_pal_ms=cell_type_pal[order(cell_type_pal$order_monocle_short),]
+cell_type_pal_ml=cell_type_pal[order(cell_type_pal$order_monocle_long),]
+
+plot_cells(cds_meso, color_cells_by="batch", group_cells_by="side",label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_okabeito(name="cell types",order = c(9, 5, 1))+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle subclustering Mesoderm Batch type")
+
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_batch.pdf"),
+     width = 5, height = 4)
+
+plot_cells(cds_meso, color_cells_by="side", group_cells_by="side",label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_okabeito(name="cell types",order = c(9, 5, 6))+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle subclustering Mesoderm side")
+
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_side.pdf"),
+     width = 5, height = 4)
+
+plot_cells(cds_meso, color_cells_by="cell_type_short", group_cells_by="monocle_clusters",label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_manual(name="cell types",values=c(cell_type_pal_ms$okabe_clust))+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle subclustering Mesoderm")+
+  facet_grid(~side)
+
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_side2.pdf"),
+     width = 12, height = 4)
+
+plot_cells(cds_meso, color_cells_by="cell_type_short", group_cells_by="monocle_clusters",label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_manual(name="cell types",values=c(cell_type_pal_ms$okabe_clust))+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle subclustering Mesoderm")
+
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_cell_type_short.pdf"),
+     width = 6, height = 4)
+
+plot_cells(cds_meso, color_cells_by="assigned_cell_type", group_cells_by="monocle_clusters",label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_manual(name="cell types",values=c(cell_type_pal_ml$okabe_clust))+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle subclustering Mesoderm")
+
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_cell_type_long.pdf"),
+     width = 7, height = 4)
+
+plot_cells(cds_meso, color_cells_by="pseudotime", label_cell_groups = F,group_label_size = 7,label_roots=F,label_leaves=F,label_branch_points=F,cell_size=0.8)+
+  scale_color_viridis(discrete=F, option="A")+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle pseudotime Mesoderm")
+last_plot()+facet_grid(~factor(sample_ID,levels=sample_order))
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_pseudotime.pdf"),
+     width = 5, height = 4)
+
+
+final=c("NODAL","TBXT","PDGFRA","TOP2A")
+
+plot_cells(cds_meso,
+           genes=final,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)+ scale_color_viridis(option="E", discrete=F)
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "final_meso_subclust.pdf"),
+     width = 5, height = 3)
+
+
+
+####top 10 
+####add population names
+
+marker_test_res <- top_markers(cds_meso, group_cells_by="cell_type_short", 
+                               reference_cells=10000, cores=8)
+
+top_specific_markers <- marker_test_res %>%
+                            filter(fraction_expressing >= 0.10, marker_test_p_value <=0.05) %>%
+                            group_by(cell_group) %>%
+                            top_n(10, pseudo_R2)
+
+top_specific_marker_ids <- unique(top_specific_markers %>% pull(gene_id))
+t10=data.frame(top_specific_markers$gene_id, top_specific_markers$cell_group, stringsAsFactors = F)
+colnames(t10)=c("ids", "cluster")
+
+top25=unique(t10$ids)
+
+plot_genes_by_group(cds_meso,
+                    top_specific_marker_ids,
+                    group_cells_by="cell_type_short",
+                    ordering_type="cluster_row_col",
+                    #ordering_type="maximal_on_diag",
+                    max.size=10,
+                    scale_max=10)+
+  labs(x = "", y = "", title = "top 10 genes per sub-cluster")
+last_plot() + scale_color_viridis(option="E", discrete=F)
+
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "top_10genes_per_cluster_cell_ty.pdf"),
+     width = 8, height = 8)
+```
+

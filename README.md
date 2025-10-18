@@ -18,7 +18,7 @@ The folder manuscript_analysis_sc contains scripts used in the secondary analysi
 
 Processed and raw data files (fastq) are deposidet in the BioStudies repository:
 
-iPS2-sci-seq - hiPSC-CMs (.fastq) E-MTAB-14102 https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-14102
+iPS2-sci-seq - hiPSC-CMs (.fastq) [E-MTAB-14102](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-14102)
 iPS2-10X-seq - monolayer differentiation (.fastq) E-MTAB-14065
 iPS2-10X-seq - cardioids (.fastq) E-MTAB-14066
 iPS2-seq - hiPSCs clonal drift (.fastq)	E-MTAB-15303

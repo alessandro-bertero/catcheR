@@ -8,13 +8,13 @@ See preprint DOI: http://dx.doi.org/10.2139/ssrn.4854180
 Balmas, Elisa and Ratto, Maria Luisa and Snijders, Kirsten E. and Calogero, Raffaele and Mendjan, Sasha and Bertero, Alessandro, Single Cell Transcriptional Perturbome in Pluripotent Stem Cell Models.
 Available at SSRN: https://ssrn.com/abstract=4854180 or http://dx.doi.org/10.2139/ssrn.4854180
 
-See complete documentation at http://marialuisaratto.github.io/catcheRdocs
+See complete [documentation](http://marialuisaratto.github.io/catcheRdocs)
 
 See associated protocol and CatcheR ![protocol](/DOCUMENTATION/catcheR.pdf) in DOCUMENTATION.
 
 CatcheR analysis can be divided in two steps: single cell perturbation deconvolution and assignment, and perturbation effects statistical analysis (dimensionality reduction and clustering with Monocle3, pseudotime evaluation, enrichment / depletion analysis, genes modules analysis).
 
-The folder manuscript_analysis_sc contains scripts used in the secondary analysis for the manuscript, curated by Elisa Balmas. The [Zenodo repository](https://doi.org/10.5281/zenodo.11085619) (https://doi.org/10.5281/zenodo.11085619) contains the scratch folders with the processed data and additional files to download and reproduce the analysis as in the paper with the scripts.
+The folder manuscript_analysis_sc contains scripts used in the secondary analysis for the manuscript, curated by Elisa Balmas. The [Zenodo repository](https://doi.org/10.5281/zenodo.11085619) contains the scratch folders with the processed data and additional files to download and reproduce the analysis as in the paper with the scripts.
 
 Processed and raw data files (fastq) are deposidet in the BioStudies repository:
 

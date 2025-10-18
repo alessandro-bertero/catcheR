@@ -14,7 +14,20 @@ See associated protocol and CatcheR ![protocol](/DOCUMENTATION/catcheR.pdf) in D
 
 CatcheR analysis can be divided in two steps: single cell perturbation deconvolution and assignment, and perturbation effects statistical analysis (dimensionality reduction and clustering with Monocle3, pseudotime evaluation, enrichment / depletion analysis, genes modules analysis).
 
-The folder manuscript_analysis_sc contains scripts used in the secondary analysis for the manuscript, curated by Elisa Balmas. Zenodo repository https://doi.org/10.5281/zenodo.11085619 contains the scratch folders to download and reproduce the analysis as in the paper with the scripts.
+The folder manuscript_analysis_sc contains scripts used in the secondary analysis for the manuscript, curated by Elisa Balmas. The [Zenodo repository] (https://doi.org/10.5281/zenodo.11085619) contains the scratch folders with the processed data and additional files to download and reproduce the analysis as in the paper with the scripts.
+
+Processed and raw data files (fastq) are deposidet in the BioStudies repository:
+
+iPS2-sci-seq - hiPSC-CMs (.fastq) E-MTAB-14102 https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-14102
+iPS2-10X-seq - monolayer differentiation (.fastq) E-MTAB-14065
+iPS2-10X-seq - cardioids (.fastq) E-MTAB-14066
+iPS2-seq - hiPSCs clonal drift (.fastq)	E-MTAB-15303
+iPS2-multi-seq - hiPSCs (.fastq) E-MTAB-15332
+iPS2-10X-seq - neural organoids (.fastq) E-MTAB-15308
+iPS2-10X-seq - monoclonal cardioids (.fastq) E-MTAB-15307
+iPS2-CITE-seq - polyclonal cardioids (.fastq) E-MTAB-15309
+
+
 
 # CatcheR installation
 Use the "install_github" function in the "devtools" package.

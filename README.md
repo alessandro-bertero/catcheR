@@ -3,16 +3,13 @@
 
 is a tool for iPS2-seq screening platform data from HEDGe lab (curated by Maria Luisa Ratto). 
 
-See preprint DOI: http://dx.doi.org/10.2139/ssrn.4854180
+See related publication: Balmas, E., Ratto, M.L., Snijders, K.E. et al. Single cell transcriptional perturbome in pluripotent stem cell models. Mol Syst Biol (2025). [https://doi.org/10.1038/s44320-025-00172-8](https://doi.org/10.1038/s44320-025-00172-8)
 
-Note that to reproduce the analysis in the manuscript, the custom code is available in the [manuscript_analysis_sc](https://github.com/alessandro-bertero/catcheR/tree/dev/manuscript_analysis_sc) folder. 
-
-Balmas, Elisa and Ratto, Maria Luisa and Snijders, Kirsten E. and Calogero, Raffaele and Mendjan, Sasha and Bertero, Alessandro, Single Cell Transcriptional Perturbome in Pluripotent Stem Cell Models.
-Available at SSRN: https://ssrn.com/abstract=4854180 or http://dx.doi.org/10.2139/ssrn.4854180
+Note that to reproduce the analysis in the manuscript, the custom code curated by Elisa Balmas is available in the [manuscript_analysis_sc](https://github.com/alessandro-bertero/catcheR/tree/dev/manuscript_analysis_sc) folder. 
 
 See complete [documentation](http://marialuisaratto.github.io/catcheRdocs)
 
-See associated protocol and CatcheR ![protocol](/DOCUMENTATION/catcheR.pdf) in DOCUMENTATION or see the [full iPS2-seq protocol](dx.doi.org/10.17504/protocols.io.e6nvw4q29lmk/v1)
+See CatcheR ![protocol](/DOCUMENTATION/catcheR.pdf) in DOCUMENTATION or see the [full iPS2-seq protocol](dx.doi.org/10.17504/protocols.io.e6nvw4q29lmk/v1)
 
 CatcheR analysis can be divided in two steps: single cell perturbation deconvolution and assignment, and perturbation effects statistical analysis (dimensionality reduction and clustering with Monocle3, pseudotime evaluation, enrichment / depletion analysis, genes modules analysis).
 

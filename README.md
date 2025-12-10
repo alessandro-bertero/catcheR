@@ -9,7 +9,7 @@ Note that to reproduce the analysis in the manuscript, the custom code curated b
 
 See complete [documentation](http://marialuisaratto.github.io/catcheRdocs)
 
-See CatcheR ![protocol](/DOCUMENTATION/catcheR.pdf) in DOCUMENTATION or see the [full iPS2-seq protocol](dx.doi.org/10.17504/protocols.io.e6nvw4q29lmk/v1)
+See CatcheR [protocol](https://github.com/alessandro-bertero/catcheR/blob/main/DOCUMENTATION/catcher.pdf) in DOCUMENTATION or see the [full iPS2-seq protocol](dx.doi.org/10.17504/protocols.io.e6nvw4q29lmk/v1)
 
 CatcheR analysis can be divided in two steps: single cell perturbation deconvolution and assignment, and perturbation effects statistical analysis (dimensionality reduction and clustering with Monocle3, pseudotime evaluation, enrichment / depletion analysis, genes modules analysis).
 
